@@ -6,31 +6,21 @@ public class PlayerController : MonoBehaviour
     public float moveForce = 10f;           // 加える力の大きさ
     public float maxSpeed = 10f;   
              // 最大速度
-    private InputSystem_Actions inputActions;
+
     private InputAction moveAction;
     private Rigidbody rb;
     private Camera mainCamera;
 
     void Awake()
     {
-        inputActions = new InputSystem_Actions();
         rb = GetComponent<Rigidbody>();
         mainCamera = Camera.main;
     }
 
-    void OnEnable()
-    {
-        inputActions.Player.Enable();
-    }
-
-    void OnDisable()
-    {
-        inputActions.Player.Disable();
-    }
 
     void Update()
     {
-        Vector2 moveInput = inputActions.Player.Move.ReadValue<Vector2>();
+        Vector2 moveInput = GameInput.Instance.Move;
         float moveX = moveInput.x;
         float moveZ = moveInput.y;
 

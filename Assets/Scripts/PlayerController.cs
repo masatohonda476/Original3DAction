@@ -4,43 +4,33 @@ using UnityEngine.InputSystem;
 public class PlayerController : MonoBehaviour
 {
     public float moveForce = 10f;           // 加える力の大きさ
-    public float maxSpeed = 10f;            // 最大速度
-
+    public float maxSpeed = 10f;   
+             // 最大速度
+    private InputSystem_Actions inputActions;
     private InputAction moveAction;
     private Rigidbody rb;
     private Camera mainCamera;
 
     void Awake()
     {
-        moveAction = new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2");
-        moveAction.AddCompositeBinding("2DVector")
-            .With("Up", "<Keyboard>/w")
-            .With("Up", "<Keyboard>/upArrow")
-            .With("Down", "<Keyboard>/s")
-            .With("Down", "<Keyboard>/downArrow")
-            .With("Left", "<Keyboard>/a")
-            .With("Left", "<Keyboard>/leftArrow")
-            .With("Right", "<Keyboard>/d")
-            .With("Right", "<Keyboard>/rightArrow");
-        moveAction.AddBinding("<Gamepad>/leftStick");
-
+        inputActions = new InputSystem_Actions();
         rb = GetComponent<Rigidbody>();
         mainCamera = Camera.main;
     }
 
     void OnEnable()
     {
-        moveAction?.Enable();
+        inputActions.Player.Enable();
     }
 
     void OnDisable()
     {
-        moveAction?.Disable();
+        inputActions.Player.Disable();
     }
 
     void Update()
     {
-        Vector2 moveInput = moveAction.ReadValue<Vector2>();
+        Vector2 moveInput = inputActions.Player.Move.ReadValue<Vector2>();
         float moveX = moveInput.x;
         float moveZ = moveInput.y;
 

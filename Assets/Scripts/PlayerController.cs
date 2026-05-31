@@ -1,38 +1,28 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
-    public float moveForce = 10f;           // 加える力の大きさ
-    public float maxSpeed = 10f;   
-             // 最大速度
-    private InputSystem_Actions inputActions;
-    private InputAction moveAction;
-    private Rigidbody rb;
+    public float acceleration = 20f;
+    public float maxSpeed = 5f;
+    public float rotationSpeed = 720f;
+    public float gravity = -25f;
+    public float groundedGravity = -2f;
+
+    private CharacterController characterController;
     private Camera mainCamera;
+    private Vector3 horizontalVelocity;
+    private float verticalVelocity;
 
     void Awake()
     {
-        inputActions = new InputSystem_Actions();
-        rb = GetComponent<Rigidbody>();
+        characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
-    }
-
-    void OnEnable()
-    {
-        inputActions.Player.Enable();
-    }
-
-    void OnDisable()
-    {
-        inputActions.Player.Disable();
     }
 
     void Update()
     {
-        Vector2 moveInput = inputActions.Player.Move.ReadValue<Vector2>();
-        float moveX = moveInput.x;
-        float moveZ = moveInput.y;
+        Vector2 moveInput = GameInput.Instance.Move;
 
         // カメラの向きに基づいた移動方向を計算
         Vector3 cameraForward = mainCamera.transform.forward;
@@ -43,16 +33,33 @@ public class PlayerController : MonoBehaviour
         cameraRight.y = 0;
 
         // 移動方向のベクトル
-        Vector3 moveDirection = (cameraForward.normalized * moveZ + cameraRight.normalized * moveX).normalized;
+        Vector3 moveDirection = (cameraForward.normalized * moveInput.y + cameraRight.normalized * moveInput.x).normalized;
+        Vector3 desiredVelocity = moveDirection * maxSpeed;
 
-        // 現在の水平速度を取得
-        Vector3 currentVelocity = rb.linearVelocity;
-        float currentSpeed = new Vector3(currentVelocity.x, 0, currentVelocity.z).magnitude;
+        horizontalVelocity = Vector3.MoveTowards(
+            horizontalVelocity,
+            desiredVelocity,
+            acceleration * Time.deltaTime
+        );
 
-        // 最大速度に達していない場合のみ力を加える
-        if (currentSpeed < maxSpeed)
+        if (characterController.isGrounded && verticalVelocity < 0f)
         {
-            rb.AddForce(moveDirection * moveForce, ForceMode.Force);
+            verticalVelocity = groundedGravity;
+        }
+
+        verticalVelocity += gravity * Time.deltaTime;
+        Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
+
+        characterController.Move(velocity * Time.deltaTime);
+
+        if (moveDirection.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime
+            );
         }
     }
 }

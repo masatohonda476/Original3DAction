@@ -5,8 +5,8 @@ public class CameraController : MonoBehaviour
 {
     public Transform target;
     public float distance = 5.0f;
-    public float xSpeed = 120.0f;
-    public float ySpeed = 80.0f;
+    public float xSpeed = 400.0f;
+    public float ySpeed = 400.0f;
     public float yMinLimit = -20f;
     public float yMaxLimit = 80f;
 

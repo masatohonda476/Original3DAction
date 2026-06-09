@@ -3,21 +3,26 @@ using UnityEngine;
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
-    public float acceleration = 20f;
-    public float maxSpeed = 5f;
-    public float rotationSpeed = 720f;
-    public float gravity = -25f;
-    public float groundedGravity = -2f;
-
     private CharacterController characterController;
     private Camera mainCamera;
     private Vector3 horizontalVelocity;
     private float verticalVelocity;
 
+    public float acceleration = 20f;
+    public float maxSpeed = 5f;
+    public float rotationSpeed = 720f;
+    public float gravity = -25f;
+    public float groundedGravity = -2f;
+    public float myMaxHP = 100f;
+    public float myCurrentHP;
+
+
+
     void Awake()
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
+        myCurrentHP = myMaxHP;
     }
 
     void Update()

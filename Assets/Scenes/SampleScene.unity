@@ -3586,6 +3586,7 @@ GameObject:
   m_Component:
   - component: {fileID: 924740800}
   - component: {fileID: 924740797}
+  - component: {fileID: 924740802}
   - component: {fileID: 924740801}
   m_Layer: 0
   m_Name: Player
@@ -3611,6 +3612,8 @@ MonoBehaviour:
   rotationSpeed: 720
   gravity: -25
   groundedGravity: -2
+  myMaxHP: 100
+  myCurrentHP: 0
 --- !u!4 &924740800
 Transform:
   m_ObjectHideFlags: 0
@@ -3653,6 +3656,19 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &924740802
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 924740796}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07ca39a90dd934d48a29aead3b102a5a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerStatus
+  HP: 100
 --- !u!1 &933130055
 GameObject:
   m_ObjectHideFlags: 0

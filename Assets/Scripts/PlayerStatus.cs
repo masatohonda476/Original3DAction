@@ -3,7 +3,7 @@ using UnityEngine;
 public class PlayerStatus : MonoBehaviour
 {
     public int HP = 100;
-    
+
     public void TakeDamage(int damage)
     {
         HP -= damage;
@@ -12,7 +12,10 @@ public class PlayerStatus : MonoBehaviour
             HP = 0;
             Debug.Log("You Died");
         }
-        Debug.Log("Player HP:" + HP);
+        else
+        {
+            Debug.Log("Player HP:" + HP);
+        }
     }
 
     void Start()

@@ -9,6 +9,15 @@ public class GameInput : MonoBehaviour
 
     public Vector2 Move => inputActions.Player.Move.ReadValue<Vector2>();
     public Vector2 Look => inputActions.Player.Look.ReadValue<Vector2>();
+    public bool ShortDodgePressed()
+    {
+        return inputActions.Player.ShortDodge.WasPressedThisFrame();
+    }
+
+    public bool LongDodgePressed()
+    {
+        return inputActions.Player.LongDodge.WasPressedThisFrame();
+    }
 
     void Awake()
     {

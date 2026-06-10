@@ -6,6 +6,7 @@ public class PlayerController : MonoBehaviour
     private CharacterController characterController;
     private Camera mainCamera;
     private Vector3 horizontalVelocity;
+    private Vector3 lastMoveDirection = Vector3.forward;
     private float verticalVelocity;
 
     public float acceleration = 20f;
@@ -56,15 +57,30 @@ public class PlayerController : MonoBehaviour
         Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
 
         characterController.Move(velocity * Time.deltaTime);
-
+        
+        //プレイヤー回転
         if (moveDirection.sqrMagnitude > 0.001f)
         {
+            lastMoveDirection = moveDirection;
+
             Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
             transform.rotation = Quaternion.RotateTowards(
                 transform.rotation,
                 targetRotation,
                 rotationSpeed * Time.deltaTime
             );
+        }
+
+        //小回避
+        if (GameInput.Instance.ShortDodgePressed())
+        {
+            Debug.Log("Short Dodge Pressed!");
+        }
+
+        //大回避
+        if (GameInput.Instance.LongDodgePressed())
+        {
+            Debug.Log("Long Dodge Pressed!");
         }
     }
 }

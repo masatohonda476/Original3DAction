@@ -5,7 +5,7 @@ public class EnemyController : MonoBehaviour
 {
     private NavMeshAgent agent;
     private PlayerStatus playerStatus;
-    private float attackRange = 2f;
+    private float attackRange = 3f;
     private float attackCooldown = 1f;
     private float attackTimer = 0f;
 
@@ -45,13 +45,16 @@ public class EnemyController : MonoBehaviour
             target.transform.position
         );
 
-        if(distance > attackRange)
+        if (state == EnemyState.Chase)
         {
-        agent.destination = target.transform.position;
-        }
-        else
-        {
-            agent.ResetPath();
+            if (distance > attackRange)
+            {
+                agent.destination = target.transform.position;
+            }
+            else
+            {
+                agent.ResetPath();
+            }
         }
 
         attackTimer -= Time.deltaTime;

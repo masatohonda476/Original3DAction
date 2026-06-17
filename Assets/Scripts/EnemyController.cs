@@ -54,6 +54,14 @@ public class EnemyController : MonoBehaviour
             else
             {
                 agent.ResetPath();
+
+                Vector3 direction = target.transform.position - transform.position;
+                direction.y = 0f;
+
+                if (direction != Vector3.zero)
+                {
+                    transform.rotation = Quaternion.LookRotation(direction);
+                }
             }
         }
 

@@ -40,11 +40,13 @@ public class EnemyController : MonoBehaviour
     {
         if (target == null) return;
 
+//プレイヤーとの距離を計算
         float distance = Vector3.Distance(
             transform.position,
             target.transform.position
         );
 
+//Chase状態の処理
         if (state == EnemyState.Chase)
         {
             if (distance > attackRange)
@@ -65,15 +67,17 @@ public class EnemyController : MonoBehaviour
             }
         }
 
+//攻撃のクールダウンタイマーを更新
         attackTimer -= Time.deltaTime;
 
-
+//攻撃判定開始
         if (distance <= attackRange && attackTimer <= 0f && state == EnemyState.Chase)
         {
             state = EnemyState.Windup;
             windupTimer = windupDuration;
         }
 
+//Wingup状態の処理
         if (state == EnemyState.Windup)
         {
             windupTimer -= Time.deltaTime;
@@ -96,6 +100,7 @@ public class EnemyController : MonoBehaviour
             return;
         }
 
+//Attack状態の処理
         if (state == EnemyState.Attack)
         {
             attackStateTimer -= Time.deltaTime;
@@ -117,6 +122,7 @@ public class EnemyController : MonoBehaviour
             return;
         }
 
+//Cooldown状態の処理
         if (state == EnemyState.Cooldown)
         {
             if (attackTimer <= 0f)

@@ -8,6 +8,7 @@ public class EnemyController : MonoBehaviour
     private float attackRange = 3f;
     private float attackCooldown = 1f;
     private float attackTimer = 0f;
+    private Quaternion attackRotation;
 
     private enum EnemyState
     {
@@ -22,14 +23,19 @@ public class EnemyController : MonoBehaviour
     private float windupTimer = 0f;
     private float attackDuration = 0.3f;
     private float attackStateTimer;
+    private EnemyWeaponHitbox weaponHitbox;
+    [SerializeField] private int attackDamage = 10;
 
     [SerializeField] private GameObject target;
     [SerializeField] private Transform weapon;
 
+    public bool IsAttacking => state == EnemyState.Attack;
+    public int AttackDamage => attackDamage;
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
+        weaponHitbox = weapon.GetComponentInChildren<EnemyWeaponHitbox>();
         if (target != null)
         {
             playerStatus = target.GetComponent<PlayerStatus>();
@@ -75,14 +81,17 @@ public class EnemyController : MonoBehaviour
         {
             state = EnemyState.Windup;
             windupTimer = windupDuration;
+            attackRotation = transform.rotation;
         }
 
-//Wingup状態の処理
+//Windup状態の処理
         if (state == EnemyState.Windup)
         {
             windupTimer -= Time.deltaTime;
 
             agent.ResetPath();
+
+            transform.rotation = attackRotation;
 
             weapon.localRotation = Quaternion.RotateTowards
             (
@@ -93,6 +102,7 @@ public class EnemyController : MonoBehaviour
 
             if (windupTimer <= 0f)
             {
+                weaponHitbox.BeginAttack();
                 state = EnemyState.Attack;
                 attackStateTimer = attackDuration;
             }
@@ -114,12 +124,9 @@ public class EnemyController : MonoBehaviour
 
             if (attackStateTimer <= 0f)
             {
-                playerStatus.TakeDamage(10);
                 attackTimer = attackCooldown;
                 state = EnemyState.Cooldown;
             }
-
-            return;
         }
 
 //Cooldown状態の処理

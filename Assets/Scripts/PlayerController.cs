@@ -18,8 +18,6 @@ public class PlayerController : MonoBehaviour
     public float rotationSpeed = 720f;
     public float gravity = -25f;
     public float groundedGravity = -2f;
-    public float myMaxHP = 100f;
-    public float myCurrentHP;
     public float shortDodgeSpeed = 10f;
     public float shortDodgeDuration = 0.3f;
 
@@ -32,7 +30,6 @@ public class PlayerController : MonoBehaviour
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
-        myCurrentHP = myMaxHP;
     }
 
     void Update()

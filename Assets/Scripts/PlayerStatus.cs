@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class PlayerStatus : MonoBehaviour
 {
+    public int maxHP = 100;
     public int HP = 100;
 
     public void TakeDamage(int damage)
@@ -14,13 +15,13 @@ public class PlayerStatus : MonoBehaviour
         }
         else
         {
-            Debug.Log("Player HP:" + HP);
+            Debug.Log($"Player HP: {HP}/{maxHP}");
         }
     }
 
     void Start()
     {
-        HP = 100;
-        Debug.Log("Player HP:" + HP);
+        HP = maxHP;
+        Debug.Log($"Player HP: {HP}/{maxHP}");
     }
 }

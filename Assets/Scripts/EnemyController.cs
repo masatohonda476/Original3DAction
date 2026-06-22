@@ -5,7 +5,7 @@ public class EnemyController : MonoBehaviour
 {
     private NavMeshAgent agent;
     private PlayerStatus playerStatus;
-    private float attackRange = 3f;
+    private float attackRange = 2f;
     private float attackCooldown = 1f;
     private float attackTimer = 0f;
     private Quaternion attackRotation;
@@ -19,9 +19,9 @@ public class EnemyController : MonoBehaviour
     }
 
     private EnemyState state = EnemyState.Chase;
-    private float windupDuration = 0.5f;
+    private float windupDuration = 0.3f;
     private float windupTimer = 0f;
-    private float attackDuration = 0.3f;
+    private float attackDuration = 0.2f;
     private float attackStateTimer;
     private EnemyWeaponHitbox weaponHitbox;
     [SerializeField] private int attackDamage = 10;

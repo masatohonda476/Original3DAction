@@ -24,6 +24,14 @@ public class PlayerController : MonoBehaviour
     public float longDodgeSpeed = 15f;
     public float longDodgeDuration = 0.6f;
 
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (hit.gameObject.CompareTag("Enemy"))
+        {
+            characterController.Move(-hit.moveDirection * 0.1f);
+        }
+    }
+
 
 
     void Awake()
@@ -86,7 +94,7 @@ public class PlayerController : MonoBehaviour
         Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
 
         characterController.Move(velocity * Time.deltaTime);
-        
+
         //プレイヤー回転
         if (moveDirection.sqrMagnitude > 0.001f)
         {

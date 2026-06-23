@@ -26,10 +26,14 @@ public class PlayerController : MonoBehaviour
 
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        if (hit.gameObject.CompareTag("Enemy"))
-        {
-            characterController.Move(-hit.moveDirection * 0.1f);
-        }
+        if (!hit.gameObject.CompareTag("Enemy")) return;
+
+        Vector3 normal = hit.normal;
+        normal.y = 0f;
+
+        Vector3 pushDirection = normal.normalized;
+
+        characterController.Move(pushDirection * 0.02f);
     }
 
 

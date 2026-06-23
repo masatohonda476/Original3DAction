@@ -6,6 +6,7 @@ public class EnemyController : MonoBehaviour
     private NavMeshAgent agent;
     private PlayerStatus playerStatus;
     private float attackRange = 2f;
+    private float stopMargin = 0.3f;
     private float attackCooldown = 1f;
     private float attackTimer = 0f;
     private Quaternion attackRotation;
@@ -35,6 +36,7 @@ public class EnemyController : MonoBehaviour
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
+        agent.stoppingDistance = attackRange;
         weaponHitbox = weapon.GetComponentInChildren<EnemyWeaponHitbox>();
         if (target != null)
         {
@@ -55,13 +57,17 @@ public class EnemyController : MonoBehaviour
 //Chase状態の処理
         if (state == EnemyState.Chase)
         {
-            if (distance > attackRange)
+            if (agent.enabled)
+            {
+                agent.isStopped = false;
+            }
+            if (distance > attackRange + stopMargin)
             {
                 agent.destination = target.transform.position;
             }
             else
             {
-                agent.ResetPath();
+                agent.isStopped = true;
 
                 Vector3 direction = target.transform.position - transform.position;
                 direction.y = 0f;
@@ -79,6 +85,10 @@ public class EnemyController : MonoBehaviour
 //攻撃判定開始
         if (distance <= attackRange && attackTimer <= 0f && state == EnemyState.Chase)
         {
+            agent.velocity = Vector3.zero;
+            agent.ResetPath();
+            agent.enabled = false;
+
             state = EnemyState.Windup;
             windupTimer = windupDuration;
             attackRotation = transform.rotation;
@@ -88,8 +98,6 @@ public class EnemyController : MonoBehaviour
         if (state == EnemyState.Windup)
         {
             windupTimer -= Time.deltaTime;
-
-            agent.ResetPath();
 
             transform.rotation = attackRotation;
 
@@ -135,6 +143,7 @@ public class EnemyController : MonoBehaviour
             if (attackTimer <= 0f)
             {
                 weapon.localRotation = Quaternion.identity;
+                agent.enabled = true;
                 state = EnemyState.Chase;
             }
 

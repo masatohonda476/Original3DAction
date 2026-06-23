@@ -18,13 +18,23 @@ public class PlayerController : MonoBehaviour
     public float rotationSpeed = 720f;
     public float gravity = -25f;
     public float groundedGravity = -2f;
-    public float myMaxHP = 100f;
-    public float myCurrentHP;
     public float shortDodgeSpeed = 10f;
     public float shortDodgeDuration = 0.3f;
 
     public float longDodgeSpeed = 15f;
     public float longDodgeDuration = 0.6f;
+
+    private void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (!hit.gameObject.CompareTag("Enemy")) return;
+
+        Vector3 normal = hit.normal;
+        normal.y = 0f;
+
+        Vector3 pushDirection = normal.normalized;
+
+        characterController.Move(pushDirection * 0.02f);
+    }
 
 
 
@@ -32,7 +42,6 @@ public class PlayerController : MonoBehaviour
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
-        myCurrentHP = myMaxHP;
     }
 
     void Update()
@@ -89,7 +98,7 @@ public class PlayerController : MonoBehaviour
         Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
 
         characterController.Move(velocity * Time.deltaTime);
-        
+
         //プレイヤー回転
         if (moveDirection.sqrMagnitude > 0.001f)
         {

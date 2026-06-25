@@ -9,7 +9,7 @@ TagManager:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - Map
   - Water
   - UI
   - 
@@ -17,8 +17,8 @@ TagManager:
   - Player
   - Enemy
   - Boss
-  - EnemyWeapon
-  - 
+  - Weapon
+  - HitBox
   - 
   - 
   - 

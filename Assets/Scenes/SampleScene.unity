@@ -3759,8 +3759,8 @@ MonoBehaviour:
   acceleration: 20
   maxSpeed: 7
   rotationSpeed: 720
-  gravity: 0
-  groundedGravity: 0
+  gravity: -20
+  groundedGravity: -2
   shortDodgeSpeed: 10
   shortDodgeDuration: 0.3
   longDodgeSpeed: 15

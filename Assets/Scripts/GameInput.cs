@@ -19,6 +19,11 @@ public class GameInput : MonoBehaviour
         return inputActions.Player.LongDodge.WasPressedThisFrame();
     }
 
+    public bool LightAttackPressed()
+    {
+        return inputActions.Player.LightAttack.WasPressedThisFrame();
+    }
+
     void Awake()
     {
         if (Instance != null && Instance != this)

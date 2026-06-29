@@ -16,44 +16,61 @@ public class PlayerAttack : MonoBehaviour
 
 
         [Header("Timing")]
-        [SerializeField] private float windupTime = 0.2f;
-        [SerializeField] private float attackTime = 0.2f;
-        [SerializeField] private float recoveryTime = 03f;
-
+        [SerializeField] private float windupDuration = 0.2f;
+        private float windupTimer;
+        [SerializeField] private float attackDuration = 0.2f;
+        private float attackTimer;
+        [SerializeField] private float recoveryDuration = 0.3f;
+        private float recoveryTimer;
 
         private AttackState state = PlayerAttack.AttackState.Idle;
-        private float stateTimer;
 
 
         private void Update()
     {
+        //攻撃モーション
         switch(state)
         {
             case AttackState.Idle:
                 if (GameInput.Instance.LightAttackPressed())
                 {
                     state = AttackState.Windup;
-                    stateTimer = windupTime;
+                    windupTimer = windupDuration;
                 }
                 break;
 
             case AttackState.Windup:
-                RotateWeapon(-90f, windupTime);
-                UpdateTimer(AttackState.Attack, attackTime);
+                windupTimer -= Time.deltaTime;
+                RotateWeapon(-90f, windupDuration);
+                if (windupTimer <= 0f)
+                {
+                    state = AttackState.Attack;
+                    attackTimer = attackDuration;
+                }
                 break;
 
             case AttackState.Attack:
-                RotateWeapon(90f, attackTime);
-                UpdateTimer(AttackState.Recovery, recoveryTime);
+                attackTimer -= Time.deltaTime;
+                RotateWeapon(90f, attackDuration);
+                if (attackTimer <= 0f)
+                {
+                    state = AttackState.Recovery;
+                    recoveryTimer = recoveryDuration;
+                }
                 break;
 
             case AttackState.Recovery:
+                recoveryTimer -= Time.deltaTime;
                 weaponPivot.localRotation = Quaternion.RotateTowards(
                     weaponPivot.localRotation,
                     Quaternion.identity,
                     720f * Time.deltaTime);
 
-                UpdateTimer(AttackState.Idle, 0f);
+                if (recoveryTimer <= 0f)
+                {
+                    weaponPivot.localRotation = Quaternion.identity;
+                    state = AttackState.Idle;
+                }
                 break;
         }
     }
@@ -67,16 +84,5 @@ public class PlayerAttack : MonoBehaviour
             weaponPivot.localRotation,
             targetRotation,
             speed * Time.deltaTime);
-    }
-
-    private void UpdateTimer(AttackState nextState, float nextDuration)
-    {
-        stateTimer -= Time.deltaTime;
-
-        if (stateTimer <= 0f)
-        {
-            state = nextState;
-            stateTimer = nextDuration;
-        }
     }
 }

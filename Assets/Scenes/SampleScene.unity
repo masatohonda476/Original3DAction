@@ -3836,9 +3836,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerAttack
   weaponPivot: {fileID: 1737367225}
-  windupTime: 0.4
-  attackTime: 0.2
-  recoveryTime: 0.5
+  windupDuration: 0.2
+  attackDuration: 0.2
+  recoveryDuration: 0.3
 --- !u!1 &933130055
 GameObject:
   m_ObjectHideFlags: 0
@@ -4991,6 +4991,7 @@ GameObject:
   - component: {fileID: 1287678120}
   - component: {fileID: 1287678122}
   - component: {fileID: 1287678121}
+  - component: {fileID: 1287678124}
   - component: {fileID: 1287678123}
   m_Layer: 9
   m_Name: Enemy
@@ -5077,6 +5078,19 @@ CapsuleCollider:
   m_Height: 2
   m_Direction: 1
   m_Center: {x: 0, y: 1, z: 0}
+--- !u!114 &1287678124
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1287678119}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b221736cadc3846c488ccaed3cd98155, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyStatus
+  maxHP: 100
 --- !u!1 &1294659973
 GameObject:
   m_ObjectHideFlags: 0

@@ -13,6 +13,7 @@ public class PlayerAttack : MonoBehaviour
 
         [Header("References")]
         [SerializeField] private Transform weaponPivot;
+        [SerializeField] private PlayerWeaponHitbox weaponHitbox;
 
 
         [Header("Timing")]
@@ -24,8 +25,10 @@ public class PlayerAttack : MonoBehaviour
         private float recoveryTimer;
 
         private AttackState state = PlayerAttack.AttackState.Idle;
-
-
+        [Header("Attack")]
+        [SerializeField] private int attackDamage = 10;
+        public bool IsAttacking => state == AttackState.Attack;
+        public int AttackDamage => attackDamage;
         private void Update()
     {
         //攻撃モーション
@@ -44,6 +47,7 @@ public class PlayerAttack : MonoBehaviour
                 RotateWeapon(-90f, windupDuration);
                 if (windupTimer <= 0f)
                 {
+                    weaponHitbox.BeginAttack();
                     state = AttackState.Attack;
                     attackTimer = attackDuration;
                 }

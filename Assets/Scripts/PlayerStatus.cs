@@ -11,12 +11,22 @@ public class PlayerStatus : MonoBehaviour
         if (HP <= 0)
         {
             HP = 0;
-            Debug.Log("You Died");
+            Die();
         }
         else
         {
             Debug.Log($"Player HP: {HP}/{maxHP}");
         }
+    }
+
+    void Die()
+    {
+        Debug.Log("You Died");
+
+        GetComponent<PlayerController>().enabled = false;
+        GetComponent<PlayerAttack>().enabled = false;
+
+        GameManager.Instance.GameOver();
     }
 
     void Start()

@@ -17,11 +17,16 @@ public class EnemyStatus : MonoBehaviour
             if (hp <= 0)
             {
                 hp = 0;
-                Debug.Log("Enemy destroyed!");
-                Destroy(gameObject);
+                Die();
                 return;
             }
             Debug.Log($"Enemy HP: {hp}");
         }
+    }
+
+    void Die()
+    {
+        Debug.Log("Enemy destroyed!");
+        Destroy(gameObject);
     }
 }

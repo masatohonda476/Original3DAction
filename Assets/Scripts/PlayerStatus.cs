@@ -11,12 +11,17 @@ public class PlayerStatus : MonoBehaviour
         if (HP <= 0)
         {
             HP = 0;
-            Debug.Log("You Died");
+            Die();
         }
         else
         {
             Debug.Log($"Player HP: {HP}/{maxHP}");
         }
+    }
+
+    public void Die()
+    {
+        Debug.Log("You Died");
     }
 
     void Start()

@@ -19,9 +19,12 @@ public class PlayerStatus : MonoBehaviour
         }
     }
 
-    public void Die()
+    void Die()
     {
         Debug.Log("You Died");
+
+        GetComponent<PlayerController>().enabled = false;
+        GetComponent<PlayerAttack>().enabled = false;
     }
 
     void Start()

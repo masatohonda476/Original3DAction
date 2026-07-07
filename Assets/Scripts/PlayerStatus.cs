@@ -25,6 +25,8 @@ public class PlayerStatus : MonoBehaviour
 
         GetComponent<PlayerController>().enabled = false;
         GetComponent<PlayerAttack>().enabled = false;
+
+        GameManager.Instance.GameOver();
     }
 
     void Start()

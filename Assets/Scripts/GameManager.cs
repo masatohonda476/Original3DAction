@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
+    public GameObject gameOverPanel;
     public static GameManager Instance;
     void Awake()
     {
@@ -18,5 +19,6 @@ public class GameManager : MonoBehaviour
     public void GameOver()
     {
         Debug.Log("Game Over");
+        gameOverPanel.SetActive(true);
     }
 }

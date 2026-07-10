@@ -24,6 +24,11 @@ public class GameInput : MonoBehaviour
         return inputActions.Player.LightAttack.WasPressedThisFrame();
     }
 
+    public bool LockOnPressed()
+    {
+        return inputActions.Player.LockOn.WasPressedThisFrame();
+    }
+
     void Awake()
     {
         if (Instance != null && Instance != this)

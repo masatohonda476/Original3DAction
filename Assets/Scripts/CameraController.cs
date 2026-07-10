@@ -39,7 +39,7 @@ public class CameraController : MonoBehaviour
 
         Vector2 lookInput = GameInput.Instance.Look;
 
-        if (lookInput != Vector2.zero && Mouse.current.leftButton.isPressed) // 右クリック中
+        if (lookInput != Vector2.zero)
         {
             x += lookInput.x * xSpeed * Time.deltaTime;
             y -= lookInput.y * ySpeed * Time.deltaTime;

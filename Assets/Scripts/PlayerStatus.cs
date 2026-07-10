@@ -27,6 +27,16 @@ public class PlayerStatus : MonoBehaviour
         GetComponent<PlayerAttack>().enabled = false;
 
         GameManager.Instance.GameOver();
+
+        SetVisible(false);
+    }
+
+    void SetVisible(bool visible)
+    {
+        foreach (Renderer renderer in GetComponentsInChildren<Renderer>())
+        {
+            renderer.enabled = visible;
+        }
     }
 
     void Start()

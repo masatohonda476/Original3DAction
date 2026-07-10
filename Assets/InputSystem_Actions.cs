@@ -370,7 +370,7 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""151049da-4614-466d-be3f-76edcb6a4bc8"",
-                    ""path"": ""<Mouse>/scroll"",
+                    ""path"": ""<Mouse>/delta"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": "";Keyboard&Mouse"",

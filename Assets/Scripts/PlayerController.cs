@@ -31,9 +31,7 @@ public class PlayerController : MonoBehaviour
 
         Vector3 normal = hit.normal;
         normal.y = 0f;
-
         Vector3 pushDirection = normal.normalized;
-
         characterController.Move(pushDirection * 0.02f);
     }
 
@@ -48,11 +46,6 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        if (lockOnSystem.Target != null)
-        {
-            Debug.Log(lockOnSystem.Target.name);
-        }
-
         Vector2 moveInput = GameInput.Instance.Move;
 
         // カメラの向きに基づいた移動方向を計算
@@ -107,7 +100,21 @@ public class PlayerController : MonoBehaviour
         characterController.Move(velocity * Time.deltaTime);
 
         //プレイヤー回転
-        if (moveDirection.sqrMagnitude > 0.001f)
+        if (lockOnSystem.Target != null) // ロックオン中のとき
+        {
+            Vector3 direction = lockOnSystem.Target.position - transform.position;
+            direction.y = 0f; // Y軸の回転を無視
+
+            Quaternion targetRotation = Quaternion.LookRotation(direction);
+
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime
+            );
+            Debug.DrawRay(transform.position, direction, Color.red);
+        }
+        else if (moveDirection.sqrMagnitude > 0.001f)
         {
             lastMoveDirection = moveDirection;
 

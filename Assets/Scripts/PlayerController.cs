@@ -112,7 +112,6 @@ public class PlayerController : MonoBehaviour
                 targetRotation,
                 rotationSpeed * Time.deltaTime
             );
-            Debug.DrawRay(transform.position, direction, Color.red);
         }
         else if (moveDirection.sqrMagnitude > 0.001f)
         {

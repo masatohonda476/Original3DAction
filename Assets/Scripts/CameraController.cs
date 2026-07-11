@@ -19,6 +19,7 @@ public class CameraController : MonoBehaviour
 
     private float x = 0.0f;
     private float y = 0.0f;
+    private LockOnSystem lockOnSystem;
 
     void Start()
     {
@@ -28,10 +29,17 @@ public class CameraController : MonoBehaviour
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        lockOnSystem = target.GetComponent<LockOnSystem>();
     }
 
     void LateUpdate()
     {
+        if (lockOnSystem.Target != null)
+        {
+            Debug.Log(lockOnSystem.Target.name);
+        }
+
         if (target == null)
         {
             return;
@@ -47,7 +55,21 @@ public class CameraController : MonoBehaviour
             y = Mathf.Clamp(y, yMinLimit, yMaxLimit);
         }
 
-        Quaternion rotation = Quaternion.Euler(y, x, 0);
+        Quaternion rotation;
+        if (lockOnSystem.Target != null)
+        {
+            Vector3 center = (target.position + lockOnSystem.Target.position) * 0.5f;
+            Vector3 direction = center - transform.position;
+
+            direction.y = 0f; // Y軸の回転を無視
+
+            rotation = Quaternion.LookRotation(direction);
+            }
+            else
+            {
+                rotation = Quaternion.Euler(y, x, 0);
+                }
+
         Vector3 focusPosition = target.position;
         Vector3 cameraDirection = rotation * Vector3.back;
         Vector3 position = focusPosition + cameraDirection * distance;
@@ -109,12 +131,6 @@ public class CameraController : MonoBehaviour
             collisionRadius,
             collisionMask,
             QueryTriggerInteraction.Ignore);
-
-        foreach (Collider col in hits)
-        {
-        Debug.Log("Camera hit : " + col.name);
-        }
-        Debug.DrawLine(position, position + Vector3.up, Color.red);
     }
 
     void OnDrawGizmos()

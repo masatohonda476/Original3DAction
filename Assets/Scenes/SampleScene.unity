@@ -1260,7 +1260,6 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
-  - component: {fileID: 330585550}
   - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
@@ -1399,7 +1398,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bf962b87c37cf45f58ac3dcfdfc3fcb1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
-  target: {fileID: 1585514375}
+  target: {fileID: 924740800}
   distance: 5
   xSpeed: 600
   ySpeed: 300
@@ -1446,19 +1445,6 @@ MonoBehaviour:
   m_DefaultActionMap: 
   m_SplitScreenIndex: -1
   m_Camera: {fileID: 0}
---- !u!114 &330585550
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 44341cc63267b45c2b4e481f334fd19d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LockOnCamera
-  rotationSpeed: 360
 --- !u!1 &332916039
 GameObject:
   m_ObjectHideFlags: 0
@@ -8712,8 +8698,8 @@ SceneRoots:
   - {fileID: 593888733}
   - {fileID: 330585546}
   - {fileID: 795623747}
-  - {fileID: 924740800}
   - {fileID: 1287678120}
   - {fileID: 2118080343}
   - {fileID: 818088178}
   - {fileID: 86555372}
+  - {fileID: 924740800}

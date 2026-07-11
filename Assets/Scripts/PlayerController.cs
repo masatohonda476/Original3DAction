@@ -12,6 +12,7 @@ public class PlayerController : MonoBehaviour
     private float dodgeTimer;
     private Vector3 dodgeDirection;
     private float currentDodgeSpeed;
+    private LockOnSystem lockOnSystem;
 
     public float acceleration = 20f;
     public float maxSpeed = 5f;
@@ -42,10 +43,16 @@ public class PlayerController : MonoBehaviour
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
+        lockOnSystem = GetComponent<LockOnSystem>();
     }
 
     void Update()
     {
+        if (lockOnSystem.Target != null)
+        {
+            Debug.Log(lockOnSystem.Target.name);
+        }
+
         Vector2 moveInput = GameInput.Instance.Move;
 
         // カメラの向きに基づいた移動方向を計算

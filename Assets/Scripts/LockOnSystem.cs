@@ -3,6 +3,7 @@ using UnityEngine;
 public class LockOnSystem : MonoBehaviour
 {
     private Transform target;
+    public Transform Target => target;
 
     void Start()
     {

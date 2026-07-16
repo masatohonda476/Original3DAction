@@ -4,22 +4,25 @@ using UnityEngine.InputSystem;
 public class CameraController : MonoBehaviour
 {
     public Transform target;
-    public float distance = 5.0f;
-    public float xSpeed = 400.0f;
-    public float ySpeed = 400.0f;
-    public float yMinLimit = -20f;
-    public float yMaxLimit = 80f;
-    public float collisionRadius = 0.25f;
-    public float minDistance = 0.5f;
-    public float collisionOffset = 0.1f;
-    public LayerMask collisionMask = ~0;
-    public LayerMask occlusionMask = ~0;
-    public float headHeight = 1.7f;
-    public float chestHeight = 1.0f;
+    private float distance = 4.0f; //カメラとプレイヤーの距離
+    private float xSpeed = 400.0f;
+    private float ySpeed = 400.0f;
+    private float yMinLimit = -20f;
+    private float yMaxLimit = 80f;
+    private float collisionRadius = 0.25f;
+    private float minDistance = 0.5f;
+    private float collisionOffset = 0.1f;
+    private LayerMask collisionMask = ~0;
+    private LayerMask occlusionMask = ~0;
+    private float headHeight = 1.7f;
+    private float chestHeight = 1.0f;
+    private float lockOnPitch = 25f; // ロックオン時のカメラの俯瞰角度
+    private float lockOnPitchSpeed = 8f; // ロックオン時のカメラの俯瞰角度の補間速度
 
     private float x = 0.0f;
     private float y = 0.0f;
     private LockOnSystem lockOnSystem;
+    [SerializeField] private float defaultHeight = 0.5f; //デフォルトのカメラの高さ
 
 //========================================================
 //初期化
@@ -80,23 +83,30 @@ public class CameraController : MonoBehaviour
                 targetYaw,
                 10f * Time.deltaTime
             );
+
+                    //ロックオン中は俯角(Pitch)も徐々に俯瞰角度に向ける
+            y = Mathf.Lerp(
+                y,
+                lockOnPitch,
+                lockOnPitchSpeed * Time.deltaTime
+            );
         }
 
         //x(Yaw)とy(Pitch)の回転角度を元にカメラの回転を計算
         Quaternion rotation = Quaternion.Euler(y, x, 0);
 
         //プレイヤーを中心にしてカメラの位置を計算
-        Vector3 focusPosition = target.position;
+        Vector3 focusPosition = target.position + Vector3.up * defaultHeight;
         Vector3 cameraDirection = rotation * Vector3.back;
         Vector3 position = focusPosition + cameraDirection * distance;
-        Vector3 headPosition = focusPosition + Vector3.up * headHeight;
-        Vector3 chestPosition = focusPosition + Vector3.up * chestHeight;
+        Vector3 headPosition = target.position + Vector3.up * headHeight;
+        Vector3 chestPosition = target.position + Vector3.up * chestHeight;
 
 
 //========================================================
 //壁回避
 //========================================================
-        bool headBlocked = Physics.Linecast(
+        bool headBlocked = Physics.Linecast(//あとで使うかも
             position,
             headPosition,
             occlusionMask,

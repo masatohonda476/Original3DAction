@@ -1399,22 +1399,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   target: {fileID: 924740800}
-  distance: 5
-  xSpeed: 600
-  ySpeed: 300
-  yMinLimit: -20
-  yMaxLimit: 80
-  collisionRadius: 0.25
-  minDistance: 0.5
-  collisionOffset: 0.1
-  collisionMask:
-    serializedVersion: 2
-    m_Bits: 1792
-  occlusionMask:
-    serializedVersion: 2
-    m_Bits: 8
-  headHeight: 1.7
-  chestHeight: 1
+  defaultHeight: 0.5
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0

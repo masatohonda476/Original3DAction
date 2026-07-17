@@ -1,3 +1,6 @@
+using System;
+using System.Runtime.CompilerServices;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -24,6 +27,12 @@ public class CameraController : MonoBehaviour
     private LockOnSystem lockOnSystem;
     [SerializeField] private float defaultHeight = 0.5f; //デフォルトのカメラの高さ
 
+    //ロックオンカメラ設定
+    [SerializeField] private float nearPitch = 22f; //密着時
+    [SerializeField] private float farPitch = 12f; //遠距離時
+    [SerializeField] private float nearDistance = 2f; //密着判定の距離
+    [SerializeField] private float farDistance = 6f; //遠距離判定の距離
+    [SerializeField] private float pitchLerpSpeed = 8f; //Pitch補完速度
 //========================================================
 //初期化
 //========================================================
@@ -70,9 +79,10 @@ public class CameraController : MonoBehaviour
             }
         }
 
-        //ロックオン中は敵の方向へYaw(x)を徐々に向ける
+        //ロックオン時
         if (lockOnSystem.Target != null)
         {
+            //ロックオン中は敵の方向へYaw(x)を徐々に向ける
             Vector3 direction = lockOnSystem.Target.position - target.position;
             direction.y = 0f; //上下方向は無視して水平方向(Yaw)のみ敵を向く
 
@@ -84,24 +94,42 @@ public class CameraController : MonoBehaviour
                 10f * Time.deltaTime
             );
 
-                    //ロックオン中は俯角(Pitch)も徐々に俯瞰角度に向ける
+            //プレイヤーと敵の距離
+            float enemyDistance = Vector3.Distance(
+                target.position,
+                lockOnSystem.Target.position
+            );
+
+            //距離を0~1に正規化
+            float t = Mathf.InverseLerp(
+                nearDistance,
+                farDistance,
+                enemyDistance
+            );
+
+            //距離に応じた目標Pitch
+            float targetPitch = Mathf.Lerp(
+                nearPitch,
+                farPitch,
+                t
+            );
+
+            //Pitchをなめらかに補完
             y = Mathf.Lerp(
                 y,
-                lockOnPitch,
-                lockOnPitchSpeed * Time.deltaTime
+                targetPitch,
+                pitchLerpSpeed * Time.deltaTime
             );
         }
 
         //x(Yaw)とy(Pitch)の回転角度を元にカメラの回転を計算
         Quaternion rotation = Quaternion.Euler(y, x, 0);
 
-        //プレイヤーを中心にしてカメラの位置を計算
         Vector3 focusPosition = target.position + Vector3.up * defaultHeight;
         Vector3 cameraDirection = rotation * Vector3.back;
         Vector3 position = focusPosition + cameraDirection * distance;
         Vector3 headPosition = target.position + Vector3.up * headHeight;
         Vector3 chestPosition = target.position + Vector3.up * chestHeight;
-
 
 //========================================================
 //壁回避

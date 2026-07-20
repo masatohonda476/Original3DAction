@@ -36,7 +36,7 @@ public class CameraController : MonoBehaviour
     [SerializeField] private float pitchLerpSpeed = 8f; //Pitch補完速度
     [SerializeField] private float nearFocusHeight = 1.0f; //密着時
     [SerializeField] private float farFocusHeight = 0.5f; //遠距離時
-    [SerializeField] private float focusHeightLerpSpeed = 8;
+    [SerializeField] private float focusHeightLerpSpeed = 8f;
 //========================================================
 //初期化
 //========================================================

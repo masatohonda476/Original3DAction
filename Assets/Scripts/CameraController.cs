@@ -1,60 +1,166 @@
+using System;
+using System.Runtime.CompilerServices;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class CameraController : MonoBehaviour
 {
     public Transform target;
-    public float distance = 5.0f;
-    public float xSpeed = 400.0f;
-    public float ySpeed = 400.0f;
-    public float yMinLimit = -20f;
-    public float yMaxLimit = 80f;
-    public float collisionRadius = 0.25f;
-    public float minDistance = 0.5f;
-    public float collisionOffset = 0.1f;
-    public LayerMask collisionMask = ~0;
-    public LayerMask occlusionMask = ~0;
-    public float headHeight = 1.7f;
-    public float chestHeight = 1.0f;
+    private float distance = 4.0f; //カメラとプレイヤーの距離
+    private float xSpeed = 400.0f;
+    private float ySpeed = 400.0f;
+    private float yMinLimit = -20f;
+    private float yMaxLimit = 80f;
+    private float collisionRadius = 0.25f;
+    private float minDistance = 0.5f;
+    private float collisionOffset = 0.1f;
+    private LayerMask collisionMask = ~0;
+    private LayerMask occlusionMask = ~0;
+    private float headHeight = 1.7f;
+    private float chestHeight = 1.0f;
+    private float lockOnPitch = 25f; // ロックオン時のカメラの俯瞰角度
+    private float lockOnPitchSpeed = 8f; // ロックオン時のカメラの俯瞰角度の補間速度
 
     private float x = 0.0f;
     private float y = 0.0f;
+    private LockOnSystem lockOnSystem;
+    [SerializeField] private float defaultHeight = 0.5f; //デフォルトのカメラの高さ
+    private float currentFocusHeight;
 
+    //ロックオンカメラ設定
+    [SerializeField] private float nearPitch = 22f; //密着時
+    [SerializeField] private float farPitch = 12f; //遠距離時
+    [SerializeField] private float nearDistance = 2f; //密着判定の距離
+    [SerializeField] private float farDistance = 6f; //遠距離判定の距離
+    [SerializeField] private float pitchLerpSpeed = 8f; //Pitch補完速度
+    [SerializeField] private float nearFocusHeight = 1.0f; //密着時
+    [SerializeField] private float farFocusHeight = 0.5f; //遠距離時
+    [SerializeField] private float focusHeightLerpSpeed = 8;
+//========================================================
+//初期化
+//========================================================
     void Start()
     {
         Vector3 angles = transform.eulerAngles;
-        x  = angles.x;
-        y  = angles.y;
+        x  = angles.y;
+        y  = angles.x;
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        //ロックオン対象を取得
+        lockOnSystem = target.GetComponent<LockOnSystem>();
+
+        currentFocusHeight = farFocusHeight;
     }
 
+//========================================================
+//カメラ更新
+//========================================================
     void LateUpdate()
     {
+        if (lockOnSystem.Target != null)
+        {
+            Debug.Log(lockOnSystem.Target.name);
+        }
+
         if (target == null)
         {
             return;
         }
 
+        //カメラ入力
         Vector2 lookInput = GameInput.Instance.Look;
 
-        if (lookInput != Vector2.zero)
+        //通常時のみマウス入力でカメラを回転させる
+        if (lockOnSystem.Target == null)
         {
-            x += lookInput.x * xSpeed * Time.deltaTime;
-            y -= lookInput.y * ySpeed * Time.deltaTime;
+            if (lookInput != Vector2.zero)
+            {
+                x += lookInput.x * xSpeed * Time.deltaTime;
+                y -= lookInput.y * ySpeed * Time.deltaTime;
 
-            y = Mathf.Clamp(y, yMinLimit, yMaxLimit);
+                y = Mathf.Clamp(y, yMinLimit, yMaxLimit);
+            }
         }
 
+        //ロックオン時
+        if (lockOnSystem.Target != null)
+        {
+            //ロックオン中は敵の方向へYaw(x)を徐々に向ける
+            Vector3 direction = lockOnSystem.Target.position - target.position;
+            direction.y = 0f; //上下方向は無視して水平方向(Yaw)のみ敵を向く
+
+            float targetYaw = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+
+            x = Mathf.LerpAngle(
+                x,
+                targetYaw,
+                10f * Time.deltaTime
+            );
+
+            //プレイヤーと敵の距離
+            float enemyDistance = Vector3.Distance(
+                target.position,
+                lockOnSystem.Target.position
+            );
+
+            //距離を0~1に正規化
+            float t = Mathf.InverseLerp(
+                nearDistance,
+                farDistance,
+                enemyDistance
+            );
+
+            //距離に応じた目標Pitch
+            float targetPitch = Mathf.Lerp(
+                nearPitch,
+                farPitch,
+                t
+            );
+
+            //Pitchをなめらかに補完
+            y = Mathf.Lerp(
+                y,
+                targetPitch,
+                pitchLerpSpeed * Time.deltaTime
+            );
+
+            float targetFocusHeight = Mathf.Lerp(
+                nearFocusHeight,
+                farFocusHeight,
+                t
+            );
+
+            currentFocusHeight = Mathf.Lerp(
+                currentFocusHeight,
+                targetFocusHeight,
+                focusHeightLerpSpeed * Time.deltaTime
+            );
+        }
+        else
+        {
+            currentFocusHeight = Mathf.Lerp(
+                currentFocusHeight,
+                farFocusHeight,
+                focusHeightLerpSpeed * Time.deltaTime
+            );
+        }
+
+        //x(Yaw)とy(Pitch)の回転角度を元にカメラの回転を計算
         Quaternion rotation = Quaternion.Euler(y, x, 0);
-        Vector3 focusPosition = target.position;
+
+        Vector3 focusPosition = target.position + Vector3.up * currentFocusHeight;
         Vector3 cameraDirection = rotation * Vector3.back;
         Vector3 position = focusPosition + cameraDirection * distance;
-        Vector3 headPosition = focusPosition + Vector3.up * headHeight;
-        Vector3 chestPosition = focusPosition + Vector3.up * chestHeight;
+        Vector3 headPosition = target.position + Vector3.up * headHeight;
+        Vector3 chestPosition = target.position + Vector3.up * chestHeight;
 
-        bool headBlocked = Physics.Linecast(
+//========================================================
+//壁回避
+//========================================================
+        bool headBlocked = Physics.Linecast(//あとで使うかも
             position,
             headPosition,
             occlusionMask,
@@ -86,8 +192,10 @@ public class CameraController : MonoBehaviour
 
         Vector3 adjustedPosition = position;
 
+        //カメラがめり込んでいたら少しずつ押し出す
         for (int i = 0; i < 20; i++)
         {
+            //カメラの位置に球を置き、衝突判定を行う
             if (!Physics.CheckSphere(
                 adjustedPosition,
                 collisionRadius,
@@ -101,6 +209,7 @@ public class CameraController : MonoBehaviour
         }
         position = adjustedPosition;
 
+        //カメラ更新
         transform.rotation = rotation;
         transform.position = position;
 
@@ -109,14 +218,9 @@ public class CameraController : MonoBehaviour
             collisionRadius,
             collisionMask,
             QueryTriggerInteraction.Ignore);
-
-        foreach (Collider col in hits)
-        {
-        Debug.Log("Camera hit : " + col.name);
-        }
-        Debug.DrawLine(position, position + Vector3.up, Color.red);
     }
 
+    //ギズモ
     void OnDrawGizmos()
 {
     Gizmos.color = Color.red;

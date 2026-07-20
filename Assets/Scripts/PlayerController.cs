@@ -12,6 +12,7 @@ public class PlayerController : MonoBehaviour
     private float dodgeTimer;
     private Vector3 dodgeDirection;
     private float currentDodgeSpeed;
+    private LockOnSystem lockOnSystem;
 
     public float acceleration = 20f;
     public float maxSpeed = 5f;
@@ -30,9 +31,7 @@ public class PlayerController : MonoBehaviour
 
         Vector3 normal = hit.normal;
         normal.y = 0f;
-
         Vector3 pushDirection = normal.normalized;
-
         characterController.Move(pushDirection * 0.02f);
     }
 
@@ -42,6 +41,7 @@ public class PlayerController : MonoBehaviour
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
+        lockOnSystem = GetComponent<LockOnSystem>();
     }
 
     void Update()
@@ -100,7 +100,20 @@ public class PlayerController : MonoBehaviour
         characterController.Move(velocity * Time.deltaTime);
 
         //プレイヤー回転
-        if (moveDirection.sqrMagnitude > 0.001f)
+        if (lockOnSystem.Target != null) // ロックオン中のとき
+        {
+            Vector3 direction = lockOnSystem.Target.position - transform.position;
+            direction.y = 0f; // Y軸の回転を無視
+
+            Quaternion targetRotation = Quaternion.LookRotation(direction);
+
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                targetRotation,
+                rotationSpeed * Time.deltaTime
+            );
+        }
+        else if (moveDirection.sqrMagnitude > 0.001f)
         {
             lastMoveDirection = moveDirection;
 

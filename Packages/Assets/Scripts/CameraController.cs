@@ -35,7 +35,19 @@ public class CameraController : MonoBehaviour
             y = Mathf.Clamp(y, yMinLimit, yMaxLimit);
         }
 
-        Quaternion rotation = Quaternion.Euler(y, x, 0);
+        Quaternion rotation;
+
+        if (lockOnSystem.Target != null)
+        {
+            Vector3 center = (target.position + lockOnSystem.Target.position) * 0.5f;
+            Vector3 direction = center - transform.position;
+            rotation = Quaternion.LookRotation(direction);
+        }
+        else
+        {
+            rotation = Quaternion.Euler(y, x, 0);
+        }
+
         Vector3 position = rotation * new Vector3(0.0f, 0.0f, -distance) + target.position;
 
         transform.rotation = rotation;

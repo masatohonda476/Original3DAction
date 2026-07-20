@@ -1398,23 +1398,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bf962b87c37cf45f58ac3dcfdfc3fcb1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
-  target: {fileID: 1585514375}
-  distance: 5
-  xSpeed: 600
-  ySpeed: 300
-  yMinLimit: -20
-  yMaxLimit: 80
-  collisionRadius: 0.25
-  minDistance: 0.5
-  collisionOffset: 0.1
-  collisionMask:
-    serializedVersion: 2
-    m_Bits: 1792
-  occlusionMask:
-    serializedVersion: 2
-    m_Bits: 8
-  headHeight: 1.7
-  chestHeight: 1
+  target: {fileID: 924740800}
+  defaultHeight: 0.75
+  nearPitch: 22
+  farPitch: 12
+  nearDistance: 2
+  farDistance: 6
+  pitchLerpSpeed: 8
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4098,6 +4088,7 @@ GameObject:
   - component: {fileID: 924740797}
   - component: {fileID: 924740802}
   - component: {fileID: 924740803}
+  - component: {fileID: 924740804}
   m_Layer: 8
   m_Name: Player
   m_TagString: Untagged
@@ -4201,6 +4192,18 @@ MonoBehaviour:
   attackDuration: 0.2
   recoveryDuration: 0.3
   attackDamage: 10
+--- !u!114 &924740804
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 924740796}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e806e5fe60e6344a7ad3331d0dd69b08, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LockOnSystem
 --- !u!1 &933130055
 GameObject:
   m_ObjectHideFlags: 0
@@ -8685,8 +8688,8 @@ SceneRoots:
   - {fileID: 593888733}
   - {fileID: 330585546}
   - {fileID: 795623747}
-  - {fileID: 924740800}
   - {fileID: 1287678120}
   - {fileID: 2118080343}
   - {fileID: 818088178}
   - {fileID: 86555372}
+  - {fileID: 924740800}

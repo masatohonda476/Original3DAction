@@ -21,7 +21,6 @@ public class PlayerStatus : MonoBehaviour
 
     void Die()
     {
-        Debug.Log("You Died");
 
         GetComponent<PlayerController>().enabled = false;
         GetComponent<PlayerAttack>().enabled = false;

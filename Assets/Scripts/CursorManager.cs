@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 
 public class CursorManager : MonoBehaviour
 {
@@ -20,7 +21,21 @@ public class CursorManager : MonoBehaviour
 
     void Start()
     {
+        StartCoroutine(LockCursorNextFrame());
+    }
+
+    IEnumerator LockCursorNextFrame()
+    {
+        yield return null;
         LockCursor();
+    }
+
+    void OnApplicationFocus(bool hasFocus)
+    {
+        if (hasFocus)
+        {
+            StartCoroutine(LockCursorNextFrame());
+        }
     }
 
     public void LockCursor()

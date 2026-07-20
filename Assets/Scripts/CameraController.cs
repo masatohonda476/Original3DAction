@@ -26,6 +26,7 @@ public class CameraController : MonoBehaviour
     private float y = 0.0f;
     private LockOnSystem lockOnSystem;
     [SerializeField] private float defaultHeight = 0.5f; //デフォルトのカメラの高さ
+    private float currentFocusHeight;
 
     //ロックオンカメラ設定
     [SerializeField] private float nearPitch = 22f; //密着時
@@ -33,6 +34,9 @@ public class CameraController : MonoBehaviour
     [SerializeField] private float nearDistance = 2f; //密着判定の距離
     [SerializeField] private float farDistance = 6f; //遠距離判定の距離
     [SerializeField] private float pitchLerpSpeed = 8f; //Pitch補完速度
+    [SerializeField] private float nearFocusHeight = 1.0f; //密着時
+    [SerializeField] private float farFocusHeight = 0.5f; //遠距離時
+    [SerializeField] private float focusHeightLerpSpeed = 8;
 //========================================================
 //初期化
 //========================================================
@@ -47,6 +51,8 @@ public class CameraController : MonoBehaviour
 
         //ロックオン対象を取得
         lockOnSystem = target.GetComponent<LockOnSystem>();
+
+        currentFocusHeight = farFocusHeight;
     }
 
 //========================================================
@@ -120,12 +126,32 @@ public class CameraController : MonoBehaviour
                 targetPitch,
                 pitchLerpSpeed * Time.deltaTime
             );
+
+            float targetFocusHeight = Mathf.Lerp(
+                nearFocusHeight,
+                farFocusHeight,
+                t
+            );
+
+            currentFocusHeight = Mathf.Lerp(
+                currentFocusHeight,
+                targetFocusHeight,
+                focusHeightLerpSpeed * Time.deltaTime
+            );
+        }
+        else
+        {
+            currentFocusHeight = Mathf.Lerp(
+                currentFocusHeight,
+                farFocusHeight,
+                focusHeightLerpSpeed * Time.deltaTime
+            );
         }
 
         //x(Yaw)とy(Pitch)の回転角度を元にカメラの回転を計算
         Quaternion rotation = Quaternion.Euler(y, x, 0);
 
-        Vector3 focusPosition = target.position + Vector3.up * defaultHeight;
+        Vector3 focusPosition = target.position + Vector3.up * currentFocusHeight;
         Vector3 cameraDirection = rotation * Vector3.back;
         Vector3 position = focusPosition + cameraDirection * distance;
         Vector3 headPosition = target.position + Vector3.up * headHeight;

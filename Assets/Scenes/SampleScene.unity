@@ -1399,7 +1399,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
   target: {fileID: 924740800}
-  defaultHeight: 0.5
+  defaultHeight: 0.75
+  nearPitch: 22
+  farPitch: 12
+  nearDistance: 2
+  farDistance: 6
+  pitchLerpSpeed: 8
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0

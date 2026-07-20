@@ -4,6 +4,8 @@ public class PlayerStatus : MonoBehaviour
 {
     public int maxHP = 100;
     public int HP = 100;
+    public int MaxHP => maxHP;
+    public int CurrentHP => HP;
 
     public void TakeDamage(int damage)
     {

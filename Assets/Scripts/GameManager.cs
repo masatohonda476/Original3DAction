@@ -20,5 +20,6 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log("Game Over");
         gameOverPanel.SetActive(true);
+        CursorManager.Instance.UnlockCursor();
     }
 }

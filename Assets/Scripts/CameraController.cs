@@ -56,10 +56,6 @@ public class CameraController : MonoBehaviour
 //========================================================
     void LateUpdate()
     {
-        if (lockOnSystem.Target != null)
-        {
-            Debug.Log(lockOnSystem.Target.name);
-        }
 
         if (target == null)
         {

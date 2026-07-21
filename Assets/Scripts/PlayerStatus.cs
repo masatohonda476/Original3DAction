@@ -15,10 +15,6 @@ public class PlayerStatus : MonoBehaviour
             HP = 0;
             Die();
         }
-        else
-        {
-            Debug.Log($"Player HP: {HP}/{maxHP}");
-        }
     }
 
     void Die()
@@ -43,6 +39,5 @@ public class PlayerStatus : MonoBehaviour
     void Start()
     {
         HP = maxHP;
-        Debug.Log($"Player HP: {HP}/{maxHP}");
     }
 }

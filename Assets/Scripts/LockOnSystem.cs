@@ -22,7 +22,6 @@ public class LockOnSystem : MonoBehaviour
             else
             {
                 target = null;
-                Debug.Log("ロックオン解除");
             }
         }
     }
@@ -30,11 +29,9 @@ public class LockOnSystem : MonoBehaviour
     void FindNearestEnemy()
     {
         GameObject[] enemies = GameObject.FindGameObjectsWithTag("Enemy");
-        Debug.Log("敵の数:" + enemies.Length);
         if (enemies.Length > 0)
         {
             target = enemies[0].transform;
-            Debug.Log("ロックオン:" + target.name);
         }
     }
 }

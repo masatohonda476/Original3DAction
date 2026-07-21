@@ -26,7 +26,6 @@ public class CursorManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         IsCursorUnlocked = false;
-        Debug.Log($"LockCursor : {Cursor.lockState}, Visible={Cursor.visible}");
     }
 
     public void UnlockCursor()
@@ -34,7 +33,6 @@ public class CursorManager : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         IsCursorUnlocked = true;
-        Debug.Log($"UnlockCursor : {Cursor.lockState}, Visible={Cursor.visible}");
     }
 
     void Update()

@@ -128,7 +128,6 @@ public class PlayerController : MonoBehaviour
         //小回避
         if (GameInput.Instance.ShortDodgePressed() && !isDodging)
         {
-            Debug.Log("Short Dodge Pressed!");
             isDodging = true;
             dodgeTimer = shortDodgeDuration;
             currentDodgeSpeed = shortDodgeSpeed;
@@ -138,7 +137,6 @@ public class PlayerController : MonoBehaviour
         //大回避
         if (GameInput.Instance.LongDodgePressed() && !isDodging)
         {
-            Debug.Log("Long Dodge Pressed!");
             isDodging = true;
             dodgeTimer = longDodgeDuration;
             currentDodgeSpeed = longDodgeSpeed;

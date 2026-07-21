@@ -21,14 +21,13 @@ public class CameraController : MonoBehaviour
     private float chestHeight = 1.0f;
     private float lockOnPitch = 25f; // ロックオン時のカメラの俯瞰角度
     private float lockOnPitchSpeed = 8f; // ロックオン時のカメラの俯瞰角度の補間速度
-
     private float x = 0.0f;
     private float y = 0.0f;
     private LockOnSystem lockOnSystem;
-    [SerializeField] private float defaultHeight = 0.5f; //デフォルトのカメラの高さ
     private float currentFocusHeight;
 
     //ロックオンカメラ設定
+    [SerializeField] private float defaultHeight = 0.5f; //デフォルトのカメラの高さ
     [SerializeField] private float nearPitch = 22f; //密着時
     [SerializeField] private float farPitch = 12f; //遠距離時
     [SerializeField] private float nearDistance = 2f; //密着判定の距離
@@ -45,9 +44,6 @@ public class CameraController : MonoBehaviour
         Vector3 angles = transform.eulerAngles;
         x  = angles.y;
         y  = angles.x;
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
 
         //ロックオン対象を取得
         lockOnSystem = target.GetComponent<LockOnSystem>();
@@ -74,7 +70,7 @@ public class CameraController : MonoBehaviour
         Vector2 lookInput = GameInput.Instance.Look;
 
         //通常時のみマウス入力でカメラを回転させる
-        if (lockOnSystem.Target == null)
+        if (lockOnSystem.Target == null && !CursorManager.Instance.IsCursorUnlocked)
         {
             if (lookInput != Vector2.zero)
             {

@@ -18,9 +18,6 @@ public class CameraController : MonoBehaviour
         Vector3 angles = transform.eulerAngles;
         x  = angles.x;
         y  = angles.y;
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
     }
 
     void LateUpdate()

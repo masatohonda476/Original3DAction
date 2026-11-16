@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_Gatling
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 0
+  displayName: "\u30AC\u30C8\u30EA\u30F3\u30B0\u8155"
+  slot: 0
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 0.9, y: 1.8, z: 0.9}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.25, g: 0.25, b: 0.3, a: 1}
+  partHP: 70
+  damage: 7
+  interval: 0.09
+  range: 65
+  radius: 10
+  multiplier: 2
+  uses: 160

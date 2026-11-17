@@ -116,7 +116,17 @@ namespace HuntProto
                 transform.Rotate(400f * Time.deltaTime, 250f * Time.deltaTime, 0f);
                 yield return null;
             }
-            if (ProtoPlayer.I != null) ProtoPlayer.I.Acquire(Def);
+            var pl = ProtoPlayer.I;
+            if (pl != null)
+            {
+                if (pl.WouldOverweight(Def))
+                {
+                    // 重量オーバーになるなら受け取らず、足元に落とす(軽くしてから△で拾える)
+                    ProtoLoot.Drop(Def, pl.ChestPosition, pl.transform.forward * 4f);
+                    ProtoGame.I?.Log($"重量オーバーで持てない: {Def.displayName}(足元に落ちている)");
+                }
+                else pl.Acquire(Def);
+            }
             Destroy(gameObject);
         }
 

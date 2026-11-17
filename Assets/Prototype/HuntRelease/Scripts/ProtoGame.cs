@@ -58,8 +58,8 @@ namespace HuntProto
         public float weightSlowPerUnit = 0.005f;
         [Tooltip("在庫(付けていない武装)の重さを、何倍で機動力に数えるか")]
         [Range(0f, 1f)] public float stockWeightRate = 0.5f;
-        [Tooltip("機動力の下限(どれだけ重くても、ここより遅くはならない)")]
-        [Range(0.2f, 1f)] public float minMobility = 0.6f;
+        [Tooltip("機動力がこの値以下だと重量オーバー。警告を出し、軽くするまで装備メニューを閉じられない")]
+        [Range(0f, 1f)] public float overweightMobility = 0.5f;
 
         [Header("進行")]
         [Tooltip("ステージ攻略型(区画を順に制圧して進む)。切ると従来の平地の「狩り→群れ→バケモノ」")]
@@ -588,13 +588,59 @@ namespace HuntProto
             var loot = player.NearbyLoot;
             if (loot == null || loot.Def == null) return;
             var d = loot.Def;
-            string text = $"[{K(ProtoInput.Btn.PickUp)}] 拾う   {d.displayName}{player.AcquireNote(d)}   重量 {d.weight:0}";
+            bool over = player.WouldOverweight(d);
+            string head = over ? "重量オーバーで拾えない" : $"[{K(ProtoInput.Btn.PickUp)}] 拾う";
+            string text = $"{head}   {d.displayName}{player.AcquireNote(d)}   重量 {d.weight:0}";
             var st = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter };
             float w = st.CalcSize(new GUIContent(text)).x + 40f;
             var r = new Rect((SW - w) / 2f, SH * 0.72f, w, 34f);
-            Panel(r, 0.6f);
+            if (over)
+            {
+                // 拾おうとした直後は強く光らせる
+                bool flash = Time.unscaledTime - player.OverweightBlockedAt < 0.6f;
+                Chip(r, flash ? new Color(0.9f, 0.15f, 0.1f, 0.9f) : new Color(0.6f, 0.08f, 0.05f, 0.75f));
+            }
+            else Panel(r, 0.6f);
             Chip(new Rect(r.x, r.y, 4f, r.height), d.GradeColor);
             GUI.Label(r, text, st);
+
+            // 横に性能のレーダーチャート(拾うもの=塗り、同じ種類で今付けているもの=線)
+            if (!d.HasStats) return;
+            const float rw = 170f, rh = 150f;
+            float rx = r.xMax + 10f + rw <= SW - 10f ? r.xMax + 10f : r.x - 10f - rw;
+            var rr = new Rect(rx, r.yMax - rh, rw, rh);
+            Panel(rr, 0.6f);
+            var cur = player.MountedOfType(d.type);
+            ProtoRadar.Draw(new Rect(rr.x, rr.y + 2f, rw, rh - 22f), uiScale, d, cur, statSwing, ProtoRadar.MainColor, tiny);
+            var legend = new List<(string, Color)> { ("■ 拾うもの", ProtoRadar.MainColor) };
+            if (cur != null && cur.HasStats) legend.Add(("― 今の装備", ProtoRadar.CompareColor));
+            DrawColored(new Rect(rr.x + 8f, rr.yMax - 20f, rw - 12f, 18f), legend, tiny);
+        }
+
+        /// <summary>
+        /// 装備メニューで付けるものを選んでいる間、操作説明の代わりに性能のレーダーチャートを出す
+        /// (選んでいる候補=塗り、今その場所に付いているもの=線)。出したら true。
+        /// </summary>
+        bool DrawMenuRadar(float x, float top, float w, float y0, bool picking, List<ProtoPlayer.Item> cands, Hardpoint at)
+        {
+            if (!picking || Arms == ArmsRule.Classic || cands.Count == 0) return false;
+            var it = cands[Mathf.Clamp(player.MenuItem, 0, cands.Count - 1)];
+            var cur = player.MountedDef(at);
+            var main = it != null ? it.def : cur;   // 「外す」を選んでいる間は今のものだけ
+            if (main == null || !main.HasStats) return false;
+            bool compare = it != null && cur != null && cur.HasStats && cur.type == main.type;
+
+            GUI.Label(new Rect(x, y0 + 14f, w, 30f), "性能", head);
+            ProtoRadar.Draw(new Rect(x, top, w, 250f), uiScale, main, compare ? cur : null, statSwing,
+                it != null ? ProtoRadar.MainColor : ProtoRadar.CompareColor, small);
+            float ly = top + 256f;
+            var legend = new List<(string, Color)>();
+            if (it != null) legend.Add(("■ 選んでいる候補", ProtoRadar.MainColor));
+            if (compare || it == null) legend.Add(((it == null ? "■" : "―") + " 今の装備", ProtoRadar.CompareColor));
+            DrawColored(new Rect(x, ly, w, 20f), legend, small);
+            GUI.Label(new Rect(x, ly + 22f, w, 20f), "外側ほど良い / 白い輪が元の性能", tiny);
+            if (compare) GUI.Label(new Rect(x, ly + 40f, w, 20f), "軸の名前:緑=今より良い 赤=今より悪い", tiny);
+            return true;
         }
 
         string WeightText() => $"重量 {player.TotalWeight:0}(装備 {player.EquippedWeight:0} + 在庫 {player.StockWeight:0}×{stockWeightRate:0.##})   機動力 ×{player.Mobility:0.00}";
@@ -825,43 +871,46 @@ namespace HuntProto
                 if (cands.Count > maxRows) GUI.Label(new Rect(rx + 8f, ry, colW, 20f), $"全{cands.Count}件", small);
             }
 
-            // 右:操作方法(普段の画面には出さず、ここでだけ見せる)
+            // 右:操作方法(普段の画面には出さず、ここでだけ見せる)。付けるものを選んでいる間は性能のレーダーチャート
             float hx = rx + colW + gap;
             Chip(new Rect(hx - gap * 0.5f, y0 + 12f, 1f, h - 60f), new Color(1f, 1f, 1f, 0.15f));
-            GUI.Label(new Rect(hx, y0 + 14f, helpW, 30f), "操作", head);
-            var help = new (ProtoInput.Btn b, string what)[]
+            if (!DrawMenuRadar(hx, top, helpW, y0, picking, cands, slots[player.MenuRow]))
             {
-                (ProtoInput.Btn.Move, "移動"),
-                (ProtoInput.Btn.R1, "右手"),
-                (ProtoInput.Btn.L1, "左手"),
-                (ProtoInput.Btn.R2, "右肩"),
-                (ProtoInput.Btn.L2, "左肩"),
-                (ProtoInput.Btn.Dodge, "回避"),
-                (ProtoInput.Btn.Boost, "ブースト 入/切"),
-                (ProtoInput.Btn.Fly, "長押しで飛行"),
-                (ProtoInput.Btn.Aim, Arms != ArmsRule.Classic ? "長押しで照準 / 押して拾う" : "長押しで照準"),
-                (ProtoInput.Btn.Lock, "ロックオン"),
-                (ProtoInput.Btn.Switch, "ロックオン切替"),
-                (ProtoInput.Btn.Heal, "回復アイテムを使う"),
-                (ProtoInput.Btn.Menu, "装備メニュー"),
-                (ProtoInput.Btn.Restart, "やり直し"),
-                (ProtoInput.Btn.ModeToggle, "武装の方式 切替"),
-            };
-            float hy = top;
-            var keyStyle = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
-            keyStyle.normal.textColor = new Color(1f, 0.85f, 0.4f);
-            var whatStyle = new GUIStyle(small);
-            whatStyle.normal.textColor = Color.white;
-            foreach (var (b, what) in help)
-            {
-                GUI.Label(new Rect(hx, hy, 130f, 22f), K(b), keyStyle);
-                GUI.Label(new Rect(hx + 140f, hy, helpW - 140f, 22f), what, whatStyle);
-                hy += 22f;
+                GUI.Label(new Rect(hx, y0 + 14f, helpW, 30f), "操作", head);
+                var help = new (ProtoInput.Btn b, string what)[]
+                {
+                    (ProtoInput.Btn.Move, "移動"),
+                    (ProtoInput.Btn.R1, "右手"),
+                    (ProtoInput.Btn.L1, "左手"),
+                    (ProtoInput.Btn.R2, "右肩"),
+                    (ProtoInput.Btn.L2, "左肩"),
+                    (ProtoInput.Btn.Dodge, "回避"),
+                    (ProtoInput.Btn.Boost, "ブースト 入/切"),
+                    (ProtoInput.Btn.Fly, "長押しで飛行"),
+                    (ProtoInput.Btn.Aim, Arms != ArmsRule.Classic ? "長押しで照準 / 押して拾う" : "長押しで照準"),
+                    (ProtoInput.Btn.Lock, "ロックオン"),
+                    (ProtoInput.Btn.Switch, "ロックオン切替"),
+                    (ProtoInput.Btn.Heal, "回復アイテムを使う"),
+                    (ProtoInput.Btn.Menu, "装備メニュー"),
+                    (ProtoInput.Btn.Restart, "やり直し"),
+                    (ProtoInput.Btn.ModeToggle, "武装の方式 切替"),
+                };
+                float hy = top;
+                var keyStyle = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
+                keyStyle.normal.textColor = new Color(1f, 0.85f, 0.4f);
+                var whatStyle = new GUIStyle(small);
+                whatStyle.normal.textColor = Color.white;
+                foreach (var (b, what) in help)
+                {
+                    GUI.Label(new Rect(hx, hy, 130f, 22f), K(b), keyStyle);
+                    GUI.Label(new Rect(hx + 140f, hy, helpW - 140f, 22f), what, whatStyle);
+                    hy += 22f;
+                }
+                GUI.Label(new Rect(hx, hy + 4f, helpW, 22f), "手の武装:剣は連打で3段、銃は長押し", tiny);
+                hy += 20f;
+                if (ProtoInput.Current == ProtoInput.Device.Keyboard)
+                    GUI.Label(new Rect(hx, hy + 4f, helpW, 22f), "クリックでマウス固定・Escで解除", tiny);
             }
-            GUI.Label(new Rect(hx, hy + 4f, helpW, 22f), "手の武装:剣は連打で3段、銃は長押し", tiny);
-            hy += 20f;
-            if (ProtoInput.Current == ProtoInput.Device.Keyboard)
-                GUI.Label(new Rect(hx, hy + 4f, helpW, 22f), "クリックでマウス固定・Escで解除", tiny);
 
             // 下:記録とモード
             string weight = Arms != ArmsRule.Classic ? $"    {WeightText()}" : "";
@@ -871,8 +920,19 @@ namespace HuntProto
             // 下:操作
             string selK = K(ProtoInput.Btn.Select), ok = K(ProtoInput.Btn.Confirm), back = K(ProtoInput.Btn.Back), close = K(ProtoInput.Btn.Menu);
             string dis = K(ProtoInput.Btn.Discard);
-            string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {dis} 捨てる    {back} 戻る    {close} 閉じる"
-                                   : $"{selK} 場所を選ぶ    {ok} 決定    {dis} 外して在庫へ    {back}・{close} 閉じる";
+            bool over = player.Overweight;
+            if (over)
+            {
+                // 重量オーバー:閉じようとした直後は強く光らせる
+                bool flash = Time.unscaledTime - player.OverweightBlockedAt < 0.6f;
+                var wr = new Rect(x0 + gap, y0 + h - 92f, w - gap * 2f, 26f);
+                Chip(wr, flash ? new Color(0.9f, 0.15f, 0.1f, 0.9f) : new Color(0.6f, 0.08f, 0.05f, 0.75f));
+                GUI.Label(new Rect(wr.x + 10f, wr.y + 2f, wr.width - 20f, 24f),
+                    $"重量オーバー(機動力 ×{player.Mobility:0.00})― ×{overweightMobility:0.00} を超えるまで閉じられません。在庫を捨てるか、装備を外してください", small);
+            }
+            string closeText = over ? "(重量オーバー中は閉じられない)" : $"{close} 閉じる";
+            string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {dis} 捨てる    {back} 戻る    {closeText}"
+                                   : $"{selK} 場所を選ぶ    {ok} 決定    {dis} 外して在庫へ    " + (over ? closeText : $"{back}・{close} 閉じる");
             GUI.Label(new Rect(x0 + gap, y0 + h - 34f, w - gap * 2f, 24f), guide + (pauseInMenu ? "        時間停止中" : "        時間は流れています(操作はできません)"), small);
         }
 

@@ -126,6 +126,29 @@ namespace HuntProto
             _ => "剣威力",
         };
 
+        /// <summary>レーダーチャートの軸の名前。外側ほど良い向きなので、小さいほど良いものは言い換える。</summary>
+        public static string RadarName(Stat s) => s switch
+        {
+            Stat.Recoil => "安定",
+            Stat.Weight => "軽さ",
+            Stat.Reload => "装填",
+            _ => StatName(s),
+        };
+
+        /// <summary>
+        /// レーダーチャート用:元の定義と比べた良さ(0〜1。0.5が元のまま、1が良い向きに swing 倍、0が悪い向きに swing 倍)。
+        /// </summary>
+        public float Rating(Stat s, float swing)
+        {
+            if (source == null) return 0.5f;
+            float f = s is Stat.Thrust or Stat.BladePower
+                ? (multiplier - 1f) / Mathf.Max(0.0001f, source.multiplier - 1f)   // 上乗せ分に掛けているので、上乗せ分どうしで比べる
+                : StatValue(s) / Mathf.Max(0.0001f, source.StatValue(s));
+            float t = Mathf.Log(Mathf.Max(0.0001f, f)) / Mathf.Log(Mathf.Max(1.01f, swing));
+            if (!HigherIsBetter(s)) t = -t;
+            return Mathf.Clamp01(0.5f + 0.5f * t);
+        }
+
         /// <summary>比べるための値(大きい・小さいの向きは StatName のとおり)。</summary>
         public float StatValue(Stat s) => s switch
         {

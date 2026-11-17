@@ -141,9 +141,23 @@ namespace HuntProto
         {
             get { float w = 0f; foreach (var it in stock) w += it.def.weight; return w; }
         }
-        /// <summary>重さによる機動力の倍率(現行の方式では常に1)。走り・ブースト・回避・上昇に掛かる。</summary>
+        /// <summary>重さによる機動力の倍率(現行の方式では常に1)。走り・ブースト・回避・上昇に掛かる。下限はなく、重いほど遅くなり続ける(0未満にはならない)。</summary>
         public float Mobility => ProtoGame.Arms == ArmsRule.Classic || game == null ? 1f
-            : Mathf.Clamp(1f - TotalWeight * game.weightSlowPerUnit, game.minMobility, 1f);
+            : Mathf.Clamp01(1f - TotalWeight * game.weightSlowPerUnit);
+        /// <summary>重量オーバー(機動力が下限以下)。装備メニューを閉じられない。</summary>
+        public bool Overweight => ProtoGame.Arms != ArmsRule.Classic && game != null && Mobility <= game.overweightMobility + 0.0001f;
+        /// <summary>
+        /// それを拾うと重量オーバーになるか(在庫に入るので stockWeightRate 倍で数える)。重量オーバーになるものは拾えない。
+        /// 解放型のラックは重さに数えないので対象外。
+        /// </summary>
+        public bool WouldOverweight(PartDefinition def)
+        {
+            if (def == null || game == null || ProtoGame.Arms == ArmsRule.Classic || ProtoGame.Mode != ProtoMode.Gradual) return false;
+            float w = TotalWeight + def.weight * game.stockWeightRate;
+            return 1f - w * game.weightSlowPerUnit <= game.overweightMobility + 0.0001f;
+        }
+        /// <summary>重量オーバーで閉じられなかった時刻(警告を光らせるため。メニュー中は時間が止まることがあるので unscaled)。</summary>
+        public float OverweightBlockedAt { get; private set; } = -10f;
         /// <summary>手のガトリングの今のばらつき(度)。</summary>
         public float SpreadAt(Hardpoint at) => at == Hardpoint.LeftHand ? spreadL : spreadR;
         float spreadR, spreadL;
@@ -370,6 +384,9 @@ namespace HuntProto
             return d.Length > 0 ? $"(今の{HardpointName(cur.at)}と比べて {d})" : "(今のものとほぼ同じ)";
         }
 
+        /// <summary>同じ種類で今付けている武装(なければ null)。拾う前に比べるため。</summary>
+        public PartDefinition MountedOfType(PartType t) => parts.Find(x => x.def.type == t)?.def;
+
         /// <summary>メニュー用:その場所に今付いている武装(素の武装なら null)。</summary>
         public PartDefinition MountedDef(Hardpoint at) => DefAt(at);
 
@@ -541,14 +558,14 @@ namespace HuntProto
 
         void UpdateMenu()
         {
-            if (ProtoInput.Menu) { MenuOpen = false; return; }
+            if (ProtoInput.Menu) { TryCloseMenu(); return; }
             if (!MenuPicking)
             {
                 if (ProtoInput.MenuUp) MenuRow = (MenuRow + MenuSlots.Length - 1) % MenuSlots.Length;
                 if (ProtoInput.MenuDown) MenuRow = (MenuRow + 1) % MenuSlots.Length;
                 if (ProtoInput.MenuConfirm && MenuCandidates().Count > 0) { MenuPicking = true; MenuItem = 0; }
                 else if (ProtoInput.MenuDiscard) Unequip(MenuSlots[MenuRow]);   // 付いているものを在庫へ戻す(捨てない)
-                else if (ProtoInput.MenuBack) MenuOpen = false;
+                else if (ProtoInput.MenuBack) TryCloseMenu();
                 return;
             }
             var cands = MenuCandidates();
@@ -573,6 +590,13 @@ namespace HuntProto
                 if (MenuCandidates().Count == 0) MenuPicking = false;
             }
             else if (ProtoInput.MenuBack) MenuPicking = false;
+        }
+
+        /// <summary>重量オーバーなら閉じずに警告を光らせる。</summary>
+        void TryCloseMenu()
+        {
+            if (Overweight) { OverweightBlockedAt = Time.unscaledTime; return; }
+            MenuOpen = false;
         }
 
         // ───────── 被弾・死亡 ─────────
@@ -699,7 +723,16 @@ namespace HuntProto
             if (ProtoInput.Heal) UseHeal();
             // 足元の武装:パラメータ制では△を押した瞬間に拾う(長押しはそのまま照準になる)
             NearbyLoot = ProtoGame.Arms != ArmsRule.Classic ? ProtoLoot.NearestWeapon(this) : null;
-            if (NearbyLoot != null && ProtoInput.PickUp) { NearbyLoot.PickUp(this); NearbyLoot = null; }
+            if (NearbyLoot != null && ProtoInput.PickUp)
+            {
+                if (WouldOverweight(NearbyLoot.Def))
+                {
+                    if (Time.unscaledTime - OverweightBlockedAt > 1f)
+                        game.Log($"重量オーバーになるので拾えない  [{ProtoInput.L(ProtoInput.Btn.Menu)}]で在庫を捨てて軽くする");
+                    OverweightBlockedAt = Time.unscaledTime;
+                }
+                else { NearbyLoot.PickUp(this); NearbyLoot = null; }
+            }
             if (!inMenu && ProtoInput.Menu)
             {
                 if (ProtoGame.Mode == ProtoMode.Burst && rack.Count > 0) Release();

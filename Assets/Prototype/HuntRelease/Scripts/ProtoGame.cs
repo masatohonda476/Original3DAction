@@ -34,6 +34,8 @@ namespace HuntProto
         public PartDefinition[] partPool;
         [Tooltip("腕刃を敵の装備・ドロップ・宝箱に出すか(一旦オフ:少し強くなる程度で弱いため)")]
         public bool bladeInPool = false;
+        [Tooltip("装備メニュー中に時間を止める(切ると敵は動き続け、自機は操作できないまま)")]
+        public bool pauseInMenu = false;
 
         [Header("モードの初期値(F2 / SHARE+□で切替)")]
         public ProtoMode defaultMode = ProtoMode.Gradual;
@@ -224,7 +226,7 @@ namespace HuntProto
             }
             if (ProtoInput.Restart) { Restart(); return; }
 
-            Time.timeScale = player != null && player.MenuOpen ? 0f : Time.unscaledTime < warpUntil ? warpScale : 1f;
+            Time.timeScale = player != null && player.MenuOpen && pauseInMenu ? 0f : Time.unscaledTime < warpUntil ? warpScale : 1f;
             if (Time.unscaledTime >= warpUntil) warpScale = 1f;
             if (stage != null) return;   // ステージ攻略型は ProtoStage が進行を回す
 
@@ -663,7 +665,7 @@ namespace HuntProto
             float ry = top;
             if (cands.Count == 0)
             {
-                GUI.Label(new Rect(rx + 8f, ry + 6f, colW - 16f, 50f), "付けられるものがありません\n(敵の部位を斬り落とすと入手)", small);
+                GUI.Label(new Rect(rx + 8f, ry + 6f, colW - 16f, 50f), lootRule == LootRule.Drop ? "付けられるものがありません\n(敵を倒すか宝箱で入手)" : "付けられるものがありません\n(敵の部位を斬り落とすと入手)", small);
             }
             else
             {
@@ -708,7 +710,7 @@ namespace HuntProto
                 (ProtoInput.Btn.Dodge, "回避"),
                 (ProtoInput.Btn.Boost, "ブースト 入/切"),
                 (ProtoInput.Btn.Fly, "長押しで飛行"),
-                (ProtoInput.Btn.Aim, "長押しで照準(カメラを自由に)"),
+                (ProtoInput.Btn.Aim, "長押しで照準"),
                 (ProtoInput.Btn.Lock, "ロックオン"),
                 (ProtoInput.Btn.Switch, "ロックオン切替"),
                 (ProtoInput.Btn.Heal, "回復アイテムを使う"),
@@ -740,7 +742,7 @@ namespace HuntProto
             // 下:操作
             string selK = K(ProtoInput.Btn.Select), ok = K(ProtoInput.Btn.Confirm), back = K(ProtoInput.Btn.Back), close = K(ProtoInput.Btn.Menu);
             string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {back} 戻る    {close} 閉じる" : $"{selK} 場所を選ぶ    {ok} 決定    {back}・{close} 閉じる";
-            GUI.Label(new Rect(x0 + gap, y0 + h - 34f, w - gap * 2f, 24f), guide + "        時間停止中", small);
+            GUI.Label(new Rect(x0 + gap, y0 + h - 34f, w - gap * 2f, 24f), guide + (pauseInMenu ? "        時間停止中" : "        時間は流れています(操作はできません)"), small);
         }
 
         void Bar(Rect r, float k, Color c)
@@ -766,7 +768,12 @@ namespace HuntProto
             GUI.matrix = Matrix4x4.Scale(new Vector3(uiScale, uiScale, 1f));
             EnsureStyles();
             // 装備メニュー中は普段のHUDを隠して、メニューだけを出す
-            if (player.MenuOpen) { DrawEquipMenu(); return; }
+            if (player.MenuOpen)
+            {
+                DrawEquipMenu();
+                if (!pauseInMenu) DrawStatus();   // 時間が流れている間は、自機のHPだけは見えるようにする
+                return;
+            }
 
             // 敵と部位のHP
             var cam = Camera.main;

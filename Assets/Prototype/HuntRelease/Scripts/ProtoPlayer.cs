@@ -133,7 +133,15 @@ namespace HuntProto
         public IReadOnlyList<PartDefinition> Rack => rack;
         /// <summary>入手して、まだ付けていない部位。</summary>
         public IReadOnlyList<Item> Stock => stock;
-        public bool MenuOpen { get; private set; }
+        bool menuOpen;
+        int menuClosedFrame = -1;
+        public bool MenuOpen
+        {
+            get => menuOpen;
+            private set { if (menuOpen && !value) menuClosedFrame = Time.frameCount; menuOpen = value; }
+        }
+        /// <summary>戦闘の操作を効かなくするか。閉じたフレームも含める(閉じる○がブースト切替として効かないように)。</summary>
+        public bool MenuBlocksInput => menuOpen || menuClosedFrame == Time.frameCount;
         public int MenuRow { get; private set; }
 
         public class Item { public PartDefinition def; public int uses; }
@@ -457,9 +465,20 @@ namespace HuntProto
         {
             var at = MenuSlots[MenuRow];
             var list = stock.FindAll(x => Fits(x.def.type, at));
+            // 性能順:同じ種類でまとめ、品質の高い順、同じ品質なら残り回数の多い順
+            list.Sort((a, b) =>
+            {
+                int c = a.def.type.CompareTo(b.def.type);
+                if (c != 0) return c;
+                c = b.def.grade.CompareTo(a.def.grade);
+                if (c != 0) return c;
+                return UsesOrder(b.uses).CompareTo(UsesOrder(a.uses));
+            });
             if (parts.Exists(x => x.at == at)) list.Add(null);
             return list;
         }
+
+        static int UsesOrder(int uses) => uses < 0 ? int.MaxValue : uses;   // 回数無制限は最上位
 
         void OpenMenu()
         {
@@ -607,9 +626,15 @@ namespace HuntProto
                 if (respawnT <= 0f) Respawn();
                 return;
             }
-            if (MenuOpen) { UpdateMenu(); return; }
+            bool inMenu = MenuOpen;
+            if (inMenu)
+            {
+                UpdateMenu();
+                // 時間を止めるメニューならここまで。止めないなら、操作だけ効かない状態で動き(落下・減速など)を続ける
+                if (game.pauseInMenu) return;
+            }
             if (ProtoInput.Heal) UseHeal();
-            if (ProtoInput.Menu)
+            if (!inMenu && ProtoInput.Menu)
             {
                 if (ProtoGame.Mode == ProtoMode.Burst && rack.Count > 0) Release();
                 OpenMenu();
@@ -1229,8 +1254,13 @@ namespace HuntProto
         {
             Vector3 fwd = Flat(transform.forward);
             if (fwd == Vector3.zero) fwd = Vector3.forward;
-            Vector3 camF = Camera.main.transform.forward;
-            float camDown = Mathf.Asin(Mathf.Clamp(-camF.y, -1f, 1f)) * Mathf.Rad2Deg;
+            float camDown;
+            if (ProtoCamera.I != null) camDown = ProtoCamera.I.AimPitch;   // 壁よけでカメラが上がった分は入れない
+            else
+            {
+                Vector3 camF = Camera.main.transform.forward;
+                camDown = Mathf.Asin(Mathf.Clamp(-camF.y, -1f, 1f)) * Mathf.Rad2Deg;
+            }
             float shotDown = Mathf.Clamp(camDown - ProtoCamera.DefaultPitch, -60f, 60f);
             float r = shotDown * Mathf.Deg2Rad;
             return (fwd * Mathf.Cos(r) + Vector3.down * Mathf.Sin(r)).normalized;

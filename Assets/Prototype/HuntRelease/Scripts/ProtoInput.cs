@@ -26,10 +26,17 @@ namespace HuntProto
         static bool K(System.Func<Keyboard, KeyControl> key) => Kb != null && key(Kb).wasPressedThisFrame;
         static bool P(System.Func<Gamepad, ButtonControl> b) => Pad != null && b(Pad).wasPressedThisFrame;
 
+        /// <summary>
+        /// 装備メニューを開いている間は、戦闘の操作(移動・攻撃・カメラなど)を効かなくする。
+        /// メニューの操作(上下・決定・戻る・開閉)とデバッグ操作は効く。時間を止めないメニューのため。
+        /// </summary>
+        public static bool Blocked => ProtoPlayer.I != null && ProtoPlayer.I.MenuBlocksInput;
+
         public static Vector2 Move
         {
             get
             {
+                if (Blocked) return Vector2.zero;
                 Vector2 v = DebugMove;
                 if (Kb != null)
                 {
@@ -48,24 +55,24 @@ namespace HuntProto
         }
 
         /// <summary>マウスの移動量(画素)。カーソル固定中だけ。</summary>
-        public static Vector2 MouseDelta => Ms != null && MouseLocked ? Ms.delta.ReadValue() : Vector2.zero;
+        public static Vector2 MouseDelta => !Blocked && Ms != null && MouseLocked ? Ms.delta.ReadValue() : Vector2.zero;
         public static Vector2 RightStick
         {
             get
             {
-                if (Pad == null) return Vector2.zero;
+                if (Pad == null || Blocked) return Vector2.zero;
                 Vector2 s = Pad.rightStick.ReadValue();
                 return s.magnitude > 0.15f ? s : Vector2.zero;
             }
         }
 
         // 武装:R1 右手 / L1 左手 / R2 右肩 / L2 左肩
-        public static bool Attack => (Ms != null && MouseLocked && Ms.leftButton.wasPressedThisFrame) || P(p => p.rightShoulder);
-        public static bool RightHandHeld => (Ms != null && MouseLocked && Ms.leftButton.isPressed) || (Pad != null && Pad.rightShoulder.isPressed);
-        public static bool LeftHandPressed => (Ms != null && MouseLocked && Ms.rightButton.wasPressedThisFrame) || P(p => p.leftShoulder);
-        public static bool LeftHandHeld => (Ms != null && MouseLocked && Ms.rightButton.isPressed) || (Pad != null && Pad.leftShoulder.isPressed);
-        public static bool RightShoulderHeld => (Kb != null && Kb.rKey.isPressed) || (Pad != null && Pad.rightTrigger.isPressed);
-        public static bool LeftShoulderHeld => (Kb != null && Kb.eKey.isPressed) || (Pad != null && Pad.leftTrigger.isPressed);
+        public static bool Attack => !Blocked && ((Ms != null && MouseLocked && Ms.leftButton.wasPressedThisFrame) || P(p => p.rightShoulder));
+        public static bool RightHandHeld => !Blocked && ((Ms != null && MouseLocked && Ms.leftButton.isPressed) || (Pad != null && Pad.rightShoulder.isPressed));
+        public static bool LeftHandPressed => !Blocked && ((Ms != null && MouseLocked && Ms.rightButton.wasPressedThisFrame) || P(p => p.leftShoulder));
+        public static bool LeftHandHeld => !Blocked && ((Ms != null && MouseLocked && Ms.rightButton.isPressed) || (Pad != null && Pad.leftShoulder.isPressed));
+        public static bool RightShoulderHeld => !Blocked && ((Kb != null && Kb.rKey.isPressed) || (Pad != null && Pad.rightTrigger.isPressed));
+        public static bool LeftShoulderHeld => !Blocked && ((Kb != null && Kb.eKey.isPressed) || (Pad != null && Pad.leftTrigger.isPressed));
         /// <summary>装備メニューを開く/閉じる(切り替え方式では開くときにラックを解放)。</summary>
         /// <summary>パッド右のメニューボタン(OPTIONS・≡)/ G。</summary>
         public static bool Menu => K(k => k.gKey) || P(p => p.startButton);
@@ -90,9 +97,9 @@ namespace HuntProto
         public static bool MenuConfirm => K(k => k.spaceKey) || K(k => k.enterKey) || P(p => p.buttonSouth);
         public static bool MenuBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
 
-        public static bool Dodge => K(k => k.leftCtrlKey) || (!DebugMod && P(p => p.buttonWest));
-        public static bool BoostToggle => K(k => k.leftShiftKey) || P(p => p.buttonEast);
-        public static bool FlyHeld => DebugFly || (Kb != null && Kb.spaceKey.isPressed) || (Pad != null && Pad.buttonSouth.isPressed);
+        public static bool Dodge => !Blocked && (K(k => k.leftCtrlKey) || (!DebugMod && P(p => p.buttonWest)));
+        public static bool BoostToggle => !Blocked && (K(k => k.leftShiftKey) || P(p => p.buttonEast));
+        public static bool FlyHeld => !Blocked && (DebugFly || (Kb != null && Kb.spaceKey.isPressed) || (Pad != null && Pad.buttonSouth.isPressed));
         /// <summary>動作確認用(外部から飛行ボタンを押しっぱなしにする)。</summary>
         public static bool DebugFly;
         /// <summary>動作確認用(外部から移動スティックを倒しっぱなしにする)。</summary>
@@ -158,12 +165,12 @@ namespace HuntProto
         }
 
         /// <summary>手動照準(△ / C 長押し):ロックオン中でもカメラを動かせ、照準の先へ撃つ。SHARE を押している間は数えない。</summary>
-        public static bool AimHeld => DebugAim || (Kb != null && Kb.cKey.isPressed) || (Pad != null && !DebugMod && Pad.buttonNorth.isPressed);
+        public static bool AimHeld => !Blocked && (DebugAim || (Kb != null && Kb.cKey.isPressed) || (Pad != null && !DebugMod && Pad.buttonNorth.isPressed));
 
         /// <summary>回復アイテムを使う(十字キー上 / H)。</summary>
-        public static bool Heal => K(k => k.hKey) || P(p => p.dpad.up);
-        public static bool LockToggle => K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame) || P(p => p.dpad.left);
-        public static bool SwitchTarget => K(k => k.tabKey) || P(p => p.rightStickButton);
+        public static bool Heal => !Blocked && (K(k => k.hKey) || P(p => p.dpad.up));
+        public static bool LockToggle => !Blocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame) || P(p => p.dpad.left));
+        public static bool SwitchTarget => !Blocked && (K(k => k.tabKey) || P(p => p.rightStickButton));
         public static bool Restart => K(k => k.f1Key) || (DebugMod && P(p => p.buttonNorth));
         public static bool ToggleMode => K(k => k.f2Key) || (DebugMod && P(p => p.buttonWest));
     }

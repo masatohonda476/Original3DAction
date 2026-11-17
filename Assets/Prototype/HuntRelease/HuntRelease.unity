@@ -6367,12 +6367,17 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a4f4478bebbfb44f499ea022e8995bfa, type: 2}
   - {fileID: 11400000, guid: 53232d16c16bb4149a608d6e7e4342f4, type: 2}
   - {fileID: 11400000, guid: f120b4be0aa7b4d97a8c8eaef417a9a4, type: 2}
+  bladeInPool: 0
+  pauseInMenu: 0
   defaultMode: 1
   useStage: 1
   lootRule: 0
   hordeDropChance: 0.7
   huntExtraDropChance: 0.3
-  brokenDropWeight: 4
+  brokenExtraDropChance: 0.5
+  normalDropChance: 0.75
+  normalTwoPartChance: 0.5
+  healDropNormal: 0.2
   healDropHorde: 0.12
   healDropHunt: 0.3
   healDropMonster: 1
@@ -7899,6 +7904,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HuntProto.ProtoCamera
   target: {fileID: 0}
   scale: 4.3
+  maxRaise: 40
+  clearRatio: 0.5
+  raiseLookToPlayer: 0.5
+  hidePlayerDistance: 7
   shakeEnabled: 0
 --- !u!81 &2035009485
 AudioListener:

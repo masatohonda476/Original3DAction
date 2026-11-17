@@ -354,17 +354,18 @@ namespace HuntProto
             rackCrates.Add(crate);
         }
 
-        /// <summary>入手の知らせに添える一言。A案は振れたパラメータ、B案は今付けている同じ種類との差。</summary>
+        /// <summary>入手の知らせに添える一言。今付けている同じ種類との差(付けていなければ A案は振れたパラメータ)。</summary>
         public string AcquireNote(PartDefinition def)
         {
             if (!def.HasStats) return "";
-            if (ProtoGame.Arms == ArmsRule.StatsA)
-            {
-                string t = PartDefinition.TagsText(def.SwingTags());
-                return t.Length > 0 ? $"({t})" : "(平凡)";
-            }
+            // どちらの案も、今付けている同じ種類と比べる。付けていなければ A案は振れたところ
             var cur = parts.Find(x => x.def.type == def.type);
-            if (cur == null) return "(未装備の種類)";
+            if (cur == null)
+            {
+                if (ProtoGame.Arms != ArmsRule.StatsA) return "(未装備の種類)";
+                string t = PartDefinition.TagsText(def.SwingTags());
+                return t.Length > 0 ? $"(未装備の種類 / {t})" : "(未装備の種類)";
+            }
             string d = PartDefinition.TagsText(def.DiffTags(cur.def));
             return d.Length > 0 ? $"(今の{HardpointName(cur.at)}と比べて {d})" : "(今のものとほぼ同じ)";
         }
@@ -413,25 +414,11 @@ namespace HuntProto
             RefreshHands();
         }
 
-        /// <summary>その場所に付いている武装を捨てる(在庫へは戻さず、機体から落ちる。素の武装に戻る)。</summary>
-        void Discard(Hardpoint at)
-        {
-            var m = parts.Find(x => x.at == at);
-            if (m == null) return;
-            parts.Remove(m);
-            equipped.Remove(m.def);
-            Vector3 from = m.visual != null && m.visual.gameObject.activeInHierarchy ? m.visual.position : ChestPosition;
-            if (m.visual != null) Destroy(m.visual.gameObject);
-            DropAtFeet(m.def, m.uses, from);
-            RefreshHands();
-            game.Log($"捨てた: {HardpointName(at)}の{m.def.displayName}(足元に落ちている)");
-        }
-
         /// <summary>捨てた武装を足元(少し後ろ)へ落とす。拾い直せる。</summary>
-        void DropAtFeet(PartDefinition def, int uses, Vector3? from = null)
+        void DropAtFeet(PartDefinition def, int uses)
         {
             Vector3 side = Quaternion.Euler(0f, Random.Range(-60f, 60f), 0f) * -transform.forward;
-            ProtoLoot.DropDiscarded(def, uses, from ?? ChestPosition, side * 4f);
+            ProtoLoot.DropDiscarded(def, uses, ChestPosition, side * 4f);
         }
 
         /// <summary>その場所の武装を1回使う。尽きたら外れて落ちる(素の武装に戻る)。</summary>
@@ -560,7 +547,7 @@ namespace HuntProto
                 if (ProtoInput.MenuUp) MenuRow = (MenuRow + MenuSlots.Length - 1) % MenuSlots.Length;
                 if (ProtoInput.MenuDown) MenuRow = (MenuRow + 1) % MenuSlots.Length;
                 if (ProtoInput.MenuConfirm && MenuCandidates().Count > 0) { MenuPicking = true; MenuItem = 0; }
-                else if (ProtoInput.MenuDiscard) Discard(MenuSlots[MenuRow]);
+                else if (ProtoInput.MenuDiscard) Unequip(MenuSlots[MenuRow]);   // 付いているものを在庫へ戻す(捨てない)
                 else if (ProtoInput.MenuBack) MenuOpen = false;
                 return;
             }

@@ -272,7 +272,7 @@ namespace HuntProto
         }
 
         /// <summary>比の大きさを矢印に:6%未満は無印、25%以上は二重。</summary>
-        static string Arrow(float r)
+        public static string Arrow(float r)
         {
             float a = Mathf.Abs(Mathf.Log(Mathf.Max(0.0001f, r)));
             if (a < Mathf.Log(1.06f)) return "";

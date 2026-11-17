@@ -611,16 +611,18 @@ namespace HuntProto
                 line.Add(($"{Stat(d)}   {(uses < 0 ? "外れない" : $"残り {uses}回")}", white));
                 return line;
             }
-            if (Arms == ArmsRule.StatsB)
+            // その場所に同じ種類が付いていれば、どちらの案も全パラメータを今のものと比べる(値+矢印、良くなるなら緑・悪くなるなら赤)
+            var cur = player.MountedDef(at);
+            if (cur != null && cur.type == d.type)
             {
-                var cur = player.MountedDef(at);
-                if (cur != null && cur.type == d.type)
+                foreach (var st in PartDefinition.StatsOf(d.type))
                 {
-                    var diff = d.DiffTags(cur);
-                    if (diff.Count == 0) line.Add(("今のものとほぼ同じ", white));
-                    foreach (var (t, g) in diff) line.Add((t, g ? good : bad));
-                    return line;
+                    float r = d.StatValue(st) / Mathf.Max(0.0001f, cur.StatValue(st));
+                    string arrow = PartDefinition.Arrow(r);
+                    Color c = arrow.Length == 0 ? white : (r > 1f) == PartDefinition.HigherIsBetter(st) ? good : bad;
+                    line.Add((d.StatText(st) + arrow, c));
                 }
+                return line;
             }
             foreach (var st in PartDefinition.StatsOf(d.type))
             {
@@ -759,6 +761,14 @@ namespace HuntProto
             float lx = x0 + gap, rx = lx + colW + gap, top = y0 + 52f;
             GUI.Label(new Rect(lx, y0 + 14f, colW, 30f), "装備する場所", head);
             GUI.Label(new Rect(rx, y0 + 14f, colW, 30f), picking ? "付けるもの" : "候補", head);
+            // 比べる相手:今その場所に付いているもののパラメータ
+            var mounted = player.MountedDef(slots[player.MenuRow]);
+            if (mounted != null && mounted.HasStats)
+            {
+                var now = new List<(string, Color)> { ("今:", new Color(1f, 0.85f, 0.4f)) };
+                foreach (var st in PartDefinition.StatsOf(mounted.type)) now.Add((mounted.StatText(st), new Color(0.85f, 0.87f, 0.9f)));
+                DrawColored(new Rect(rx + 100f, y0 + 22f, colW - 100f, 20f), now, tiny);
+            }
 
             // 左:場所
             for (int i = 0; i < slots.Length; i++)
@@ -862,7 +872,7 @@ namespace HuntProto
             string selK = K(ProtoInput.Btn.Select), ok = K(ProtoInput.Btn.Confirm), back = K(ProtoInput.Btn.Back), close = K(ProtoInput.Btn.Menu);
             string dis = K(ProtoInput.Btn.Discard);
             string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {dis} 捨てる    {back} 戻る    {close} 閉じる"
-                                   : $"{selK} 場所を選ぶ    {ok} 決定    {dis} 付いているものを捨てる    {back}・{close} 閉じる";
+                                   : $"{selK} 場所を選ぶ    {ok} 決定    {dis} 外して在庫へ    {back}・{close} 閉じる";
             GUI.Label(new Rect(x0 + gap, y0 + h - 34f, w - gap * 2f, 24f), guide + (pauseInMenu ? "        時間停止中" : "        時間は流れています(操作はできません)"), small);
         }
 

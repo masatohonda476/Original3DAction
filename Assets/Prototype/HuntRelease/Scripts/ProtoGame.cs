@@ -12,7 +12,7 @@ namespace HuntProto
     public enum Phase { Hunt, HordeIncoming, Horde, Monster, Clear }
     /// <summary>
     /// 武装の方式。Classic = 使い切り+品質4段階(評価時点の試作)/
-    /// StatsA = 使い切りなし・振れ幅の大きいパラメータは数個だけ / StatsB = 使い切りなし・全パラメータが大きく振れ、今の装備との差で比べる
+    /// StatsA = 耐久(使える回数)も含めて、振れ幅の大きいパラメータは数個だけ / StatsB = 全パラメータが大きく振れ、今の装備との差で比べる
     /// </summary>
     public enum ArmsRule { Classic, StatsA, StatsB }
 
@@ -104,6 +104,39 @@ namespace HuntProto
         public float monsterHP = 2600f;
         public Color enemyTint = new(0.6f, 0.3f, 0.28f);
         public Color monsterTint = new(0.4f, 0.15f, 0.45f);
+        [Tooltip("敵の攻撃(近接・射撃・砲撃)の威力の倍率。ボスにも効く。段階の倍率はこれに掛かる")]
+        public float enemyDamageMul = 1.5f;
+
+        /// <summary>敵の強さの段階。後半の区画ほど上がり、体の色・大きさ・頭上の印で見分けられる。</summary>
+        [System.Serializable]
+        public class EnemyTier
+        {
+            public string name = "雑兵";
+            [Tooltip("体力の倍率(部位の硬さにはその半分の効き)")] public float hp = 1f;
+            [Tooltip("攻撃(近接・射撃・砲撃)の威力の倍率")] public float damage = 1f;
+            [Tooltip("歩く速さの倍率")] public float speed = 1f;
+            [Tooltip("射撃のずれの倍率(小さいほど正確)")] public float spread = 1f;
+            [Tooltip("機体の大きさの倍率")] public float scale = 1f;
+            [Tooltip("体の色")] public Color tint = new(0.6f, 0.3f, 0.28f);
+            [Tooltip("頭上の印(◆)の色")] public Color markColor = Color.white;
+        }
+
+        [Header("敵の強さの段階(ステージ攻略型の通常の敵だけ。ボスは別)")]
+        [Tooltip("段階ごとの性能と見た目。0段階目が一番弱い")]
+        public EnemyTier[] enemyTiers =
+        {
+            new() { name = "雑兵", tint = new Color(0.6f, 0.3f, 0.28f), markColor = new Color(0.8f, 0.8f, 0.8f) },
+            new() { name = "精鋭", hp = 1.4f, damage = 1.3f, speed = 1.05f, spread = 0.9f, scale = 1.08f, tint = new Color(0.3f, 0.38f, 0.5f), markColor = new Color(0.55f, 0.8f, 1f) },
+            new() { name = "重装", hp = 1.9f, damage = 1.65f, speed = 1.1f, spread = 0.8f, scale = 1.16f, tint = new Color(0.17f, 0.17f, 0.19f), markColor = new Color(1f, 0.65f, 0.2f) },
+            new() { name = "猛者", hp = 2.5f, damage = 2f, speed = 1.15f, spread = 0.7f, scale = 1.25f, tint = new Color(0.55f, 0.04f, 0.07f), markColor = new Color(1f, 0.25f, 0.2f) },
+        };
+        [Tooltip("区画ごとの段階(1つ目の区画から順に。足りない区画は最後の値)")]
+        public int[] areaTiers = { 0, 0, 1, 1, 1, 2, 2, 3, 3, 3 };
+
+        /// <summary>段階の定義(範囲外は端に寄せる。未設定なら null)。</summary>
+        public EnemyTier TierOf(int tier) => enemyTiers == null || enemyTiers.Length == 0 ? null : enemyTiers[Mathf.Clamp(tier, 0, enemyTiers.Length - 1)];
+        /// <summary>その区画(0始まり)の敵の段階。</summary>
+        public int AreaTier(int area) => areaTiers == null || areaTiers.Length == 0 ? 0 : areaTiers[Mathf.Clamp(area, 0, areaTiers.Length - 1)];
 
         [Header("部位の取付位置(機体高さ9.06m基準・前が+Z)")]
         public Vector3 mountRightArm = new(3.6f, 7.5f, 0.6f);
@@ -240,8 +273,8 @@ namespace HuntProto
         public static string ArmsName(ArmsRule r) => r switch
         {
             ArmsRule.Classic => "現行(使い切り・品質4段階)",
-            ArmsRule.StatsA => "A案(使い切りなし・数個だけ大きく振れる)",
-            _ => "B案(使い切りなし・全部が振れる・差で比べる)",
+            ArmsRule.StatsA => "A案(耐久あり・数個だけ大きく振れる)",
+            _ => "B案(耐久あり・全部が振れる・差で比べる)",
         };
 
         public static string ArmsShort(ArmsRule r) => r switch { ArmsRule.Classic => "現行", ArmsRule.StatsA => "A案", _ => "B案" };
@@ -339,7 +372,8 @@ namespace HuntProto
         }
 
         /// <summary>ステージの区画から呼ぶ:種類に応じた部位を付けて敵を置く。type を渡すとその部位1つ(砲台役など)。</summary>
-        public ProtoEnemy SpawnForStage(ProtoEnemy.Kind kind, Vector3 pos, PartType? type)
+        /// <summary>ステージ攻略型の敵を出す。tier は強さの段階(通常の敵だけに効く)。</summary>
+        public ProtoEnemy SpawnForStage(ProtoEnemy.Kind kind, Vector3 pos, PartType? type, int tier = 0)
         {
             switch (kind)
             {
@@ -360,7 +394,7 @@ namespace HuntProto
                         var others = System.Array.FindAll(partPool, d => d.type != list[0].type);
                         if (others.Length > 0) list.Add(others[Random.Range(0, others.Length)]);
                     }
-                    return Spawn(kind, pos, list.ToArray(), true, 1f, enemyHP, enemyTint);
+                    return Spawn(kind, pos, list.ToArray(), true, 1f, enemyHP, enemyTint, TierOf(tier), tier);
                 }
                 default:
                     var def = type.HasValue ? System.Array.Find(partPool, d => d.type == type.Value) : partPool[Random.Range(0, partPool.Length)];
@@ -379,7 +413,8 @@ namespace HuntProto
             Log("ステージクリア");
         }
 
-        ProtoEnemy Spawn(ProtoEnemy.Kind kind, Vector3 pos, PartDefinition[] parts, bool harvestable, float scale, float hp, Color tint)
+        ProtoEnemy Spawn(ProtoEnemy.Kind kind, Vector3 pos, PartDefinition[] parts, bool harvestable, float scale, float hp, Color tint,
+            EnemyTier tierDef = null, int tier = 0)
         {
             var go = new GameObject(kind.ToString());
             go.transform.position = pos;
@@ -390,7 +425,7 @@ namespace HuntProto
             // ドロップ制では部位を斬り落としても剥げない(壊すと能力を失い、落とす候補からも外れる)
             e.drops = lootRule == LootRule.Drop && harvestable;
             if (lootRule == LootRule.Drop) harvestable = false;
-            e.Init(this, kind, parts, harvestable, scale, hp, tint);
+            e.Init(this, kind, parts, harvestable, scale, hp, tint, tierDef, tier);
             alive.Add(e);
             return e;
         }
@@ -588,8 +623,13 @@ namespace HuntProto
             var loot = player.NearbyLoot;
             if (loot == null || loot.Def == null) return;
             var d = loot.Def;
-            bool over = player.WouldOverweight(d);
-            string head = over ? "重量オーバーで拾えない" : $"[{K(ProtoInput.Btn.PickUp)}] 拾う";
+            // 拾う(在庫へ)とその場で装備。重量オーバーになる方は出さず、どちらもだめなら警告
+            var acts = new List<string>();
+            if (!player.WouldOverweight(d)) acts.Add($"[{K(ProtoInput.Btn.PickUp)}] 拾う");
+            if (player.CanEquipNow && !player.WouldOverweightEquip(d))
+                acts.Add($"[{K(ProtoInput.Btn.EquipNow)}] {ProtoPlayer.HardpointName(player.DirectSlot(d.type))}に装備");
+            bool over = acts.Count == 0;
+            string head = over ? "重量オーバーで拾えない" : string.Join("  ", acts);
             string text = $"{head}   {d.displayName}{player.AcquireNote(d)}   重量 {d.weight:0}";
             var st = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter };
             float w = st.CalcSize(new GUIContent(text)).x + 40f;
@@ -610,10 +650,13 @@ namespace HuntProto
             float rx = r.xMax + 10f + rw <= SW - 10f ? r.xMax + 10f : r.x - 10f - rw;
             var rr = new Rect(rx, r.yMax - rh, rw, rh);
             Panel(rr, 0.6f);
-            var cur = player.MountedOfType(d.type);
-            ProtoRadar.Draw(new Rect(rr.x, rr.y + 2f, rw, rh - 22f), uiScale, d, cur, statSwing, ProtoRadar.MainColor, tiny);
+            // 比べる相手:付けられる場所に空きがあればそこ(線なし)、なければ同じ種類を付けている場所
+            var slot = player.CompareSlot(d.type, out var cur);
+            ProtoRadar.Draw(new Rect(rr.x, rr.y + 2f, rw, rh - 22f), uiScale, d, cur?.def, statSwing, ProtoRadar.MainColor, tiny,
+                loot.Uses, cur != null ? cur.uses : -1);
             var legend = new List<(string, Color)> { ("■ 拾うもの", ProtoRadar.MainColor) };
-            if (cur != null && cur.HasStats) legend.Add(("― 今の装備", ProtoRadar.CompareColor));
+            if (cur != null && cur.def.HasStats) legend.Add(("― 今の装備", ProtoRadar.CompareColor));
+            else if (slot.HasValue) legend.Add(($"{ProtoPlayer.HardpointName(slot.Value)}は空き", new Color(0.7f, 0.72f, 0.75f)));
             DrawColored(new Rect(rr.x + 8f, rr.yMax - 20f, rw - 12f, 18f), legend, tiny);
         }
 
@@ -626,13 +669,15 @@ namespace HuntProto
             if (!picking || Arms == ArmsRule.Classic || cands.Count == 0) return false;
             var it = cands[Mathf.Clamp(player.MenuItem, 0, cands.Count - 1)];
             var cur = player.MountedDef(at);
+            int curUses = player.SlotItem(at)?.uses ?? -1;
             var main = it != null ? it.def : cur;   // 「外す」を選んでいる間は今のものだけ
             if (main == null || !main.HasStats) return false;
             bool compare = it != null && cur != null && cur.HasStats && cur.type == main.type;
 
             GUI.Label(new Rect(x, y0 + 14f, w, 30f), "性能", head);
             ProtoRadar.Draw(new Rect(x, top, w, 250f), uiScale, main, compare ? cur : null, statSwing,
-                it != null ? ProtoRadar.MainColor : ProtoRadar.CompareColor, small);
+                it != null ? ProtoRadar.MainColor : ProtoRadar.CompareColor, small,
+                it != null ? it.uses : curUses, curUses);
             float ly = top + 256f;
             var legend = new List<(string, Color)>();
             if (it != null) legend.Add(("■ 選んでいる候補", ProtoRadar.MainColor));
@@ -661,12 +706,14 @@ namespace HuntProto
             var cur = player.MountedDef(at);
             if (cur != null && cur.type == d.type)
             {
+                int curUses = player.SlotItem(at)?.uses ?? -1;
                 foreach (var st in PartDefinition.StatsOf(d.type))
                 {
-                    float r = d.StatValue(st) / Mathf.Max(0.0001f, cur.StatValue(st));
+                    // 耐久は今の残りどうしで比べる
+                    float r = d.StatValue(st, uses) / Mathf.Max(0.0001f, cur.StatValue(st, curUses));
                     string arrow = PartDefinition.Arrow(r);
                     Color c = arrow.Length == 0 ? white : (r > 1f) == PartDefinition.HigherIsBetter(st) ? good : bad;
-                    line.Add((d.StatText(st) + arrow, c));
+                    line.Add((DurText(d, st, uses) + arrow, c));
                 }
                 return line;
             }
@@ -679,10 +726,14 @@ namespace HuntProto
                     float r = d.StatValue(st) / Mathf.Max(0.0001f, d.source.StatValue(st));
                     c = Mathf.Abs(Mathf.Log(r)) < Mathf.Log(1.06f) ? white : (r > 1f) == PartDefinition.HigherIsBetter(st) ? good : bad;
                 }
-                line.Add((d.StatText(st), c));
+                line.Add((DurText(d, st, uses), c));
             }
             return line;
         }
+
+        /// <summary>パラメータの表示。耐久だけは、使いかけなら「残り/最大」にする。</summary>
+        static string DurText(PartDefinition d, PartDefinition.Stat st, int uses)
+            => st == PartDefinition.Stat.Durability && uses >= 0 && uses < d.uses ? $"耐久 {uses}/{d.uses}" : d.StatText(st);
 
         void DrawColored(Rect r, List<(string text, Color color)> parts, GUIStyle style)
         {
@@ -730,6 +781,15 @@ namespace HuntProto
             var it = player.SlotItem(at);
             bool empty = it == null && at != Hardpoint.RightHand;
             Chip(r, new Color(0f, 0f, 0f, empty ? 0.25f : 0.5f));
+            // キャノンの装填中:セル全体を左から満ちていくゲージにする(満ちたら撃てる)
+            float reload = player.CannonReload01(at);
+            if (reload > 0f)
+            {
+                Chip(new Rect(r.x, r.y, r.width * (1f - reload), r.height), new Color(1f, 0.6f, 0.15f, 0.35f));
+                var rs = new GUIStyle(tiny) { alignment = TextAnchor.UpperCenter };
+                rs.normal.textColor = new Color(1f, 0.75f, 0.4f);
+                GUI.Label(new Rect(r.x, r.y + 3f, r.width, 16f), $"装填 {player.CannonReloadLeft(at):0.0}秒", rs);
+            }
             GUI.Label(new Rect(r.x + 8f, r.y + 3f, 90f, 16f), K(btn), tiny);
             string name = it != null ? it.def.displayName : at == Hardpoint.RightHand ? "剣" : "―";
             if (it != null) Chip(new Rect(r.x + 8f, r.y + 23f, 10f, 10f), it.def.GradeColor);
@@ -848,6 +908,9 @@ namespace HuntProto
                     bool sel = picking && i == player.MenuItem;
                     Chip(r, sel ? new Color(0.3f, 0.6f, 1f, 0.55f) : new Color(1f, 1f, 1f, picking ? 0.06f : 0.03f));
                     if (sel) Chip(new Rect(r.x, r.y, 4f, r.height), new Color(0.5f, 0.8f, 1f));
+                    // 削除の長押し中:赤いゲージが満ちたら消える
+                    if (sel && player.DeleteProgress > 0f)
+                        Chip(new Rect(r.x, r.y, r.width * player.DeleteProgress, r.height), new Color(0.9f, 0.15f, 0.1f, 0.5f));
                     var it = cands[i];
                     GUI.color = picking ? Color.white : new Color(1f, 1f, 1f, 0.55f);
                     if (it == null)
@@ -891,6 +954,7 @@ namespace HuntProto
                     (ProtoInput.Btn.Lock, "ロックオン"),
                     (ProtoInput.Btn.Switch, "ロックオン切替"),
                     (ProtoInput.Btn.Heal, "回復アイテムを使う"),
+                    (ProtoInput.Btn.EquipNow, "足元の武装をすぐ装備"),
                     (ProtoInput.Btn.Menu, "装備メニュー"),
                     (ProtoInput.Btn.Restart, "やり直し"),
                     (ProtoInput.Btn.ModeToggle, "武装の方式 切替"),
@@ -925,13 +989,13 @@ namespace HuntProto
             {
                 // 重量オーバー:閉じようとした直後は強く光らせる
                 bool flash = Time.unscaledTime - player.OverweightBlockedAt < 0.6f;
-                var wr = new Rect(x0 + gap, y0 + h - 92f, w - gap * 2f, 26f);
+                var wr = new Rect(x0 + gap, y0 + h - 92f, colW * 2f + gap, 26f);   // 右の操作説明の列にはかからないように
                 Chip(wr, flash ? new Color(0.9f, 0.15f, 0.1f, 0.9f) : new Color(0.6f, 0.08f, 0.05f, 0.75f));
                 GUI.Label(new Rect(wr.x + 10f, wr.y + 2f, wr.width - 20f, 24f),
                     $"重量オーバー(機動力 ×{player.Mobility:0.00})― ×{overweightMobility:0.00} を超えるまで閉じられません。在庫を捨てるか、装備を外してください", small);
             }
             string closeText = over ? "(重量オーバー中は閉じられない)" : $"{close} 閉じる";
-            string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {dis} 捨てる    {back} 戻る    {closeText}"
+            string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {dis} 足元に捨てる    {K(ProtoInput.Btn.Delete)} 削除    {back} 戻る    {closeText}"
                                    : $"{selK} 場所を選ぶ    {ok} 決定    {dis} 外して在庫へ    " + (over ? closeText : $"{back}・{close} 閉じる");
             GUI.Label(new Rect(x0 + gap, y0 + h - 34f, w - gap * 2f, 24f), guide + (pauseInMenu ? "        時間停止中" : "        時間は流れています(操作はできません)"), small);
         }
@@ -979,6 +1043,16 @@ namespace HuntProto
                 var hr = new Rect(sp.x - 60f, SH - sp.y - 17f, 120f, 16f);
                 GUI.Label(new Rect(hr.x + 1f, hr.y + 1f, hr.width, hr.height), hpText, hpShadow);
                 GUI.Label(hr, hpText, hpStyle);
+                // 強さの段階:HPの上に ◆ を段階の数だけ(雑兵は無し)
+                if (e.Tier > 0 && TierOf(e.Tier) is { } td)
+                {
+                    string marks = new string('◆', e.Tier);
+                    var mr = new Rect(hr.x, hr.y - 16f, hr.width, hr.height);
+                    GUI.Label(new Rect(mr.x + 1f, mr.y + 1f, mr.width, mr.height), marks, hpShadow);
+                    var ms = new GUIStyle(hpStyle);
+                    ms.normal.textColor = td.markColor;
+                    GUI.Label(mr, marks, ms);
+                }
                 foreach (var p in e.Parts)
                 {
                     if (p.Severed || p.Broken) continue;

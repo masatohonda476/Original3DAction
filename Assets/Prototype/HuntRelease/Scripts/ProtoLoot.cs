@@ -4,14 +4,16 @@ namespace HuntProto
 {
     /// <summary>
     /// 倒した敵が落とした武装。地面に落ちて光の柱を立て、自機が近づくと拾う(在庫へ)。
-    /// 見た目は部位そのもの(品質の色)。しばらくすると点滅して消える。
+    /// 見た目は部位そのもの(品質の色)。時間では消えない(谷底へ落ちたものだけ消える)。
     /// </summary>
     public class ProtoLoot : MonoBehaviour
     {
-        public const float PickRadius = 8f, Life = 60f;
+        public const float PickRadius = 8f;
 
         PartDefinition def;   // null なら回復アイテム
         public PartDefinition Def => def;
+        /// <summary>残り回数(捨てたものは捨てた時点の回数、新品は定義どおり。-1 は外れない)。</summary>
+        public int Uses => keptUses != -2 ? keptUses : def != null && def.uses > 0 ? def.uses : -1;
         /// <summary>自機が捨てたもの:消えずに残り、残り回数を引き継ぐ。一度離れるまでは自動で拾わない(現行の方式用)。</summary>
         bool discarded, armed = true;
         int keptUses = -2;   // -2 = 定義どおり(新品)
@@ -33,6 +35,13 @@ namespace HuntProto
                 if (d.magnitude < bestD) { bestD = d.magnitude; best = l; }
             }
             return best;
+        }
+
+        /// <summary>その場で装備したとき:在庫を通さないので、演出を出して消えるだけ。</summary>
+        public void Take()
+        {
+            ProtoFx.Blast(transform.position, 4f, Tint, 0.3f);
+            Destroy(gameObject);
         }
 
         /// <summary>△で拾う。</summary>
@@ -146,11 +155,7 @@ namespace HuntProto
             visual.localRotation = Quaternion.Euler(0f, t * 90f, 0f);
             visual.localPosition = Vector3.up * (0.5f + Mathf.Sin(t * 3f) * 0.4f);
 
-            // 消える前は点滅
-            bool show = discarded || t < Life - 10f || Mathf.Repeat(t * 4f, 1f) < 0.6f;
-            visual.gameObject.SetActive(show);
-            beam.gameObject.SetActive(show);
-            if ((!discarded && t >= Life) || transform.position.y < -200f) { Destroy(gameObject); return; }   // 谷底へ落ちたものも消す
+            if (transform.position.y < -200f) { Destroy(gameObject); return; }   // 谷底へ落ちたものだけ消す(時間では消えない)
 
             var pl = ProtoPlayer.I;
             if (pl == null || pl.IsDead) return;

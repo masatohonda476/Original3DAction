@@ -46,6 +46,8 @@ namespace HuntProto
         public bool drops;
 
         public Kind EnemyKind { get; private set; }
+        /// <summary>強さの段階(0=雑兵。後半の区画ほど高い)。</summary>
+        public int Tier { get; private set; }
         public float Scale { get; private set; } = 1f;
         public float Radius => bodyRadius * Scale;
         public float MaxHP { get; private set; }
@@ -66,10 +68,29 @@ namespace HuntProto
         CharacterController cc;
         float vy;
 
-        public void Init(ProtoGame g, Kind kind, PartDefinition[] defs, bool harvestable, float scale, float hp, Color tint)
+        public void Init(ProtoGame g, Kind kind, PartDefinition[] defs, bool harvestable, float scale, float hp, Color tint,
+            ProtoGame.EnemyTier tierDef = null, int tier = 0)
         {
             game = g;
             EnemyKind = kind;
+            // 強さの段階:体力・攻撃・速さ・正確さを上げ、色と大きさで見分けられるようにする
+            meleeDamage *= g.enemyDamageMul;
+            gunDamage *= g.enemyDamageMul;
+            cannonDamage *= g.enemyDamageMul;
+            float tierPartHp = 1f;
+            if (tierDef != null)
+            {
+                Tier = tier;
+                scale *= tierDef.scale;
+                hp *= tierDef.hp;
+                tint = tierDef.tint;
+                meleeDamage *= tierDef.damage;
+                gunDamage *= tierDef.damage;
+                cannonDamage *= tierDef.damage;
+                moveSpeed *= tierDef.speed;
+                aimSpread *= tierDef.spread;
+                tierPartHp = 1f + (tierDef.hp - 1f) * 0.5f;
+            }
             Scale = scale;
             MaxHP = HP = hp;
             baseTint = tint;
@@ -89,7 +110,7 @@ namespace HuntProto
             SetTint(baseTint);
 
             var slotCount = new Dictionary<MountSlot, int>();
-            float partHpMul = kind == Kind.Monster ? 4f : kind == Kind.Horde ? g.hordePartHpMul : kind == Kind.Normal ? 0.8f : 1f;
+            float partHpMul = (kind == Kind.Monster ? 4f : kind == Kind.Horde ? g.hordePartHpMul : kind == Kind.Normal ? 0.8f : 1f) * tierPartHp;
             foreach (var baseDef in defs)
             {
                 // 品質:群れは粗悪が多く、狩りの獲物は上物も、バケモノは上物以上

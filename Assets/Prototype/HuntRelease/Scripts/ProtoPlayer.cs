@@ -102,6 +102,14 @@ namespace HuntProto
         [Tooltip("1個で回復する割合(最大HPに対して)")]
         [Range(0f, 1f)] public float healAmount = 0.4f;
 
+        [Header("照準(△ / C 長押し)")]
+        [Tooltip("この秒数だけ押し続けると照準が出る(短く押すのは拾う操作)")]
+        public float aimHoldDelay = 0.5f;
+
+        [Header("在庫の削除(メニューで△ / C 長押し)")]
+        [Tooltip("この秒数だけ押し続けると、選んでいる在庫を完全に削除する")]
+        public float deleteHoldTime = 0.6f;
+
         [Header("ロックオン")]
         [Tooltip("ロックオンできる最大距離(m)")]
         public float lockRange = 150f;
@@ -166,7 +174,8 @@ namespace HuntProto
         public ProtoEnemy Target => target != null && !target.Dead ? target : null;
         public bool AutoLock { get; private set; }
         /// <summary>手動照準中(△長押し):カメラを自由に動かせ、機体はカメラの向きを向き、射撃は照準の先へ飛ぶ。</summary>
-        public bool Aiming => !IsDead && !MenuOpen && ProtoInput.AimHeld;
+        public bool Aiming => !IsDead && !MenuOpen && ProtoInput.AimHeld && aimHoldT >= aimHoldDelay;
+        float aimHoldT;
         public IReadOnlyList<PartDefinition> Equipped => equipped;
         public IReadOnlyList<PartDefinition> Rack => rack;
         /// <summary>入手して、まだ付けていない部位。</summary>
@@ -372,20 +381,84 @@ namespace HuntProto
         public string AcquireNote(PartDefinition def)
         {
             if (!def.HasStats) return "";
-            // どちらの案も、今付けている同じ種類と比べる。付けていなければ A案は振れたところ
-            var cur = parts.Find(x => x.def.type == def.type);
+            // 付けられる場所に空きがあればそれを知らせる。なければ同じ種類を付けている場所と比べる。A案で比べる相手がなければ振れたところ
+            var at = CompareSlot(def.type, out var cur);
             if (cur == null)
             {
-                if (ProtoGame.Arms != ArmsRule.StatsA) return "(未装備の種類)";
+                string head = at.HasValue ? $"{HardpointName(at.Value)}が空き" : "未装備の種類";
+                if (ProtoGame.Arms != ArmsRule.StatsA) return $"({head})";
                 string t = PartDefinition.TagsText(def.SwingTags());
-                return t.Length > 0 ? $"(未装備の種類 / {t})" : "(未装備の種類)";
+                return t.Length > 0 ? $"({head} / {t})" : $"({head})";
             }
             string d = PartDefinition.TagsText(def.DiffTags(cur.def));
-            return d.Length > 0 ? $"(今の{HardpointName(cur.at)}と比べて {d})" : "(今のものとほぼ同じ)";
+            return d.Length > 0 ? $"(今の{HardpointName(at.Value)}と比べて {d})" : "(今のものとほぼ同じ)";
         }
 
-        /// <summary>同じ種類で今付けている武装(なければ null)。拾う前に比べるため。</summary>
-        public PartDefinition MountedOfType(PartType t) => parts.Find(x => x.def.type == t)?.def;
+        /// <summary>
+        /// 拾う前に比べる相手の場所。付けられる場所に空きがあればそこを優先(cur は null)、
+        /// なければ同じ種類を付けている場所(cur はその武装と残り回数)。どちらもなければ null。
+        /// </summary>
+        public Hardpoint? CompareSlot(PartType t, out Item cur)
+        {
+            cur = null;
+            foreach (var at in MenuSlots)
+                if (Fits(t, at) && !parts.Exists(x => x.at == at)) return at;
+            var m = parts.Find(x => x.def.type == t && Fits(t, x.at));
+            if (m == null) return null;
+            cur = new Item { def = m.def, uses = m.uses };
+            return m.at;
+        }
+
+        /// <summary>足元の武装をその場で付ける場所:空き → 同じ種類を付けている場所 → 付けられる最初の場所。</summary>
+        public Hardpoint DirectSlot(PartType t)
+        {
+            var at = CompareSlot(t, out _);
+            if (at.HasValue) return at.Value;
+            foreach (var h in MenuSlots) if (Fits(t, h)) return h;
+            return Hardpoint.Back;
+        }
+
+        /// <summary>その場で装備できる方式か(パラメータ制で、拾ったら在庫へ入る方式のときだけ)。</summary>
+        public bool CanEquipNow => ProtoGame.Arms != ArmsRule.Classic && ProtoGame.Mode == ProtoMode.Gradual;
+
+        /// <summary>その場で装備すると重量オーバーになるか(付いていたものは在庫へ戻る)。</summary>
+        public bool WouldOverweightEquip(PartDefinition def)
+        {
+            if (def == null || game == null || !CanEquipNow) return false;
+            var old = DefAt(DirectSlot(def.type));
+            float w = TotalWeight + def.weight;
+            if (old != null) w -= old.weight * (1f - game.stockWeightRate);   // 付いていたものは在庫へ(重さの数え方が変わる)
+            return 1f - w * game.weightSlowPerUnit <= game.overweightMobility + 0.0001f;
+        }
+
+        /// <summary>足元の武装をその場で装備する。付いていたものは在庫へ戻す。</summary>
+        void EquipFromGround(ProtoLoot loot)
+        {
+            var def = loot.Def;
+            var at = DirectSlot(def.type);
+            var old = DefAt(at);
+            game.OnHarvest(def);
+            Equip(new Item { def = def, uses = loot.Uses }, at);
+            loot.Take();
+            game.Log(old != null ? $"装備: {def.displayName} → {HardpointName(at)}({old.displayName}は在庫へ)" : $"装備: {def.displayName} → {HardpointName(at)}");
+        }
+
+        /// <summary>メニューで在庫を削除する長押しの進み具合(0〜1、押していなければ 0)。</summary>
+        public float DeleteProgress => deleteTarget != null ? Mathf.Clamp01(deleteHoldT / Mathf.Max(0.01f, deleteHoldTime)) : 0f;
+        Item deleteTarget;
+        float deleteHoldT;
+        bool deleteNeedsRelease;
+
+        /// <summary>そのキャノンの装填の残り(0=撃てる、1=撃った直後)。キャノンでなければ 0。</summary>
+        public float CannonReload01(Hardpoint at)
+        {
+            float cd = at == Hardpoint.RightShoulder ? cannonCdR : at == Hardpoint.LeftShoulder ? cannonCdL : 0f;
+            float max = at == Hardpoint.RightShoulder ? cannonMaxR : cannonMaxL;
+            return cd > 0f && max > 0f && DefAt(at)?.type == PartType.Cannon ? Mathf.Clamp01(cd / max) : 0f;
+        }
+        /// <summary>そのキャノンの装填の残り秒数。</summary>
+        public float CannonReloadLeft(Hardpoint at) => Mathf.Max(0f, at == Hardpoint.RightShoulder ? cannonCdR : at == Hardpoint.LeftShoulder ? cannonCdL : 0f);
+        float cannonMaxR, cannonMaxL;
 
         /// <summary>メニュー用:その場所に今付いている武装(素の武装なら null)。</summary>
         public PartDefinition MountedDef(Hardpoint at) => DefAt(at);
@@ -453,7 +526,7 @@ namespace HuntProto
             if (CandidateCount(at) > 0) game.Log($"[{ProtoInput.L(ProtoInput.Btn.Menu)}]で付け替え");
         }
 
-        static string HardpointName(Hardpoint at) => at switch
+        public static string HardpointName(Hardpoint at) => at switch
         {
             Hardpoint.RightHand => "右手",
             Hardpoint.LeftHand => "左手",
@@ -573,6 +646,29 @@ namespace HuntProto
             MenuItem = Mathf.Clamp(MenuItem, 0, cands.Count - 1);
             if (ProtoInput.MenuUp) MenuItem = (MenuItem + cands.Count - 1) % cands.Count;
             if (ProtoInput.MenuDown) MenuItem = (MenuItem + 1) % cands.Count;
+
+            // △ / C 長押し:選んでいる在庫を完全に削除(足元にも落とさない)。消した後は一度離すまで次を消さない
+            var sel = cands[MenuItem];
+            bool holding = ProtoInput.MenuDeleteHeld;
+            if (!holding) deleteNeedsRelease = false;
+            if (holding && !deleteNeedsRelease && sel != null)
+            {
+                if (deleteTarget != sel) { deleteTarget = sel; deleteHoldT = 0f; }
+                deleteHoldT += Time.unscaledDeltaTime;
+                if (deleteHoldT >= deleteHoldTime)
+                {
+                    stock.Remove(sel);
+                    game.Log($"削除した: {sel.def.displayName}");
+                    deleteTarget = null;
+                    deleteHoldT = 0f;
+                    deleteNeedsRelease = true;
+                    if (MenuCandidates().Count == 0) MenuPicking = false;
+                }
+                return;   // 長押しの間は他の操作をしない
+            }
+            deleteTarget = null;
+            deleteHoldT = 0f;
+
             if (ProtoInput.MenuConfirm)
             {
                 var at = MenuSlots[MenuRow];
@@ -706,6 +802,7 @@ namespace HuntProto
             float now = Time.time;
 
             UpdateFlash(dt);
+            aimHoldT = ProtoInput.AimHeld ? aimHoldT + Time.unscaledDeltaTime : 0f;
             if (IsDead)
             {
                 MenuOpen = false;
@@ -732,6 +829,16 @@ namespace HuntProto
                     OverweightBlockedAt = Time.unscaledTime;
                 }
                 else { NearbyLoot.PickUp(this); NearbyLoot = null; }
+            }
+            else if (NearbyLoot != null && CanEquipNow && ProtoInput.EquipNow)
+            {
+                if (WouldOverweightEquip(NearbyLoot.Def))
+                {
+                    if (Time.unscaledTime - OverweightBlockedAt > 1f)
+                        game.Log($"重量オーバーになるので装備できない  [{ProtoInput.L(ProtoInput.Btn.Menu)}]で在庫を捨てて軽くする");
+                    OverweightBlockedAt = Time.unscaledTime;
+                }
+                else { EquipFromGround(NearbyLoot); NearbyLoot = null; }
             }
             if (!inMenu && ProtoInput.Menu)
             {
@@ -795,7 +902,8 @@ namespace HuntProto
             // スラスターはこのフレームの途中(回避など)で使い切って外れることがあるので、ここで取り直す
             // スラスターは歩きには効かない(ブースト・上昇・回避にだけ、性能の倍率がそのまま乗る)
             float speedMul = Boosting ? ThrusterMul() : 1f;
-            bool boostMoving = Boosting && worldMove.sqrMagnitude > 0.04f;
+            // 攻撃中・回避中は動かない(回避は別に消費する)ので、スティックを倒していても減らさない
+            bool boostMoving = Boosting && worldMove.sqrMagnitude > 0.04f && atk == Atk.None && !dodging;
             float maxSpd = runSpeed * speedMul * (Boosting ? boostMul : 1f) * Mobility;
             if (boostMoving) UseEnergy(boostDrain * dt);
             if (ProtoGame.Mode == ProtoMode.Burst && rackAddsWeight)
@@ -1316,6 +1424,7 @@ namespace HuntProto
             if (list.Count == 0) return;
             var def = list[0].def;
             cd = def.interval;
+            if (at == Hardpoint.RightShoulder) cannonMaxR = cd; else cannonMaxL = cd;
             if (Target == null || Aiming)
             {
                 // ロックオンなし・照準中:機体の向き+カメラの高さで狙った先(地形・敵に当たる所、なければ射程の端)へ撃ち込む

@@ -327,7 +327,7 @@ namespace HuntProto
 
         void Spawn(ProtoEnemy.Kind kind, Vector3 pos, PartType? type = null, bool hold = false)
         {
-            var e = game.SpawnForStage(kind, pos, type);
+            var e = game.SpawnForStage(kind, pos, type, game.AreaTier(current));
             if (e == null) return;
             e.hold = hold;
             spawningArea.enemies.Add(e);
@@ -349,6 +349,10 @@ namespace HuntProto
                 spawningArea = a;
                 a.spawn?.Invoke();
                 game.Log($"エリア {current + 1}/{areas.Count}:{a.name}");
+                // 敵の段階が上がったら知らせる
+                int tier = game.AreaTier(current);
+                if (current > 0 && tier > game.AreaTier(current - 1) && game.TierOf(tier) is { } td)
+                    game.Log($"敵が強くなった:{td.name}(◆×{tier})");
                 return;
             }
             a.enemies.RemoveAll(e => e == null || e.Dead);

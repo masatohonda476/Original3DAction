@@ -111,7 +111,7 @@ namespace HuntProto
         // ───────── 表示するボタン名(最後に触った機器に合わせる) ─────────
 
         public enum Device { Keyboard, PlayStation, Xbox }
-        public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim, Discard, PickUp }
+        public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim, Discard, PickUp, EquipNow, Delete }
 
         /// <summary>今使っている機器。パッドに触ればパッド、キーかマウスに触ればキーボードに切り替わる。</summary>
         public static Device Current { get; private set; } = Gamepad.current != null ? PadKind() : Device.Keyboard;
@@ -163,6 +163,8 @@ namespace HuntProto
                 Btn.Aim => new[] { "C", "△", "Y" },
                 Btn.Discard => new[] { "X", "□", "X" },
                 Btn.PickUp => new[] { "C", "△", "Y" },
+                Btn.EquipNow => new[] { "V", "十字右", "十字右" },
+                Btn.Delete => new[] { "C長押し", "△長押し", "Y長押し" },
                 _ => new[] { "WASD", "左スティック", "左スティック" },
             };
             return n[i];
@@ -173,6 +175,12 @@ namespace HuntProto
 
         /// <summary>足元の武装を拾う(△ / C を押した瞬間。長押しは照準)。パラメータ制のときだけ使う。</summary>
         public static bool PickUp => !Blocked && (K(k => k.cKey) || (Pad != null && !DebugMod && P(p => p.buttonNorth)));
+
+        /// <summary>足元の武装を在庫を通さずその場で装備する(十字キー右 / V)。パラメータ制のときだけ使う。</summary>
+        public static bool EquipNow => !Blocked && (K(k => k.vKey) || P(p => p.dpad.right));
+
+        /// <summary>メニュー内:選んでいる在庫を完全に削除する(△ / C 長押し)。</summary>
+        public static bool MenuDeleteHeld => (Kb != null && Kb.cKey.isPressed) || (Pad != null && !DebugMod && Pad.buttonNorth.isPressed);
 
         /// <summary>回復アイテムを使う(十字キー上 / H)。</summary>
         public static bool Heal => !Blocked && (K(k => k.hKey) || P(p => p.dpad.up));

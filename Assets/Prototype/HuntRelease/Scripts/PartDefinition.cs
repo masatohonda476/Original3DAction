@@ -95,18 +95,18 @@ namespace HuntProto
         }
 
         // ───────── パラメータ制(A案・B案) ─────────
-        // 使い切りをなくし、1個ごとにパラメータが大きく振れる。総合値から評価(C/B/A/S)を付ける。
+        // 1個ごとにパラメータ(耐久=使える回数も含む)が大きく振れる。総合値から評価(C/B/A/S)を付ける。
         // A案:大きく振れるのは数個だけ(どこが振れたかがその個体の個性)/ B案:全部が大きく振れる(今の装備との差で比べる)
 
-        public enum Stat { Damage, FireRate, Recoil, Range, Weight, Radius, Reload, Thrust, Drain, BladePower }
+        public enum Stat { Damage, FireRate, Recoil, Range, Weight, Radius, Reload, Thrust, Drain, BladePower, Durability }
 
         /// <summary>種類ごとのパラメータ。</summary>
         public static Stat[] StatsOf(PartType t) => t switch
         {
-            PartType.Gatling => new[] { Stat.Damage, Stat.FireRate, Stat.Recoil, Stat.Range, Stat.Weight },
-            PartType.Cannon => new[] { Stat.Damage, Stat.Radius, Stat.Reload, Stat.Range, Stat.Weight },
-            PartType.Thruster => new[] { Stat.Thrust, Stat.Drain, Stat.Weight },
-            _ => new[] { Stat.BladePower, Stat.Weight },
+            PartType.Gatling => new[] { Stat.Damage, Stat.FireRate, Stat.Recoil, Stat.Range, Stat.Weight, Stat.Durability },
+            PartType.Cannon => new[] { Stat.Damage, Stat.Radius, Stat.Reload, Stat.Range, Stat.Weight, Stat.Durability },
+            PartType.Thruster => new[] { Stat.Thrust, Stat.Drain, Stat.Weight, Stat.Durability },
+            _ => new[] { Stat.BladePower, Stat.Weight, Stat.Durability },
         };
 
         /// <summary>値が大きいほど良いパラメータか(反動・重量・装填時間・燃費は小さいほど良い)。</summary>
@@ -123,6 +123,7 @@ namespace HuntProto
             Stat.Reload => "装填",
             Stat.Thrust => "推力",
             Stat.Drain => "燃費",
+            Stat.Durability => "耐久",
             _ => "剣威力",
         };
 
@@ -138,16 +139,20 @@ namespace HuntProto
         /// <summary>
         /// レーダーチャート用:元の定義と比べた良さ(0〜1。0.5が元のまま、1が良い向きに swing 倍、0が悪い向きに swing 倍)。
         /// </summary>
-        public float Rating(Stat s, float swing)
+        /// <param name="curUses">耐久を今の残り回数で測るとき、その回数(負なら最大値で測る)。</param>
+        public float Rating(Stat s, float swing, int curUses = -1)
         {
             if (source == null) return 0.5f;
             float f = s is Stat.Thrust or Stat.BladePower
                 ? (multiplier - 1f) / Mathf.Max(0.0001f, source.multiplier - 1f)   // 上乗せ分に掛けているので、上乗せ分どうしで比べる
-                : StatValue(s) / Mathf.Max(0.0001f, source.StatValue(s));
+                : StatValue(s, curUses) / Mathf.Max(0.0001f, source.StatValue(s));
             float t = Mathf.Log(Mathf.Max(0.0001f, f)) / Mathf.Log(Mathf.Max(1.01f, swing));
             if (!HigherIsBetter(s)) t = -t;
             return Mathf.Clamp01(0.5f + 0.5f * t);
         }
+
+        /// <summary>比べるための値。耐久は curUses(今の残り)が 0 以上ならそれを使う。</summary>
+        public float StatValue(Stat s, int curUses) => s == Stat.Durability && curUses >= 0 ? curUses : StatValue(s);
 
         /// <summary>比べるための値(大きい・小さいの向きは StatName のとおり)。</summary>
         public float StatValue(Stat s) => s switch
@@ -161,6 +166,7 @@ namespace HuntProto
             Stat.Reload => interval,
             Stat.Thrust => multiplier,
             Stat.Drain => drain,
+            Stat.Durability => uses,
             _ => multiplier,
         };
 
@@ -175,6 +181,7 @@ namespace HuntProto
             Stat.BladePower => $"剣威力 ×{multiplier:0.00}",
             Stat.Weight => $"重量 {weight:0}",
             Stat.Recoil => $"反動 {recoil:0.00}",
+            Stat.Durability => $"耐久 {uses}",
             _ => $"威力 {damage:0.#}",
         };
 
@@ -216,7 +223,6 @@ namespace HuntProto
         {
             var c = Instantiate(this);
             c.name = name;
-            c.uses = 0;   // 使い切りはなし(外れない)
             c.baseName = displayName;
             c.source = this;
             var stats = StatsOf(type);
@@ -257,6 +263,7 @@ namespace HuntProto
                 case Stat.Radius: radius *= f; break;
                 case Stat.Reload: interval *= f; break;
                 case Stat.Drain: drain *= f; break;
+                case Stat.Durability: if (uses > 0) uses = Mathf.Max(1, Mathf.RoundToInt(uses * f)); break;
                 default: multiplier = 1f + (multiplier - 1f) * f; break;   // 推力・剣威力:上乗せ分に掛ける
             }
         }

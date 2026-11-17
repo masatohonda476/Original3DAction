@@ -369,9 +369,38 @@ namespace HuntProto
             if (m.uses > 0) return;
             parts.Remove(m);
             equipped.Remove(m.def);
-            Drop(m.visual);
+            BreakFx(m);
             RefreshHands();
-            game.Log($"{m.def.displayName}が外れた(使い切り)" + (CandidateCount(at) > 0 ? $"  [{ProtoInput.L(ProtoInput.Btn.Menu)}]で付け替え" : ""));
+            game.Alert($"{HardpointName(at)}の{m.def.displayName}が壊れた");
+            if (CandidateCount(at) > 0) game.Log($"[{ProtoInput.L(ProtoInput.Btn.Menu)}]で付け替え");
+        }
+
+        static string HardpointName(Hardpoint at) => at switch
+        {
+            Hardpoint.RightHand => "右手",
+            Hardpoint.LeftHand => "左手",
+            Hardpoint.RightShoulder => "右肩",
+            Hardpoint.LeftShoulder => "左肩",
+            _ => "背中",
+        };
+
+        /// <summary>使い切った武装が壊れる演出:その場で爆発し、焦げた色になって落ちる。</summary>
+        void BreakFx(Mounted m)
+        {
+            if (m.visual != null)
+            {
+                Vector3 pos = m.visual.gameObject.activeInHierarchy ? m.visual.position : ChestPosition;
+                ProtoFx.Blast(pos, 7f, new Color(1f, 0.25f, 0.1f), 0.45f);
+                ProtoFx.Blast(pos, 4f, new Color(1f, 0.85f, 0.3f), 0.25f);
+                for (int i = 0; i < 4; i++)
+                    ProtoFx.Blast(pos + Random.insideUnitSphere * 2.5f, 2f, new Color(1f, 0.5f, 0.15f), 0.35f + i * 0.08f);
+                foreach (var r in m.visual.GetComponentsInChildren<Renderer>(true))
+                {
+                    r.SetPropertyBlock(null);   // 品質の色(MPB)を外して焦げた色にする
+                    r.sharedMaterial = ProtoFx.Lit(new Color(0.18f, 0.15f, 0.14f));
+                }
+            }
+            Drop(m.visual);
         }
 
         /// <summary>外れた部位を落とす(しばらくして消える)。</summary>
@@ -408,6 +437,7 @@ namespace HuntProto
                 d.y = 0f;
                 if (d.magnitude - e.Radius > releaseRadius) continue;
                 e.TakeDamage(releaseDamage);
+                ProtoDamageText.Show(BodyPoint(e), releaseDamage);
                 e.Knockback(d.normalized * 30f);
             }
             game.OnRelease(n);
@@ -1000,11 +1030,13 @@ namespace HuntProto
                     bestPart.TakeHit(dmg);
                     e.TakeDamage(dmg * 0.4f);
                     hitPoint = bestPart.transform.position;
+                    ProtoDamageText.Show(hitPoint, dmg, true);
                 }
                 else
                 {
                     e.TakeDamage(dmg);
-                    hitPoint = e.transform.position + Vector3.up * MechHeight * 0.55f * e.Scale;
+                    hitPoint = BodyPoint(e);
+                    ProtoDamageText.Show(hitPoint, dmg);
                 }
                 e.Knockback(to.normalized * (blades > 0 ? 14f : 6f));
                 ProtoFx.Blast(hitPoint, 2.5f, Color.white, 0.15f);
@@ -1064,14 +1096,20 @@ namespace HuntProto
                     var hit = front[Random.Range(0, front.Count)];
                     hit.TakeHit(dmg);
                     t.TakeDamage(dmg * 0.4f);
+                    ProtoDamageText.Show(hit.transform.position, dmg, true);
                     return hit.transform.position;
                 }
             }
             t.TakeDamage(dmg);
-            return center + Random.insideUnitSphere * 1.5f;
+            Vector3 at = center + Random.insideUnitSphere * 1.5f;
+            ProtoDamageText.Show(at, dmg);
+            return at;
         }
 
         static Vector3 Flat3(Vector3 v) { v.y = 0f; return v; }
+
+        /// <summary>敵の本体の真ん中あたり(ダメージの数字などを出す所)。</summary>
+        Vector3 BodyPoint(ProtoEnemy e) => e.transform.position + Vector3.up * MechHeight * 0.55f * e.Scale;
 
         /// <summary>手の銃を撃つ(ガトリング、または素の銃)。狙える敵がいなければ正面へ撃つ(当たらない)。</summary>
         void FireGun(Hardpoint at, ref float cd)
@@ -1096,6 +1134,14 @@ namespace HuntProto
                     ? ShotRay(from, (center - from).normalized, Vector3.Distance(from, center), dmg)
                     : RangedHit(t, dmg, from);
                 ProtoFx.Tracer(from, aim, c, 0.3f);
+            }
+            else if (!Aiming && Target != null)
+            {
+                // ロックオン中だが射程の外:相手の方へ撃つ(射程の端で消える。手前に何かあればそこに当たる)
+                Vector3 from = muzzle.position + AimForward() * 2f;
+                Vector3 center = Target.transform.position + Vector3.up * MechHeight * 0.55f * Target.Scale;
+                Vector3 end = ShotRay(from, (center - from).normalized, range, dmg);
+                ProtoFx.Tracer(from, end, c, 0.3f);
             }
             else
             {
@@ -1168,8 +1214,8 @@ namespace HuntProto
                 // 一斉に撃って同時に尽きたものはまとめて外す
                 parts.Remove(m);
                 equipped.Remove(m.def);
-                Drop(m.visual);
-                game.Log($"{m.def.displayName}が外れた(使い切り)");
+                BreakFx(m);
+                game.Alert($"{HardpointName(m.at)}の{m.def.displayName}が壊れた");
             }
         }
 
@@ -1219,12 +1265,14 @@ namespace HuntProto
                 {
                     part.TakeHit(dmg);
                     part.Owner.TakeDamage(dmg * 0.4f);
+                    ProtoDamageText.Show(h.point, dmg, true);
                     return h.point;
                 }
                 var e = h.collider.GetComponentInParent<ProtoEnemy>();
                 if (e != null && !e.Dead)
                 {
                     e.TakeDamage(dmg);
+                    ProtoDamageText.Show(h.point, dmg);
                     return h.point;
                 }
             }
@@ -1256,12 +1304,15 @@ namespace HuntProto
                 if (d.magnitude - e.Radius > def.radius) continue;
                 if (dy < -def.radius || dy > MechHeight * e.Scale + def.radius) continue;   // 上下に離れていれば当たらない
                 e.TakeDamage(def.damage);
+                ProtoDamageText.Show(BodyPoint(e), def.damage);
                 e.Knockback((d.sqrMagnitude > 0.01f ? d.normalized : Vector3.forward) * 20f);
                 // 爆風に入った部位も削れる(自分の側を向いていない部位にも当たる)
                 foreach (var part in e.Parts)
                 {
                     if (part.Severed || part.Broken) continue;
-                    if (Vector3.Distance(part.transform.position, point) <= def.radius + 2f) part.TakeHit(def.damage * partBlastMul);
+                    if (Vector3.Distance(part.transform.position, point) > def.radius + 2f) continue;
+                    part.TakeHit(def.damage * partBlastMul);
+                    ProtoDamageText.Show(part.transform.position, def.damage * partBlastMul, true);
                 }
             }
         }

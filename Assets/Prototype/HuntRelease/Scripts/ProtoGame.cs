@@ -32,6 +32,8 @@ namespace HuntProto
 
         [Header("部位")]
         public PartDefinition[] partPool;
+        [Tooltip("腕刃を敵の装備・ドロップ・宝箱に出すか(一旦オフ:少し強くなる程度で弱いため)")]
+        public bool bladeInPool = false;
 
         [Header("モードの初期値(F2 / SHARE+□で切替)")]
         public ProtoMode defaultMode = ProtoMode.Gradual;
@@ -98,6 +100,8 @@ namespace HuntProto
 
         readonly List<ProtoEnemy> alive = new();
         readonly List<(float t, string msg)> log = new();
+        readonly List<(float t, string msg)> alerts = new();   // 画面中央の赤い通知(武装の破損など)
+        const float AlertLife = 2.5f;
         readonly Queue<PartDefinition[]> huntLoadouts = new();
         ProtoPlayer player;
         ProtoStage stage;
@@ -107,6 +111,7 @@ namespace HuntProto
         void Awake()
         {
             I = this;
+            if (!bladeInPool) partPool = System.Array.FindAll(partPool, d => d != null && d.type != PartType.Blade);
             if (!modeInitialized) { Mode = defaultMode; modeInitialized = true; }
             Time.timeScale = 1f;
         }
@@ -375,6 +380,36 @@ namespace HuntProto
             warpUntil = Mathf.Max(warpUntil, Time.unscaledTime + realDuration);
         }
 
+        /// <summary>画面中央に赤い文字で目立たせる通知(ログにも残す)。</summary>
+        public void Alert(string msg)
+        {
+            alerts.Add((Time.unscaledTime, msg));
+            if (alerts.Count > 3) alerts.RemoveAt(0);
+            Log(msg);
+        }
+
+        void DrawAlerts()
+        {
+            alerts.RemoveAll(a => Time.unscaledTime - a.t > AlertLife);
+            var st = new GUIStyle(big) { fontSize = 30, fontStyle = FontStyle.Bold };
+            float y = SH * 0.3f;
+            for (int i = alerts.Count - 1; i >= 0; i--)
+            {
+                float age = Time.unscaledTime - alerts[i].t;
+                float a = age < AlertLife - 0.6f ? 1f : (AlertLife - age) / 0.6f;
+                // 出た直後は点滅して、目に入りやすくする
+                if (age < 0.5f && Mathf.Repeat(age * 8f, 1f) > 0.6f) a *= 0.35f;
+                var r = new Rect(0f, y, SW, 44f);
+                GUI.color = new Color(0f, 0f, 0f, a * 0.45f);
+                GUI.DrawTexture(new Rect(SW * 0.5f - 260f, y + 2f, 520f, 40f), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                st.normal.textColor = new Color(1f, 0.22f, 0.18f, a);
+                GUI.Label(r, alerts[i].msg, st);
+                y += 48f;
+            }
+            GUI.color = Color.white;
+        }
+
         public void Log(string msg)
         {
             log.Add((Time.unscaledTime, msg));
@@ -459,7 +494,7 @@ namespace HuntProto
 
         // ───────── 普段のHUD(必要なものだけ) ─────────
 
-        GUIStyle small, tiny, head;
+        GUIStyle small, tiny, head, hpStyle, hpShadow;
         float uiScale = 1f;
         float SW => Screen.width / uiScale;
         float SH => Screen.height / uiScale;
@@ -469,6 +504,9 @@ namespace HuntProto
             small = new GUIStyle(label) { fontSize = 14 };
             small.normal.textColor = new Color(0.8f, 0.82f, 0.85f);
             tiny = new GUIStyle(label) { fontSize = 12 };
+            hpStyle = new GUIStyle(label) { fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.LowerCenter };
+            hpShadow = new GUIStyle(hpStyle);
+            hpShadow.normal.textColor = new Color(0f, 0f, 0f, 0.8f);
             tiny.normal.textColor = new Color(0.7f, 0.72f, 0.75f);
             head = new GUIStyle(label) { fontSize = 20, fontStyle = FontStyle.Bold };
         }
@@ -738,6 +776,11 @@ namespace HuntProto
                 Vector3 sp = cam.WorldToScreenPoint(e.transform.position + Vector3.up * (mechHeight + 1.5f) * e.Scale) / uiScale;
                 if (sp.z < 0f || sp.z * uiScale > 160f) continue;
                 Bar(new Rect(sp.x - 50f, SH - sp.y, 100f, 8f), e.HP / e.MaxHP, new Color(0.9f, 0.3f, 0.25f));
+                // HPの実数値(バーのすぐ上)
+                string hpText = $"{Mathf.CeilToInt(Mathf.Max(0f, e.HP))} / {Mathf.CeilToInt(e.MaxHP)}";
+                var hr = new Rect(sp.x - 60f, SH - sp.y - 17f, 120f, 16f);
+                GUI.Label(new Rect(hr.x + 1f, hr.y + 1f, hr.width, hr.height), hpText, hpShadow);
+                GUI.Label(hr, hpText, hpStyle);
                 foreach (var p in e.Parts)
                 {
                     if (p.Severed || p.Broken) continue;
@@ -748,6 +791,9 @@ namespace HuntProto
                     Bar(new Rect(pp.x - 22f, SH - pp.y - 4f, 44f, 6f), p.HP / p.MaxHP, c);
                 }
             }
+
+            // 自機が与えたダメージの数字
+            ProtoDamageText.Draw(cam, uiScale, SH);
 
             // ロックオンの印
             var tgt = player.Target;
@@ -786,6 +832,7 @@ namespace HuntProto
             DrawStatus();
             DrawWeapons();
             DrawLog();
+            DrawAlerts();
 
             if (CurrentPhase == Phase.HordeIncoming)
                 GUI.Label(new Rect(0f, SH * 0.3f, SW, 50f), "群れが来る", big);

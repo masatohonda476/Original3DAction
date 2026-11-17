@@ -76,7 +76,7 @@ namespace HuntProto
             if (Random.value < weaponChance && game != null && game.partPool.Length > 0)
             {
                 // 宝箱の武装は品質が高め(粗悪10% / 標準40% / 上物35% / 逸品15%)
-                var def = game.partPool[Random.Range(0, game.partPool.Length)].WithGrade(PartDefinition.RollGrade(10f, 40f, 35f, 15f));
+                var def = game.MakeLoot(game.partPool[Random.Range(0, game.partPool.Length)], PartDefinition.RollGrade(10f, 40f, 35f, 15f), 2);
                 ProtoLoot.Drop(def, top, kick);
                 game.Log($"宝箱を開けた:{def.displayName}");
             }

@@ -100,7 +100,8 @@ namespace HuntProto
                     Kind.Normal => PartDefinition.RollGrade(25f, 45f, 22f, 8f),
                     _ => PartDefinition.RollGrade(10f, 50f, 30f, 10f),
                 };
-                var def = baseDef.WithGrade(grade);
+                // パラメータ制では、バケモノ(ボス)は3回振って一番良いもの、狩りの獲物は2回
+                var def = g.MakeLoot(baseDef, grade, kind == Kind.Monster ? 3 : kind == Kind.Hunt ? 2 : 1);
                 slotCount.TryGetValue(def.slot, out int idx);
                 slotCount[def.slot] = idx + 1;
                 var parent = g.MountParent(rig, transform, def.slot, idx, out var lp);

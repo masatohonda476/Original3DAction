@@ -83,6 +83,12 @@ namespace HuntProto
         public float gunInterval = 0.22f;
         public float gunRange = 80f;
 
+        [Header("反動(パラメータ制のガトリングだけ)")]
+        [Tooltip("撃っていない間に、ばらつきが戻る速さ(度/秒)")]
+        public float recoilRecover = 4f;
+        [Tooltip("ばらつきの上限(度)")]
+        public float maxSpread = 10f;
+
         [Header("射撃・砲撃で部位を削る")]
         [Tooltip("射撃が(自分の側を向いた)部位に当たる確率")]
         [Range(0f, 1f)] public float partHitChance = 0.45f;
@@ -123,6 +129,24 @@ namespace HuntProto
         /// <summary>実際に動いている速さ(回避・飛行・落下も含む)。速いほど敵の射撃が当たりにくい。</summary>
         public float Speed { get; private set; }
         public float Radius => cc != null ? cc.radius : 2f;
+        /// <summary>△で拾える範囲にある武装(HUDの案内用)。</summary>
+        public ProtoLoot NearbyLoot { get; private set; }
+        /// <summary>付けている武装と在庫の重さの合計(パラメータ制のときだけ意味がある)。在庫は stockWeightRate 倍(半分)で数える。</summary>
+        public float TotalWeight => EquippedWeight + StockWeight * (game != null ? game.stockWeightRate : 0.5f);
+        public float EquippedWeight
+        {
+            get { float w = 0f; foreach (var m in parts) w += m.def.weight; return w; }
+        }
+        public float StockWeight
+        {
+            get { float w = 0f; foreach (var it in stock) w += it.def.weight; return w; }
+        }
+        /// <summary>重さによる機動力の倍率(現行の方式では常に1)。走り・ブースト・回避・上昇に掛かる。</summary>
+        public float Mobility => ProtoGame.Arms == ArmsRule.Classic || game == null ? 1f
+            : Mathf.Clamp(1f - TotalWeight * game.weightSlowPerUnit, game.minMobility, 1f);
+        /// <summary>手のガトリングの今のばらつき(度)。</summary>
+        public float SpreadAt(Hardpoint at) => at == Hardpoint.LeftHand ? spreadL : spreadR;
+        float spreadR, spreadL;
         public float MechHeight => game != null ? game.mechHeight : 9f;
         public Vector3 ChestPosition => transform.position + Vector3.up * MechHeight * 0.6f;
         public ProtoEnemy Target => target != null && !target.Dead ? target : null;
@@ -307,13 +331,16 @@ namespace HuntProto
 
         // ───────── 入手・装備 ─────────
 
-        public void Acquire(PartDefinition def)
+        public void Acquire(PartDefinition def) => Acquire(def, def.uses > 0 ? def.uses : -1);
+
+        /// <summary>uses:残り回数(-1 は外れない)。捨てたものを拾い直したときは、捨てた時点の回数を引き継ぐ。</summary>
+        public void Acquire(PartDefinition def, int uses)
         {
             game.OnHarvest(def);
             if (ProtoGame.Mode == ProtoMode.Gradual)
             {
-                AddStock(def, def.uses > 0 ? def.uses : -1);
-                game.Log($"入手: {def.displayName}  [{ProtoInput.L(ProtoInput.Btn.Menu)}]で装備");
+                AddStock(def, uses);
+                game.Log($"入手: {def.displayName}{AcquireNote(def)}  [{ProtoInput.L(ProtoInput.Btn.Menu)}]で装備");
                 return;
             }
             rack.Add(def);
@@ -326,6 +353,24 @@ namespace HuntProto
             crate.GetComponent<Renderer>().sharedMaterial = ProtoFx.Lit(def.GradeColor);
             rackCrates.Add(crate);
         }
+
+        /// <summary>入手の知らせに添える一言。A案は振れたパラメータ、B案は今付けている同じ種類との差。</summary>
+        public string AcquireNote(PartDefinition def)
+        {
+            if (!def.HasStats) return "";
+            if (ProtoGame.Arms == ArmsRule.StatsA)
+            {
+                string t = PartDefinition.TagsText(def.SwingTags());
+                return t.Length > 0 ? $"({t})" : "(平凡)";
+            }
+            var cur = parts.Find(x => x.def.type == def.type);
+            if (cur == null) return "(未装備の種類)";
+            string d = PartDefinition.TagsText(def.DiffTags(cur.def));
+            return d.Length > 0 ? $"(今の{HardpointName(cur.at)}と比べて {d})" : "(今のものとほぼ同じ)";
+        }
+
+        /// <summary>メニュー用:その場所に今付いている武装(素の武装なら null)。</summary>
+        public PartDefinition MountedDef(Hardpoint at) => DefAt(at);
 
         void AddStock(PartDefinition def, int uses) => stock.Add(new Item { def = def, uses = uses });
 
@@ -366,6 +411,27 @@ namespace HuntProto
                 if (insertAt >= 0) stock.Insert(insertAt, it); else stock.Add(it);
             }
             RefreshHands();
+        }
+
+        /// <summary>その場所に付いている武装を捨てる(在庫へは戻さず、機体から落ちる。素の武装に戻る)。</summary>
+        void Discard(Hardpoint at)
+        {
+            var m = parts.Find(x => x.at == at);
+            if (m == null) return;
+            parts.Remove(m);
+            equipped.Remove(m.def);
+            Vector3 from = m.visual != null && m.visual.gameObject.activeInHierarchy ? m.visual.position : ChestPosition;
+            if (m.visual != null) Destroy(m.visual.gameObject);
+            DropAtFeet(m.def, m.uses, from);
+            RefreshHands();
+            game.Log($"捨てた: {HardpointName(at)}の{m.def.displayName}(足元に落ちている)");
+        }
+
+        /// <summary>捨てた武装を足元(少し後ろ)へ落とす。拾い直せる。</summary>
+        void DropAtFeet(PartDefinition def, int uses, Vector3? from = null)
+        {
+            Vector3 side = Quaternion.Euler(0f, Random.Range(-60f, 60f), 0f) * -transform.forward;
+            ProtoLoot.DropDiscarded(def, uses, from ?? ChestPosition, side * 4f);
         }
 
         /// <summary>その場所の武装を1回使う。尽きたら外れて落ちる(素の武装に戻る)。</summary>
@@ -494,6 +560,7 @@ namespace HuntProto
                 if (ProtoInput.MenuUp) MenuRow = (MenuRow + MenuSlots.Length - 1) % MenuSlots.Length;
                 if (ProtoInput.MenuDown) MenuRow = (MenuRow + 1) % MenuSlots.Length;
                 if (ProtoInput.MenuConfirm && MenuCandidates().Count > 0) { MenuPicking = true; MenuItem = 0; }
+                else if (ProtoInput.MenuDiscard) Discard(MenuSlots[MenuRow]);
                 else if (ProtoInput.MenuBack) MenuOpen = false;
                 return;
             }
@@ -508,6 +575,15 @@ namespace HuntProto
                 var pick = cands[MenuItem];
                 if (pick == null) Unequip(at); else Equip(pick, at);
                 MenuPicking = false;
+            }
+            else if (ProtoInput.MenuDiscard && cands[MenuItem] != null)
+            {
+                // 在庫の武装を捨てる(その場で消える)。候補がなくなったら場所の選択へ戻る
+                var it = cands[MenuItem];
+                stock.Remove(it);
+                DropAtFeet(it.def, it.uses);
+                game.Log($"捨てた: {it.def.displayName}(足元に落ちている)");
+                if (MenuCandidates().Count == 0) MenuPicking = false;
             }
             else if (ProtoInput.MenuBack) MenuPicking = false;
         }
@@ -634,6 +710,9 @@ namespace HuntProto
                 if (game.pauseInMenu) return;
             }
             if (ProtoInput.Heal) UseHeal();
+            // 足元の武装:パラメータ制では△を押した瞬間に拾う(長押しはそのまま照準になる)
+            NearbyLoot = ProtoGame.Arms != ArmsRule.Classic ? ProtoLoot.NearestWeapon(this) : null;
+            if (NearbyLoot != null && ProtoInput.PickUp) { NearbyLoot.PickUp(this); NearbyLoot = null; }
             if (!inMenu && ProtoInput.Menu)
             {
                 if (ProtoGame.Mode == ProtoMode.Burst && rack.Count > 0) Release();
@@ -664,7 +743,7 @@ namespace HuntProto
             if (now - dodgePressedAt <= dodgeBuffer && canDodge)
             {
                 dodgePressedAt = -10f;
-                dodgeDistMul = Boosting ? ThrusterMul() : 1f;   // 回避の始めの性能で最後まで動く(途中で外れても距離は変わらない)
+                dodgeDistMul = (Boosting ? ThrusterMul() : 1f) * Mobility;   // 回避の始めの性能で最後まで動く(途中で外れても距離は変わらない)
                 dodgeDir = worldMove.sqrMagnitude > 0.01f ? worldMove.normalized : -transform.forward;
                 dodgeDur = dodgeDuration;
                 dodgeT = 0f;
@@ -697,7 +776,7 @@ namespace HuntProto
             // スラスターは歩きには効かない(ブースト・上昇・回避にだけ、性能の倍率がそのまま乗る)
             float speedMul = Boosting ? ThrusterMul() : 1f;
             bool boostMoving = Boosting && worldMove.sqrMagnitude > 0.04f;
-            float maxSpd = runSpeed * speedMul * (Boosting ? boostMul : 1f);
+            float maxSpd = runSpeed * speedMul * (Boosting ? boostMul : 1f) * Mobility;
             if (boostMoving) UseEnergy(boostDrain * dt);
             if (ProtoGame.Mode == ProtoMode.Burst && rackAddsWeight)
                 maxSpd *= Mathf.Max(0.35f, 1f - rackWeightPerPart * rack.Count);
@@ -753,6 +832,7 @@ namespace HuntProto
                 // スラスターがあれば速く上がる(品質が良いほど速い)
                 // 上昇にはスラスターの性能の半分だけ効く(倍率2.6なら 1 + 1.6/2 = 1.8倍)
                 float riseMul = Boosting ? 1f + (ThrusterMul() - 1f) * 0.5f : 1f;
+                riseMul *= Mobility;
                 float rise = flyRiseSpeed * riseMul;   // 高さの上限はなし(エネルギーが尽きるまで上がれる)
                 vy = Mathf.MoveTowards(vy, rise, flyAccel * riseMul * dt);
             }
@@ -791,6 +871,8 @@ namespace HuntProto
             // 射撃:手に銃があれば押している間撃つ / R2 右肩 / L2 左肩
             gunTR -= dt;
             gunTL -= dt;
+            spreadR = Mathf.MoveTowards(spreadR, 0f, recoilRecover * dt);
+            spreadL = Mathf.MoveTowards(spreadL, 0f, recoilRecover * dt);
             if (ProtoInput.RightHandHeld && HandIsGun(Hardpoint.RightHand)) FireGun(Hardpoint.RightHand, ref gunTR);
             if (ProtoInput.LeftHandHeld && HandIsGun(Hardpoint.LeftHand)) FireGun(Hardpoint.LeftHand, ref gunTL);
             cannonCdR -= dt;
@@ -817,6 +899,11 @@ namespace HuntProto
         void UseEnergy(float amount)
         {
             if (Boosting) WearThruster(amount);   // スラスターはブースト中だけ働き、そのときだけ消耗する
+            if (Boosting)
+            {
+                var thruster = First(PartType.Thruster);
+                if (thruster != null) amount *= thruster.drain;   // 燃費(パラメータ制。現行は1)
+            }
             Energy -= amount;
             energyUsedAt = Time.time;
             if (Energy > 0f) return;
@@ -1149,13 +1236,24 @@ namespace HuntProto
             Transform muzzle = m != null ? m.visual : rifle != null ? rifle.transform : transform;
             Color c = def != null ? new Color(1f, 0.85f, 0.3f) : new Color(0.6f, 0.9f, 1f);
             float dmg = def != null ? def.damage : gunDamage;
+            // 反動(パラメータ制のガトリングだけ):撃つたびにばらつきが広がり、外れやすくなる
+            float spread = 0f;
+            if (def != null && def.HasStats)
+            {
+                if (at == Hardpoint.LeftHand) spread = spreadL = Mathf.Min(maxSpread, spreadL + def.recoil);
+                else spread = spreadR = Mathf.Min(maxSpread, spreadR + def.recoil);
+            }
             var t = !Aiming && Target != null && Vector3.Distance(Target.transform.position, transform.position) <= range ? Target : null;
             if (t != null)
             {
                 // ロックオン中:相手へ(自分の側を向いた部位に当たることがある)。間を地形がさえぎっていれば壁で止まる
+                // ばらつきが大きいほど外れやすい(外れた弾はぶれた向きへ飛び、ほかの物に当たることはある)
                 Vector3 from = muzzle.position + AimForward() * 2f;
                 Vector3 center = t.transform.position + Vector3.up * MechHeight * 0.55f * t.Scale;
-                Vector3 aim = ProtoStage.Blocked(from, center)
+                bool miss = spread > 0f && Random.value < spread / (spread + 6f);
+                Vector3 aim = miss
+                    ? ShotRay(from, Jitter((center - from).normalized, spread), range, dmg)
+                    : ProtoStage.Blocked(from, center)
                     ? ShotRay(from, (center - from).normalized, Vector3.Distance(from, center), dmg)
                     : RangedHit(t, dmg, from);
                 ProtoFx.Tracer(from, aim, c, 0.3f);
@@ -1165,7 +1263,7 @@ namespace HuntProto
                 // ロックオン中だが射程の外:相手の方へ撃つ(射程の端で消える。手前に何かあればそこに当たる)
                 Vector3 from = muzzle.position + AimForward() * 2f;
                 Vector3 center = Target.transform.position + Vector3.up * MechHeight * 0.55f * Target.Scale;
-                Vector3 end = ShotRay(from, (center - from).normalized, range, dmg);
+                Vector3 end = ShotRay(from, Jitter((center - from).normalized, spread), range, dmg);
                 ProtoFx.Tracer(from, end, c, 0.3f);
             }
             else
@@ -1174,11 +1272,21 @@ namespace HuntProto
                 // 狙いは機体の中心から引いた線で決め、銃口からその点へ撃つ(銃が腕の横にあっても正面に集まる)
                 Vector3 from = muzzle.position + Flat(transform.forward) * 2f;
                 Vector3 goal = FreeAimPoint(range);
-                Vector3 dir = (goal - from).normalized;
+                Vector3 dir = Jitter((goal - from).normalized, spread);
                 Vector3 end = ShotRay(from, dir, Vector3.Distance(from, goal) + 2f, dmg);
                 ProtoFx.Tracer(from, end, c, 0.3f);
             }
             if (def != null) Consume(at);
+        }
+
+        /// <summary>向きを最大 deg 度の範囲でランダムにぶらす(0ならそのまま)。</summary>
+        static Vector3 Jitter(Vector3 dir, float deg)
+        {
+            if (deg <= 0f) return dir;
+            Vector3 perp = Vector3.Cross(dir, Vector3.up);
+            if (perp.sqrMagnitude < 0.0001f) perp = Vector3.right;
+            Vector3 tilted = Quaternion.AngleAxis(Random.Range(0f, deg), perp.normalized) * dir;
+            return Quaternion.AngleAxis(Random.Range(0f, 360f), dir) * tilted;
         }
 
         /// <summary>肩のキャノンを一斉に撃つ(その肩に付いている門数ぶん)。</summary>

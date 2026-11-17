@@ -10,15 +10,21 @@ namespace HuntProto
     /// <summary>Drop = 倒すと付いていた武装からランダムで落とす / Harvest = 部位を斬り落として剥ぎ取る</summary>
     public enum LootRule { Drop, Harvest }
     public enum Phase { Hunt, HordeIncoming, Horde, Monster, Clear }
+    /// <summary>
+    /// 武装の方式。Classic = 使い切り+品質4段階(評価時点の試作)/
+    /// StatsA = 使い切りなし・振れ幅の大きいパラメータは数個だけ / StatsB = 使い切りなし・全パラメータが大きく振れ、今の装備との差で比べる
+    /// </summary>
+    public enum ArmsRule { Classic, StatsA, StatsB }
 
     /// <summary>
     /// 「狩り → 群れ → バケモノ」の1弧を回し、区切りごとの時間を記録する。
-    /// F2(SHARE+□)でモード切替(再スタート)、F1(SHARE+△)で再スタート。
+    /// F2(SHARE+□)で武装の方式を切替(現行 → A案 → B案、再スタート)、F1(SHARE+△)で再スタート。
     /// </summary>
     public class ProtoGame : MonoBehaviour
     {
         public static ProtoGame I;
         public static ProtoMode Mode = ProtoMode.Gradual;
+        public static ArmsRule Arms = ArmsRule.StatsA;
         static bool modeInitialized;
 
         [Header("機体アセット(ビルダーが設定)")]
@@ -37,8 +43,23 @@ namespace HuntProto
         [Tooltip("装備メニュー中に時間を止める(切ると敵は動き続け、自機は操作できないまま)")]
         public bool pauseInMenu = false;
 
-        [Header("モードの初期値(F2 / SHARE+□で切替)")]
+        [Header("モードの初期値(切り替え方式は評価の対象外。ここでだけ変えられる)")]
         public ProtoMode defaultMode = ProtoMode.Gradual;
+
+        [Header("武装の方式(F2 / SHARE+□で 現行 → A案 → B案 と切替)")]
+        public ArmsRule defaultArms = ArmsRule.StatsA;
+        [Tooltip("A案で大きく振れるパラメータの数")]
+        public int aSwingCount = 2;
+        [Tooltip("大きく振れるときの幅(倍率)。3なら元の 1/3〜3倍")]
+        public float statSwing = 3f;
+        [Tooltip("評価(C/B/A/S・総合値・評価の色)を見せるか。切ると名前と色に評価が出ず、パラメータだけで選ぶ")]
+        public bool showRating = false;
+        [Tooltip("重量1あたりの機動力の低下(走り・ブースト・回避・上昇の速さ)")]
+        public float weightSlowPerUnit = 0.005f;
+        [Tooltip("在庫(付けていない武装)の重さを、何倍で機動力に数えるか")]
+        [Range(0f, 1f)] public float stockWeightRate = 0.5f;
+        [Tooltip("機動力の下限(どれだけ重くても、ここより遅くはならない)")]
+        [Range(0.2f, 1f)] public float minMobility = 0.6f;
 
         [Header("進行")]
         [Tooltip("ステージ攻略型(区画を順に制圧して進む)。切ると従来の平地の「狩り→群れ→バケモノ」")]
@@ -114,7 +135,7 @@ namespace HuntProto
         {
             I = this;
             if (!bladeInPool) partPool = System.Array.FindAll(partPool, d => d != null && d.type != PartType.Blade);
-            if (!modeInitialized) { Mode = defaultMode; modeInitialized = true; }
+            if (!modeInitialized) { Mode = defaultMode; Arms = defaultArms; modeInitialized = true; }
             Time.timeScale = 1f;
         }
 
@@ -154,6 +175,7 @@ namespace HuntProto
             nextSpawnAt = Time.time + 1f;
             CurrentPhase = Phase.Hunt;
             Log(Mode == ProtoMode.Burst ? "モード:切り替え(拾った武装をラックに溜め、解放して在庫へ)" : "モード:段階的(拾った武装は在庫へ)");
+            Log($"武装の方式:{ArmsName(Arms)}");
         }
 
         // ───────── 部位の割り振り:各種類が2回ずつ、1体に同じ種類は付けない ─────────
@@ -213,6 +235,28 @@ namespace HuntProto
             return p * k;
         }
 
+        // ───────── 武装の方式 ─────────
+
+        public static string ArmsName(ArmsRule r) => r switch
+        {
+            ArmsRule.Classic => "現行(使い切り・品質4段階)",
+            ArmsRule.StatsA => "A案(使い切りなし・数個だけ大きく振れる)",
+            _ => "B案(使い切りなし・全部が振れる・差で比べる)",
+        };
+
+        public static string ArmsShort(ArmsRule r) => r switch { ArmsRule.Classic => "現行", ArmsRule.StatsA => "A案", _ => "B案" };
+
+        /// <summary>
+        /// 敵・宝箱が持つ武装を作る。現行は品質(grade)を付け、A案・B案はパラメータを振る。
+        /// bestOf:パラメータ制で何回振って一番良いものを取るか(ボス・宝箱は良いものが出やすい)。
+        /// </summary>
+        public PartDefinition MakeLoot(PartDefinition baseDef, int grade, int bestOf = 1) => Arms switch
+        {
+            ArmsRule.Classic => baseDef.WithGrade(grade),
+            ArmsRule.StatsA => baseDef.WithStats(aSwingCount, statSwing, bestOf, showRating),
+            _ => baseDef.WithStats(0, statSwing, bestOf, showRating),
+        };
+
         // ───────── 進行 ─────────
 
         void Update()
@@ -220,7 +264,7 @@ namespace HuntProto
             ProtoInput.TrackDevice();
             if (ProtoInput.ToggleMode)
             {
-                Mode = Mode == ProtoMode.Burst ? ProtoMode.Gradual : ProtoMode.Burst;
+                Arms = (ArmsRule)(((int)Arms + 1) % 3);
                 Restart();
                 return;
             }
@@ -532,6 +576,77 @@ namespace HuntProto
             {
                 Chip(new Rect(x, y + 6f, 10f, 10f), new Color(0.3f, 1f, 0.5f));
                 GUI.Label(new Rect(x + 16f, y, 300f, 22f), $"回復 ×{player.HealItems}  [{K(ProtoInput.Btn.Heal)}]", small);
+                y += 22f;
+            }
+            if (Arms != ArmsRule.Classic)
+                GUI.Label(new Rect(x, y, 400f, 22f), WeightText(), small);
+        }
+
+        /// <summary>画面下の中央:△で拾える武装の案内(名前・評価・重量と、A案は振れたところ/B案は今の装備との差)。</summary>
+        void DrawPickPrompt()
+        {
+            var loot = player.NearbyLoot;
+            if (loot == null || loot.Def == null) return;
+            var d = loot.Def;
+            string text = $"[{K(ProtoInput.Btn.PickUp)}] 拾う   {d.displayName}{player.AcquireNote(d)}   重量 {d.weight:0}";
+            var st = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter };
+            float w = st.CalcSize(new GUIContent(text)).x + 40f;
+            var r = new Rect((SW - w) / 2f, SH * 0.72f, w, 34f);
+            Panel(r, 0.6f);
+            Chip(new Rect(r.x, r.y, 4f, r.height), d.GradeColor);
+            GUI.Label(r, text, st);
+        }
+
+        string WeightText() => $"重量 {player.TotalWeight:0}(装備 {player.EquippedWeight:0} + 在庫 {player.StockWeight:0}×{stockWeightRate:0.##})   機動力 ×{player.Mobility:0.00}";
+
+        /// <summary>候補の2行目:現行は性能と残り回数、A案は全パラメータ(大きく振れたものだけ色付き)、B案は今付いているものとの差。</summary>
+        List<(string text, Color color)> CandidateLine(PartDefinition d, int uses, Hardpoint at)
+        {
+            var white = new Color(0.85f, 0.87f, 0.9f);
+            var good = new Color(0.45f, 1f, 0.55f);
+            var bad = new Color(1f, 0.45f, 0.4f);
+            var line = new List<(string, Color)>();
+            if (!d.HasStats)
+            {
+                line.Add(($"{Stat(d)}   {(uses < 0 ? "外れない" : $"残り {uses}回")}", white));
+                return line;
+            }
+            if (Arms == ArmsRule.StatsB)
+            {
+                var cur = player.MountedDef(at);
+                if (cur != null && cur.type == d.type)
+                {
+                    var diff = d.DiffTags(cur);
+                    if (diff.Count == 0) line.Add(("今のものとほぼ同じ", white));
+                    foreach (var (t, g) in diff) line.Add((t, g ? good : bad));
+                    return line;
+                }
+            }
+            foreach (var st in PartDefinition.StatsOf(d.type))
+            {
+                Color c = new Color(0.6f, 0.62f, 0.65f);
+                if (System.Array.IndexOf(d.swung, st) >= 0)
+                {
+                    // 大きく振れたパラメータ:元より良い向きなら緑、悪い向きなら赤(ほぼ変わらなければ白)
+                    float r = d.StatValue(st) / Mathf.Max(0.0001f, d.source.StatValue(st));
+                    c = Mathf.Abs(Mathf.Log(r)) < Mathf.Log(1.06f) ? white : (r > 1f) == PartDefinition.HigherIsBetter(st) ? good : bad;
+                }
+                line.Add((d.StatText(st), c));
+            }
+            return line;
+        }
+
+        void DrawColored(Rect r, List<(string text, Color color)> parts, GUIStyle style)
+        {
+            var st = new GUIStyle(style);
+            float x = r.x;
+            foreach (var (t, c) in parts)
+            {
+                st.normal.textColor = c;
+                float w = st.CalcSize(new GUIContent(t)).x;
+                GUI.Label(new Rect(x, r.y, Mathf.Max(0f, r.xMax - x), r.height), t, st);
+                x += w + 10f;
+                if (x > r.xMax) break;
             }
         }
 
@@ -635,7 +750,7 @@ namespace HuntProto
         {
             var slots = ProtoPlayer.MenuSlots;
             bool picking = player.MenuPicking;
-            const float colW = 360f, rowH = 54f, gap = 16f, helpW = 300f;
+            const float colW = 420f, rowH = 54f, gap = 16f, helpW = 270f;
             float w = colW * 2f + helpW + gap * 4f, h = 90f + slots.Length * (rowH + 6f) + 120f;
             float x0 = (SW - w) / 2f, y0 = (SH - h) / 2f;
             Chip(new Rect(0f, 0f, SW, SH), new Color(0f, 0f, 0f, 0.45f));
@@ -687,8 +802,12 @@ namespace HuntProto
                     {
                         Chip(new Rect(r.x + 14f, r.y + 17f, 12f, 12f), it.def.GradeColor);
                         GUI.Label(new Rect(r.x + 34f, r.y + 2f, colW - 40f, 24f), it.def.displayName, label);
-                        string uses = it.uses < 0 ? "外れない" : $"残り {it.uses}回";
-                        GUI.Label(new Rect(r.x + 34f, r.y + 24f, colW - 40f, 20f), $"{Stat(it.def)}   {uses}", small);
+                        if (it.def.HasStats && showRating)
+                        {
+                            var sc = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
+                            GUI.Label(new Rect(r.x, r.y + 4f, colW - 10f, 20f), $"総合 {it.def.score}", sc);
+                        }
+                        DrawColored(new Rect(r.x + 34f, r.y + 25f, colW - 40f, 20f), CandidateLine(it.def, it.uses, slots[player.MenuRow]), tiny);
                     }
                     GUI.color = Color.white;
                     ry += 52f;
@@ -710,13 +829,13 @@ namespace HuntProto
                 (ProtoInput.Btn.Dodge, "回避"),
                 (ProtoInput.Btn.Boost, "ブースト 入/切"),
                 (ProtoInput.Btn.Fly, "長押しで飛行"),
-                (ProtoInput.Btn.Aim, "長押しで照準"),
+                (ProtoInput.Btn.Aim, Arms != ArmsRule.Classic ? "長押しで照準 / 押して拾う" : "長押しで照準"),
                 (ProtoInput.Btn.Lock, "ロックオン"),
                 (ProtoInput.Btn.Switch, "ロックオン切替"),
                 (ProtoInput.Btn.Heal, "回復アイテムを使う"),
                 (ProtoInput.Btn.Menu, "装備メニュー"),
                 (ProtoInput.Btn.Restart, "やり直し"),
-                (ProtoInput.Btn.ModeToggle, "モード切替"),
+                (ProtoInput.Btn.ModeToggle, "武装の方式 切替"),
             };
             float hy = top;
             var keyStyle = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
@@ -735,13 +854,15 @@ namespace HuntProto
                 GUI.Label(new Rect(hx, hy + 4f, helpW, 22f), "クリックでマウス固定・Escで解除", tiny);
 
             // 下:記録とモード
-            string modeName = Mode == ProtoMode.Burst ? "切り替え(溜めて解放)" : "段階的(拾ったら在庫へ)";
+            string weight = Arms != ArmsRule.Classic ? $"    {WeightText()}" : "";
             GUI.Label(new Rect(x0 + gap, y0 + h - 60f, w - gap * 2f, 22f),
-                $"経過 {FormatTime(Elapsed)}    入手した武装 {harvested}    撃墜された回数 {deaths}    モード {modeName}", small);
+                $"経過 {FormatTime(Elapsed)}    入手した武装 {harvested}    撃墜 {deaths}    方式 {ArmsShort(Arms)}{weight}", small);
 
             // 下:操作
             string selK = K(ProtoInput.Btn.Select), ok = K(ProtoInput.Btn.Confirm), back = K(ProtoInput.Btn.Back), close = K(ProtoInput.Btn.Menu);
-            string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {back} 戻る    {close} 閉じる" : $"{selK} 場所を選ぶ    {ok} 決定    {back}・{close} 閉じる";
+            string dis = K(ProtoInput.Btn.Discard);
+            string guide = picking ? $"{selK} 選ぶ    {ok} 付ける    {dis} 捨てる    {back} 戻る    {close} 閉じる"
+                                   : $"{selK} 場所を選ぶ    {ok} 決定    {dis} 付いているものを捨てる    {back}・{close} 閉じる";
             GUI.Label(new Rect(x0 + gap, y0 + h - 34f, w - gap * 2f, 24f), guide + (pauseInMenu ? "        時間停止中" : "        時間は流れています(操作はできません)"), small);
         }
 
@@ -837,6 +958,7 @@ namespace HuntProto
             }
 
             DrawStatus();
+            DrawPickPrompt();
             DrawWeapons();
             DrawLog();
             DrawAlerts();
@@ -848,7 +970,7 @@ namespace HuntProto
 
             if (CurrentPhase == Phase.Clear)
             {
-                string mode = Mode == ProtoMode.Burst ? "切り替え(溜めて解放)" : "段階的(拾ったら在庫へ)";
+                string mode = $"武装の方式 {ArmsName(Arms)}";
                 float w = 560f, h = stage != null ? 150f + 27f * new List<(string, float)>(stage.ClearTimes()).Count : 330f;
                 var r = new Rect((SW - w) / 2f, (SH - h) / 2f, w, h);
                 GUI.color = new Color(0f, 0f, 0f, 0.8f);
@@ -862,7 +984,7 @@ namespace HuntProto
                     foreach (var (n, t) in stage.ClearTimes()) Line($"{n} 制圧  {T(t >= 0f ? t : (float?)null)}");
                     Line($"入手した武装 {harvested} / 撃墜された回数 {deaths}");
                     Line("");
-                    Line($"{K(ProtoInput.Btn.Restart)} 同じモードでもう一度 / {K(ProtoInput.Btn.ModeToggle)} もう一方のモードで");
+                    Line($"{K(ProtoInput.Btn.Restart)} 同じ方式でもう一度 / {K(ProtoInput.Btn.ModeToggle)} 次の方式で");
                     return;
                 }
                 Line($"最初の剥ぎ取り   {T(firstHarvest)}");
@@ -872,7 +994,7 @@ namespace HuntProto
                 Line($"バケモノ撃破     {T(monsterEnd)}");
                 Line($"剥ぎ取り {harvested} / 失った部位 {lostParts} / 撃墜 {deaths}");
                 Line("");
-                Line($"{K(ProtoInput.Btn.Restart)} 同じモードでもう一度 / {K(ProtoInput.Btn.ModeToggle)} もう一方のモードで");
+                Line($"{K(ProtoInput.Btn.Restart)} 同じ方式でもう一度 / {K(ProtoInput.Btn.ModeToggle)} 次の方式で");
             }
         }
     }

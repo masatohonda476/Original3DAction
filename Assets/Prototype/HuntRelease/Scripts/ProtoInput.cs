@@ -96,6 +96,8 @@ namespace HuntProto
         public static bool MenuDown { get { ReadStick(); return stickDown || K(k => k.downArrowKey) || K(k => k.sKey) || P(p => p.dpad.down); } }
         public static bool MenuConfirm => K(k => k.spaceKey) || K(k => k.enterKey) || P(p => p.buttonSouth);
         public static bool MenuBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
+        /// <summary>メニュー内:選んでいる武装を捨てる(□ / X)。</summary>
+        public static bool MenuDiscard => K(k => k.xKey) || (!DebugMod && P(p => p.buttonWest));
 
         public static bool Dodge => !Blocked && (K(k => k.leftCtrlKey) || (!DebugMod && P(p => p.buttonWest)));
         public static bool BoostToggle => !Blocked && (K(k => k.leftShiftKey) || P(p => p.buttonEast));
@@ -109,7 +111,7 @@ namespace HuntProto
         // ───────── 表示するボタン名(最後に触った機器に合わせる) ─────────
 
         public enum Device { Keyboard, PlayStation, Xbox }
-        public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim }
+        public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim, Discard, PickUp }
 
         /// <summary>今使っている機器。パッドに触ればパッド、キーかマウスに触ればキーボードに切り替わる。</summary>
         public static Device Current { get; private set; } = Gamepad.current != null ? PadKind() : Device.Keyboard;
@@ -159,6 +161,8 @@ namespace HuntProto
                 Btn.Select => new[] { "W/S", "↑↓", "↑↓" },
                 Btn.Heal => new[] { "H", "十字上", "十字上" },
                 Btn.Aim => new[] { "C", "△", "Y" },
+                Btn.Discard => new[] { "X", "□", "X" },
+                Btn.PickUp => new[] { "C", "△", "Y" },
                 _ => new[] { "WASD", "左スティック", "左スティック" },
             };
             return n[i];
@@ -166,6 +170,9 @@ namespace HuntProto
 
         /// <summary>手動照準(△ / C 長押し):ロックオン中でもカメラを動かせ、照準の先へ撃つ。SHARE を押している間は数えない。</summary>
         public static bool AimHeld => !Blocked && (DebugAim || (Kb != null && Kb.cKey.isPressed) || (Pad != null && !DebugMod && Pad.buttonNorth.isPressed));
+
+        /// <summary>足元の武装を拾う(△ / C を押した瞬間。長押しは照準)。パラメータ制のときだけ使う。</summary>
+        public static bool PickUp => !Blocked && (K(k => k.cKey) || (Pad != null && !DebugMod && P(p => p.buttonNorth)));
 
         /// <summary>回復アイテムを使う(十字キー上 / H)。</summary>
         public static bool Heal => !Blocked && (K(k => k.hKey) || P(p => p.dpad.up));

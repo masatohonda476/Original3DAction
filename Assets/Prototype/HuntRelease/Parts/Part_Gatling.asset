@@ -27,3 +27,6 @@ MonoBehaviour:
   radius: 10
   multiplier: 2
   uses: 160
+  weight: 10
+  recoil: 0.5
+  drain: 1

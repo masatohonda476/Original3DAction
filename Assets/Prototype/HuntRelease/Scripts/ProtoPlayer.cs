@@ -397,13 +397,16 @@ namespace HuntProto
         /// <summary>
         /// 拾う前に比べる相手の場所。付けられる場所に空きがあればそこを優先(cur は null)、
         /// なければ同じ種類を付けている場所(cur はその武装と残り回数)。どちらもなければ null。
+        /// 左右に同じ種類を付けていれば、総合値(画面には出さない評価)の低い方と比べる(その場で装備するときもそちらと入れ替える)。
         /// </summary>
         public Hardpoint? CompareSlot(PartType t, out Item cur)
         {
             cur = null;
             foreach (var at in MenuSlots)
                 if (Fits(t, at) && !parts.Exists(x => x.at == at)) return at;
-            var m = parts.Find(x => x.def.type == t && Fits(t, x.at));
+            Mounted m = null;
+            foreach (var x in parts)
+                if (x.def.type == t && Fits(t, x.at) && (m == null || x.def.score < m.def.score)) m = x;
             if (m == null) return null;
             cur = new Item { def = m.def, uses = m.uses };
             return m.at;
@@ -552,6 +555,27 @@ namespace HuntProto
                 }
             }
             Drop(m.visual);
+        }
+
+        /// <summary>
+        /// ボスの爆発に巻き込まれた:装備中・在庫・ラックの武装がすべて消し飛ぶ(素の剣と銃だけが残る)。
+        /// 企画の「ボス撃破でほぼ全リセット」。足元に落ちている武装とボスが落とした武装は残る。
+        /// </summary>
+        public void LoseAllWeapons()
+        {
+            int n = parts.Count + stock.Count + rack.Count;
+            foreach (var m in parts) BreakFx(m);
+            parts.Clear();
+            equipped.Clear();
+            stock.Clear();
+            rack.Clear();
+            foreach (var c in rackCrates) if (c != null) Destroy(c);
+            rackCrates.Clear();
+            backWear = 0f;
+            MenuPicking = false;
+            deleteTarget = null;
+            RefreshHands();
+            if (n > 0) game.Alert("ボスの爆発に巻き込まれ、武装がすべて消し飛んだ");
         }
 
         /// <summary>外れた部位を落とす(しばらくして消える)。</summary>

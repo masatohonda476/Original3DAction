@@ -230,6 +230,16 @@ namespace HuntProto
             SetTint(new Color(0.15f, 0.15f, 0.15f));
             ProtoFx.Blast(transform.position + Vector3.up * game.mechHeight * 0.5f * Scale, 6f * Scale, new Color(1f, 0.45f, 0.1f), 0.4f);
             ProtoCamera.Shake(0.8f);
+            if (EnemyKind == Kind.Monster)
+            {
+                // ボスは大爆発し、自機の武装をすべて消し飛ばす(落とした武装は残る)
+                Vector3 c = transform.position + Vector3.up * game.mechHeight * 0.5f * Scale;
+                ProtoFx.Blast(c, 16f * Scale, new Color(1f, 0.4f, 0.1f), 0.9f);
+                ProtoFx.Blast(c, 9f * Scale, new Color(1f, 0.85f, 0.4f), 0.6f);
+                for (int i = 0; i < 6; i++)
+                    ProtoFx.Blast(c + Random.insideUnitSphere * 8f * Scale, 5f * Scale, new Color(1f, 0.5f, 0.15f), 0.5f + i * 0.1f);
+                if (ProtoPlayer.I != null && !ProtoPlayer.I.IsDead) ProtoPlayer.I.LoseAllWeapons();
+            }
             game.OnEnemyDied(this);
             Destroy(gameObject, 1.5f);
         }

@@ -72,5 +72,49 @@ namespace MeleeDuel.EditorTools
             AssetDatabase.SaveAssets();
             Debug.Log($"[MeleeDuel] シーンを組み立てました: {ScenePath}");
         }
+
+        public const string StageScenePath = Root + "/MeleeDuelStage.unity";
+
+        /// <summary>
+        /// ステージ(区画を進む一本道+分岐+ボス)のシーン。地形と敵は DuelStage が Play の開始時にコードから組み立てるので、
+        /// シーンにはカメラ・光・DuelGame と DuelStage だけを置く(区画と敵の位置はシーンビューにギズモで出る)。
+        /// </summary>
+        [MenuItem("Prototype/MeleeDuel/ステージのシーンを組み立てる")]
+        public static void BuildStage()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            var rig = AssetDatabase.LoadAssetAtPath<GameObject>(RigPrefab);
+            if (rig == null)
+            {
+                Debug.LogError($"[MeleeDuel] 機体のプレハブがありません: {RigPrefab}");
+                return;
+            }
+
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+
+            var cam = Camera.main;
+            cam.farClipPlane = 1500f;
+            cam.nearClipPlane = 0.5f;
+            cam.fieldOfView = 55f;
+            cam.transform.position = new Vector3(0f, 15f, -15f);
+            cam.gameObject.AddComponent<DuelCamera>().avoidWalls = true;
+
+            var sun = Object.FindFirstObjectByType<Light>();
+            if (sun != null) sun.transform.rotation = Quaternion.Euler(50f, -35f, 0f);
+
+            var go = new GameObject("DuelGame");
+            var game = go.AddComponent<DuelGame>();
+            game.mechPrefab = rig;
+            game.mechHeight = MechHeight;
+            game.arenaHalf = 0f;   // 外へ出ないのは壁で止める
+            var stage = go.AddComponent<DuelStage>();
+            stage.groundMat = AssetDatabase.LoadAssetAtPath<Material>(GroundMat);
+            stage.wallMat = AssetDatabase.LoadAssetAtPath<Material>(PillarMat);
+            game.stage = stage;
+
+            EditorSceneManager.SaveScene(scene, StageScenePath);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[MeleeDuel] ステージのシーンを組み立てました: {StageScenePath}");
+        }
     }
 }

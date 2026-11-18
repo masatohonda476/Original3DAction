@@ -9,6 +9,7 @@ namespace MeleeDuel
     /// 確かめたいこと:剣士との1対1を続けて面白いか / 群れを位置取りと回避斬りでさばけるか /
     /// 回避が軸になっているか / ガードが便利すぎないか。
     /// F1(または SHARE+△)でやり直し。
+    /// stage(DuelStage)があれば、波で出す代わりに区画を進むステージになる(MeleeDuelStage.unity)。
     /// </summary>
     public class DuelGame : MonoBehaviour
     {
@@ -19,7 +20,11 @@ namespace MeleeDuel
         public float mechHeight = 9f;
 
         [Header("部屋")]
+        [Tooltip("部屋の半分の広さ。0 以下なら外へ出ないようにはしない(ステージは壁で止める)")]
         public float arenaHalf = 60f;
+
+        [Header("ステージ(あれば波の代わりに区画を進む)")]
+        public DuelStage stage;
 
         [Header("敵")]
         [Tooltip("剣士(中型)のHP")]
@@ -52,17 +57,33 @@ namespace MeleeDuel
 
         void Start()
         {
+            Vector3 startPos = new(0f, 0f, -20f);
+            Quaternion startRot = Quaternion.identity;
+            if (stage != null)
+            {
+                stage.Prepare(this);   // 地形を組み立てる
+                startPos = stage.StartPos;
+                startRot = stage.StartRot;
+            }
             var go = new GameObject("Player");
-            go.transform.position = new Vector3(0f, 0f, -20f);
+            go.transform.SetPositionAndRotation(startPos, startRot);
             player = go.AddComponent<DuelPlayer>();
             player.Init(this);
 
             var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;
             if (cam != null) cam.scale = mechHeight / 2.1f;   // 人間サイズのカメラを機体の大きさへ
 
-            SpawnWave();
             startTime = Time.time;
-            Log("近接の試作:兵卒の群れと剣士が交互に出る。F1でやり直し");
+            if (stage != null)
+            {
+                stage.Begin(player);
+                Log("ステージの試作:区画を進み、奥のボスを倒せばクリア。F1で最初から");
+            }
+            else
+            {
+                SpawnWave();
+                Log("近接の試作:兵卒の群れと剣士が交互に出る。F1でやり直し");
+            }
         }
 
         /// <summary>次の組を、自機から少し離れた所に扇状に並べて出す。</summary>
@@ -144,6 +165,12 @@ namespace MeleeDuel
 
         public void OnEnemyDied(DuelEnemy e)
         {
+            if (stage != null)
+            {
+                // ステージ:区画の残りは DuelStage が数える。やり直しで置き直した敵は二重に数えない
+                if (stage.CountKill(e)) kills++;
+                return;
+            }
             kills++;
             // 組を全滅させたら、少しして次の組
             bool anyAlive = Enemies.Exists(x => x != null && !x.Dead);
@@ -153,7 +180,8 @@ namespace MeleeDuel
         public void OnPlayerDied()
         {
             Log("撃墜された");
-            restartAt = Time.unscaledTime + 2.5f;
+            if (stage != null) stage.OnPlayerDied();   // 区画の入口からやり直す
+            else restartAt = Time.unscaledTime + 2.5f;
         }
 
         public void Log(string msg)
@@ -221,7 +249,8 @@ namespace MeleeDuel
                 }
             }
 
-            // 上の中央:ロックオンしている敵のHPと怯みゲージ
+            // 上の中央:ロックオンしている敵のHPと怯みゲージ(ステージでは、ロックオンしていなくてもボスは出す)
+            if ((e == null || e.Dead) && stage != null) e = stage.ActiveBoss;
             if (e != null && !e.Dead)
             {
                 float w = 520f, ex = (SW - w) / 2f;
@@ -235,7 +264,9 @@ namespace MeleeDuel
 
             // 右上:知らせと撃破数
             var rs = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
-            GUI.Label(new Rect(SW - 320f, 16f, 300f, 22f), $"第{wave}組  撃破 {kills}  {Time.time - startTime:0}秒", rs);
+            string head = stage != null ? $"撃破 {kills}" : $"第{wave}組  撃破 {kills}";
+            float elapsed = stage != null && stage.Cleared ? stage.ClearTime : Time.time - startTime;
+            GUI.Label(new Rect(SW - 320f, 16f, 300f, 22f), $"{head}  {elapsed:0}秒", rs);
             float ly = 40f;
             for (int i = 0; i < log.Count; i++)
             {
@@ -247,7 +278,31 @@ namespace MeleeDuel
             }
             GUI.color = Color.white;
 
-            if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), "撃墜 ― やり直します", big);
+            if (stage != null) DrawStage();
+            if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― 区画の入口からやり直します" : "撃墜 ― やり直します", big);
+        }
+
+        /// <summary>ステージ:左上に区画名と残りの敵、区画に入ったときに中央へ区画名、ボスを倒したら「ステージクリア」。</summary>
+        void DrawStage()
+        {
+            GUI.Label(new Rect(24f, 12f, 360f, 28f), stage.ZoneName, label);
+            GUI.Label(new Rect(24f, 40f, 360f, 24f), stage.ZoneStatus, small);
+
+            if (stage.Cleared)
+            {
+                GUI.Label(new Rect(0f, SH * 0.36f, SW, 50f), "ステージクリア", big);
+                bool pad = ProtoInput.Current != ProtoInput.Device.Keyboard;
+                GUI.Label(new Rect(0f, SH * 0.36f + 48f, SW, 26f),
+                    $"クリアタイム {Mathf.FloorToInt(stage.ClearTime / 60f)}:{Mathf.FloorToInt(stage.ClearTime % 60f):00}  ―  {(pad ? "SHARE+△" : "F1")} で最初から", center);
+                return;
+            }
+            float age = Time.unscaledTime - stage.BannerAt;
+            if (!string.IsNullOrEmpty(stage.Banner) && age < 2.5f)
+            {
+                GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01((2.5f - age) / 0.6f));
+                GUI.Label(new Rect(0f, SH * 0.22f, SW, 50f), stage.Banner, big);
+                GUI.color = Color.white;
+            }
         }
 
         static string Help()

@@ -155,7 +155,7 @@ namespace MeleeDuel
 
         DuelPlayer player;
         Skill skill;
-        float stateT, stateDur, thinkAt, lastStaggerHitAt = -10f, strafeSign = 1f, idleT, stepPhase;
+        float stateT, stateDur, thinkAt, lastStaggerHitAt = -10f, strafeSign = 1f, stepPhase;
         int chain;           // 横薙ぎの何発目か
         bool dashing;        // このフレームはダッシュで動いている(見た目用)
         Vector3 jumpVel;     // 跳び上がり斬りの横の速さ
@@ -1159,8 +1159,8 @@ namespace MeleeDuel
                     }
                     else
                     {
-                        idleT += dt;
-                        Pose(MechRig.Idle, idleT, 6f);
+                        // 待機は微動だにしない(作者「待機アニメーションは微動だにしないようにしてください」)。待機のクリップの最初の姿勢で止める
+                        Pose(MechRig.Idle, 0f, 6f);
                     }
                     break;
             }

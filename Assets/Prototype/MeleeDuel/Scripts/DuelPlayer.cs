@@ -131,7 +131,7 @@ namespace MeleeDuel
         int heavyStep;
         float lightPressedAt = -10f, dodgePressedAt = -10f, dodgeEndAt = -10f, lastGuardHitAt = -10f;
         Vector3 dodgeDir, attackDir;
-        float stepPhase, idleT;
+        float stepPhase;
 
         public void Init(DuelGame g)
         {
@@ -830,8 +830,8 @@ namespace MeleeDuel
             }
             else
             {
-                idleT += dt;
-                Pose(MechRig.Idle, idleT, 6f);
+                // 待機は微動だにしない(作者「待機アニメーションは微動だにしないようにしてください」)。待機のクリップの最初の姿勢で止める
+                Pose(MechRig.Idle, 0f, 6f);
             }
         }
     }

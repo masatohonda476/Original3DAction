@@ -33,7 +33,7 @@ namespace MeleeDuel
         public float respawnGrace = 1.2f;
 
         [Header("ボス(大剣士)")]
-        public float bossHP = 520f;
+        public float bossHP = 364f;
         [Tooltip("機体の大きさの倍率(剣士は1.5)")]
         public float bossSize = 2.5f;
         [Tooltip("怯みゲージの最大(剣士は25)。大きいほど怯みにくい")]

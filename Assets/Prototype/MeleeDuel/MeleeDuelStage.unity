@@ -156,7 +156,7 @@ MonoBehaviour:
   wakeNear: 20
   respawnDelay: 2.5
   respawnGrace: 1.2
-  bossHP: 520
+  bossHP: 364
   bossSize: 2.5
   bossMaxStagger: 70
   bossMoves:
@@ -225,8 +225,8 @@ MonoBehaviour:
   mechHeight: 9.06
   arenaHalf: 0
   stage: {fileID: 956884580}
-  enemyHP: 133
-  gruntHP: 40
+  enemyHP: 93
+  gruntHP: 28
   maxAttackers: 2
   respawnDelay: 2
 --- !u!4 &956884582

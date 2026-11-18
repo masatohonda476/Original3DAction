@@ -35,6 +35,12 @@ namespace MeleeDuel
         public int maxAttackers = 2;
         public float respawnDelay = 2f;
 
+        [Header("頭上のゲージ(電脳斬禅と同じ。近くの敵の頭の上に、HPと怯みの小さなバー)")]
+        [Tooltip("自機からこの距離(m)より遠い敵には出さない")]
+        public float overheadRange = 90f;
+        [Tooltip("この距離(m)より遠い敵は、ゲージを小さくしていく(最小で7割)")]
+        public float overheadShrinkFrom = 45f;
+
         /// <summary>出てくる組の順番(最後まで行ったら最初に戻る)。G = 兵卒、D = 剣士。</summary>
         static readonly string[] Waves = { "GGG", "D", "GGGG", "DGG" };
 
@@ -45,6 +51,8 @@ namespace MeleeDuel
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
         GUIStyle small, label, big, center;
+        /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
+        readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
         float SW => Screen.width / uiScale;
         float SH => Screen.height / uiScale;
@@ -204,6 +212,7 @@ namespace MeleeDuel
                 center = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter };
             }
             var cam = Camera.main;
+            if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
             ProtoDamageText.Draw(cam, uiScale, SH);
             if (player == null) return;
 
@@ -250,8 +259,8 @@ namespace MeleeDuel
             }
 
             // 上の中央:ロックオンしている敵のHPと怯みゲージ(ステージでは、ロックオンしていなくてもボスは出す)
-            if ((e == null || e.Dead) && stage != null) e = stage.ActiveBoss;
-            if (e != null && !e.Dead)
+            e = TopGaugeEnemy();
+            if (e != null)
             {
                 float w = 520f, ex = (SW - w) / 2f;
                 GUI.Label(new Rect(ex, 2f, w, 22f), e.KindName, center);
@@ -280,6 +289,79 @@ namespace MeleeDuel
 
             if (stage != null) DrawStage();
             if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― 区画の入口からやり直します" : "撃墜 ― やり直します", big);
+        }
+
+        /// <summary>上の中央のゲージに出す敵:ロックオンしている敵。いなければ、ステージで動いているボス。</summary>
+        DuelEnemy TopGaugeEnemy()
+        {
+            var e = player.Target;
+            if ((e == null || e.Dead) && stage != null) e = stage.ActiveBoss;
+            return e != null && !e.Dead ? e : null;
+        }
+
+        /// <summary>
+        /// 頭上のゲージ(電脳斬禅と同じ作り):動いている敵のうち、近くて胸が画面に映り、壁や柱に隠れていないものの
+        /// 頭の上に、HP(赤)と怯み(橙)の小さなバーを出す。遠いほど少し小さく。減ったHPは白で少し遅れて追う。
+        /// 上の中央にボスが出ている間は、ボスには出さない(ロックオン中の兵卒・剣士には両方に出る)。
+        /// </summary>
+        void DrawOverheadGauges(Camera cam)
+        {
+            // 描くのは Repaint のときだけ(OnGUI は1フレームに何度も呼ばれる。レイと白い部分の更新を1回にする)
+            if (Event.current.type != EventType.Repaint) return;
+            if (cam == null || player.Dead)
+            {
+                overheadGhost.Clear();
+                return;
+            }
+            var top = TopGaugeEnemy();
+            var bossOnTop = top != null && top.IsBoss ? top : null;
+            float now = Time.unscaledTime, dt = Time.unscaledDeltaTime;
+            Vector3 eye = cam.transform.position;
+            foreach (var e in Enemies)
+            {
+                if (e == null || e.Dead || e.Dormant || e == bossOnTop) continue;
+                float dist = Vector3.Distance(e.transform.position, player.transform.position);
+                if (dist > overheadRange) continue;
+                // 胸が画面の中に映っていて、カメラとの間に壁がない敵だけ(機体はレイを無視するレイヤー)
+                Vector3 chest = e.Chest, vp = cam.WorldToViewportPoint(chest);
+                if (vp.z <= 0.1f || vp.x < 0.02f || vp.x > 0.98f || vp.y < 0.02f || vp.y > 0.98f) continue;
+                if (Physics.Linecast(eye, chest, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) continue;
+                Vector3 sp = cam.WorldToScreenPoint(e.transform.position + Vector3.up * (mechHeight * e.Size * 1.1f));
+                if (sp.z <= 0.1f) continue;
+
+                float s = Mathf.Clamp(overheadShrinkFrom / Mathf.Max(1f, dist), 0.7f, 1f);
+                float w = 130f * s, hpH = 7f * s, stH = 4f * s;
+                float cx = Mathf.Clamp(sp.x / uiScale, w / 2f + 4f, SW - w / 2f - 4f);
+                float cy = Mathf.Clamp(SH - sp.y / uiScale, 4f, SH - 30f);
+                var hpRect = new Rect(cx - w / 2f, cy - hpH - stH - 2f * s, w, hpH);
+                var stRect = new Rect(hpRect.x, hpRect.yMax + 2f * s, w, stH);
+
+                // 減ったHPの白い部分:当たってから少し止まり、そのあと縮む
+                float hp = Mathf.Clamp01(e.HP / e.MaxHP);
+                if (!overheadGhost.TryGetValue(e, out var g)) g = (hp, hp, 0f);
+                if (hp < g.hp) g.holdUntil = now + 0.4f;
+                if (hp > g.ghost) g.ghost = hp;
+                else if (now >= g.holdUntil) g.ghost = Mathf.Max(hp, g.ghost - 0.8f * dt);
+                g.hp = hp;
+                overheadGhost[e] = g;
+
+                // 縁(黒)→ 中身
+                GUI.color = new Color(0f, 0f, 0f, 0.7f);
+                GUI.DrawTexture(new Rect(hpRect.x - 1f, hpRect.y - 1f, w + 2f, stRect.yMax - hpRect.y + 2f), Texture2D.whiteTexture);
+                GUI.color = new Color(1f, 1f, 1f, 0.85f);
+                GUI.DrawTexture(new Rect(hpRect.x, hpRect.y, w * g.ghost, hpH), Texture2D.whiteTexture);
+                GUI.color = new Color(0.9f, 0.3f, 0.25f);
+                GUI.DrawTexture(new Rect(hpRect.x, hpRect.y, w * hp, hpH), Texture2D.whiteTexture);
+                // 怯み:上の中央と同じ色。怯んでいる間は満タンの黄、8割を超えたら白く点滅して「あと少し」を知らせる
+                float st = e.Flinching ? 1f : Mathf.Clamp01(e.Stagger / e.maxStagger);
+                Color stC = e.Flinching ? new Color(1f, 0.85f, 0.2f) : new Color(1f, 0.6f, 0.2f);
+                if (!e.Flinching && st > 0.8f) stC = Color.Lerp(stC, Color.white, 0.5f + 0.5f * Mathf.Sin(now * 16f));
+                GUI.color = stC;
+                GUI.DrawTexture(new Rect(stRect.x, stRect.y, w * st, stH), Texture2D.whiteTexture);
+            }
+            GUI.color = Color.white;
+            // 消えた・やられた敵の分を捨てる
+            if (overheadGhost.Count > Enemies.Count) overheadGhost.Clear();
         }
 
         /// <summary>ステージ:左上に区画名と残りの敵、区画に入ったときに中央へ区画名、ボスを倒したら「ステージクリア」。</summary>

@@ -27,6 +27,10 @@ namespace MeleeDuel
         [Tooltip("ロックオンできる距離(m)。壁・床ごしの敵はロックオンしない")]
         public float lockRange = 80f;
 
+        [Header("マップ")]
+        [Tooltip("ステージに入ったときに一度だけ画面の中央に出すマップ名(場所ごとの名前は出さない)")]
+        public string mapName = "墜落船";
+
         [Header("セーブポイント")]
         [Tooltip("触れたとみなす水平の距離(m)")]
         public float saveRadius = 14f;
@@ -467,6 +471,7 @@ namespace MeleeDuel
             SetCurrentSave(saves[0]);
             saves[0].inside = true;   // 出撃地点で「セーブしました」を出さない
             beganAt = Time.time;
+            ShowBanner(mapName);
         }
 
         void BuildGeometry()
@@ -620,14 +625,14 @@ namespace MeleeDuel
                 return;
             }
 
-            // 今いる場所(初めて入ったら名前を出す)
+            // 今いる場所(名前は画面に出さない。Gizmos と内部の判定用)
             Area now = null;
             foreach (var pl in places)
                 if (pl.bounds.Contains(p)) { now = pl; break; }
             if (now != null && now != currentPlace)
             {
                 currentPlace = now;
-                if (!now.visited) { now.visited = true; ShowBanner(now.name); }
+                now.visited = true;
             }
 
             // セーブポイント:近づいたら触れたことにする(離れて戻ればもう一度)
@@ -681,7 +686,7 @@ namespace MeleeDuel
             foreach (var other in saves) other.inside = other == sp;   // 再開した所で、もう一度触れたことにしない
             var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;
             if (cam != null) cam.Snap();   // カメラを補間せずに合わせる(大きく流れて向きが急に回らないように)
-            ShowBanner($"{sp.name}から再開");
+            ShowBanner("セーブポイントから再開");
             game.Log("セーブポイントから再開");
         }
 

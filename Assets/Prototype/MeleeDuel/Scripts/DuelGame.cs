@@ -365,11 +365,10 @@ namespace MeleeDuel
             if (overheadGhost.Count > Enemies.Count) overheadGhost.Clear();
         }
 
-        /// <summary>ステージ:左上に今いる場所と全体の残りの敵、初めて入った場所・セーブのときに中央へ短い知らせ、ボスを倒したら「ステージクリア」。</summary>
+        /// <summary>ステージ:左上に全体の残りの敵、入ったとき(マップ名)・セーブのときに中央へ短い知らせ、ボスを倒したら「ステージクリア」。</summary>
         void DrawStage()
         {
-            GUI.Label(new Rect(24f, 12f, 360f, 28f), stage.PlaceName, label);
-            GUI.Label(new Rect(24f, 40f, 360f, 24f), stage.Status, small);
+            GUI.Label(new Rect(24f, 12f, 360f, 24f), stage.Status, small);
 
             if (stage.Cleared)
             {

@@ -7,9 +7,9 @@ namespace MeleeDuel
     /// <summary>
     /// 近接の試作のステージ:区画を進む一本道。途中で2本(A・B)に分かれ、ボスの手前で合流する。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
-    /// 区画の流れ(扉は前の試作の形で、仮):
-    ///   自機が区画に入る → 入口の扉が閉じ、待機していた敵が動き出す → 区画の敵を全滅させる → 次への扉が開く。
-    /// 敵は区画ごとに位置が決まっていて、波で湧かず、倒したら復活しない。
+    /// 扉はなく、区画どうしは開いた出入口でつながる(敵を倒さなくても先へ進め、分岐もいつでも行き来できる)。
+    /// 敵は区画ごとに位置が決まっていて、波で湧かず、倒したら復活しない。自機が区画に入るまで待機し、入ったら動き出す。
+    /// 敵は受け持ちの区画の外へは出ず、自機が区画から離れたら追わずに持ち場へ戻る(走り抜けても後ろに溜まらない)。
     /// 一度に動き出す数を絞るため、敵ごとに「近づいたら動き出す」「残りが n 体まで減ったら動き出す」を付けられる。
     /// 撃墜されたら、いる区画の入口からやり直す(その区画の敵は置き直す)。F1 は最初から。
     /// ボスを倒すと「ステージクリア」。
@@ -23,8 +23,8 @@ namespace MeleeDuel
         [Header("区画")]
         [Tooltip("区画の縁からこの距離(m)だけ内側へ入ったら、区画に入ったとみなす")]
         public float enterMargin = 5f;
-        [Tooltip("区画に入ったら入口の扉を閉じる(ボス区画は常に閉じる)")]
-        public bool closeEntryOnEnter = true;
+        [Tooltip("自機が区画の縁からこの距離(m)より外へ離れたら、その区画の敵は追うのをやめて持ち場へ戻る(区画の外へはもともと出ない)")]
+        public float chaseMargin = 6f;
         [Tooltip("撃墜されてから、区画の入口でやり直すまでの秒数")]
         public float respawnDelay = 2.5f;
         [Tooltip("やり直した後、敵が動き出すまでの秒数")]
@@ -40,14 +40,14 @@ namespace MeleeDuel
 
         public enum Kind { Grunt, Duelist, Boss }
 
-        /// <summary>区画と区画の間の帯の幅(両側の壁の厚み)。扉はこの帯に立つ。</summary>
+        /// <summary>区画と区画の間の帯の幅(両側の壁の厚み)。出入口はこの帯を抜ける。</summary>
         const float Band = 4f;
         const float WallThick = Band * 0.5f;
         /// <summary>見えない天井の高さ。見えない壁はここまで伸びる(飛んで越えられない)。</summary>
         const float CeilingY = 120f;
 
         static readonly Color WallColor = new(0.42f, 0.44f, 0.47f), PillarColor = new(0.5f, 0.5f, 0.53f),
-            CoverColor = new(0.55f, 0.5f, 0.42f), LedgeColor = new(0.55f, 0.5f, 0.38f), DoorColor = new(0.8f, 0.28f, 0.16f),
+            CoverColor = new(0.55f, 0.5f, 0.42f), LedgeColor = new(0.55f, 0.5f, 0.38f),
             GroundColor = new(0.32f, 0.33f, 0.31f);
 
         enum Side { North, South, East, West }
@@ -78,6 +78,8 @@ namespace MeleeDuel
             public readonly List<Spawn> spawns = new();
             public ZoneState state;
             public float wakeAt;
+            /// <summary>一度でも入ったか(区画名の知らせは最初の1回だけ)。</summary>
+            public bool visited;
             public Vector3 respawnPos;
             public Quaternion respawnRot = Quaternion.identity;
 
@@ -86,13 +88,12 @@ namespace MeleeDuel
             public Vector3 Center => new((x0 + x1) * 0.5f, 0f, (z0 + z1) * 0.5f);
         }
 
-        /// <summary>区画 a から b への扉(a の side の壁にある)。</summary>
+        /// <summary>区画 a と b の間の出入口(a の side の壁にある)。a が手前、b が奥。</summary>
         class Link
         {
             public Zone a, b;
             public Side side;
             public float center, width;
-            public DuelDoor door;
         }
 
         struct Block
@@ -135,7 +136,7 @@ namespace MeleeDuel
         // ───────── 地形と敵の配置 ─────────
 
         /// <summary>
-        /// ステージの形。座標は x が左右、z が奥。区画どうしは Band(4m)の帯をはさんで並べ、帯に扉を置く。
+        /// ステージの形。座標は x が左右、z が奥。区画どうしは Band(4m)の帯をはさんで並べ、帯に出入口(幅16m)を空ける。
         /// 敵の書き方:G = 兵卒、D = 剣士、Boss = ボス。wake = 近づいたら動き出す距離、left = 残りがこの数まで減ったら動き出す、leash = 持ち場の半径。
         /// </summary>
         void Define()
@@ -173,7 +174,7 @@ namespace MeleeDuel
             G(z3, -14, 200, y: 5f, leash: 8f);
             G(z3, -28, 208, y: 5f, leash: 8f);
 
-            // 分岐点:敵はいない(一息)。左右に扉
+            // 分岐点:敵はいない(一息)。左右に出入口
             var z4 = AddZone("分岐点", -10, 50, 222, 262);
             Connect(z3, z4, 20);
 
@@ -219,7 +220,7 @@ namespace MeleeDuel
             Pillar(30, 362, 6, 6);
             Pillar(84, 362, 6, 6);
 
-            // ボス区画:広い四角の部屋。四隅に柱(突進を柱にぶつけられる)。入ると入口が閉じ、少しして動き出す
+            // ボス区画:広い四角の部屋。四隅に柱(突進を柱にぶつけられる)。入ってから少しして動き出す
             var bz = AddZone("ボス区画", 7, 107, 386, 486, wallHeight: 30f, boss: true, wakeDelay: 1.5f);
             Connect(m, bz, 57);
             Pillar(20, 399, 8, 8, 30f);
@@ -237,7 +238,7 @@ namespace MeleeDuel
             return z;
         }
 
-        /// <summary>区画 a から b への扉。center は扉のある壁に沿った位置(南北の壁なら x、東西の壁なら z)。</summary>
+        /// <summary>区画 a(手前)と b(奥)の間の出入口。center は出入口のある壁に沿った位置(南北の壁なら x、東西の壁なら z)。</summary>
         void Connect(Zone a, Zone b, float center, float width = 16f)
         {
             Side s;
@@ -295,6 +296,8 @@ namespace MeleeDuel
         {
             player = p;
             foreach (var z in zones)
+                if (z.Contains(StartPos, 0f)) { z.respawnPos = StartPos; z.respawnRot = StartRot; }   // 最初の区画は出撃地点からやり直す
+            foreach (var z in zones)
                 foreach (var s in z.spawns) Place(s, z);
             beganAt = Time.time;
         }
@@ -320,24 +323,12 @@ namespace MeleeDuel
             ceil.transform.position = new Vector3((minX + maxX) / 2f, CeilingY + 1f, (minZ + maxZ) / 2f);
             ceil.AddComponent<BoxCollider>().size = new Vector3(maxX - minX, 2f, maxZ - minZ);
 
-            // 区画の壁(扉のところは空ける)
+            // 区画の壁(出入口のところは空ける)
             foreach (var z in zones)
             {
                 var zr = new GameObject(z.name).transform;
                 zr.SetParent(root, false);
                 foreach (Side side in System.Enum.GetValues(typeof(Side))) BuildWall(z, side, wallM, zr);
-            }
-
-            // 扉(閉じた状態)
-            foreach (var l in links)
-            {
-                float h = Mathf.Max(l.a.wallHeight, l.b.wallHeight);
-                Vector3 c = DoorPos(l);
-                bool ns = l.side is Side.North or Side.South;
-                var go = Box($"Door {l.a.name}→{l.b.name}", new Vector3(c.x, h / 2f, c.z),
-                    ns ? new Vector3(l.width, h, Band) : new Vector3(Band, h, l.width), ProtoFx.Lit(DoorColor), true, root);
-                l.door = go.AddComponent<DuelDoor>();
-                l.door.Init(h);
             }
 
             foreach (var b in blocks)
@@ -356,7 +347,7 @@ namespace MeleeDuel
             Physics.SyncTransforms();   // 置いたばかりの地形に、すぐレイ(足もとの高さ)が当たるように
         }
 
-        /// <summary>区画の1辺の壁。壁は区画の外側(帯の半分)に立て、扉の幅だけ空ける。南北の壁は角を埋めるため両端へ伸ばす。</summary>
+        /// <summary>区画の1辺の壁。壁は区画の外側(帯の半分)に立て、出入口の幅だけ空ける。南北の壁は角を埋めるため両端へ伸ばす。</summary>
         void BuildWall(Zone z, Side side, Material mat, Transform parent)
         {
             bool ns = side is Side.North or Side.South;
@@ -395,8 +386,8 @@ namespace MeleeDuel
 
         static Side Opposite(Side s) => s switch { Side.North => Side.South, Side.South => Side.North, Side.East => Side.West, _ => Side.East };
 
-        /// <summary>扉の真ん中(床の高さ)。</summary>
-        static Vector3 DoorPos(Link l) => l.side switch
+        /// <summary>出入口の真ん中(床の高さ)。</summary>
+        static Vector3 GatePos(Link l) => l.side switch
         {
             Side.North => new Vector3(l.center, 0f, l.a.z1 + Band / 2f),
             Side.South => new Vector3(l.center, 0f, l.a.z0 - Band / 2f),
@@ -404,7 +395,7 @@ namespace MeleeDuel
             _ => new Vector3(l.a.x0 - Band / 2f, 0f, l.center),
         };
 
-        /// <summary>扉から区画 b の中へ向かう向き。</summary>
+        /// <summary>出入口から区画 b(奥)の中へ向かう向き。</summary>
         static Vector3 Inward(Link l) => l.side switch
         {
             Side.North => Vector3.forward,
@@ -441,12 +432,15 @@ namespace MeleeDuel
 
         // ───────── 敵 ─────────
 
-        /// <summary>敵を待機した状態で置く(区画の入口のほうを向く)。</summary>
+        /// <summary>
+        /// 敵を待機した状態で置く(手前の出入口のほうを向く)。受け持ちの区画を渡すので、区画の外へは出ず、
+        /// 自機が区画から chaseMargin より離れたら持ち場へ戻る。
+        /// </summary>
         void Place(Spawn s, Zone z)
         {
             Vector3 lookAt = StartPos;
             foreach (var l in links)
-                if (l.b == z) { lookAt = DoorPos(l); break; }
+                if (l.b == z) { lookAt = GatePos(l); break; }
             Vector3 dir = lookAt - s.pos;
             dir.y = 0f;
             var go = new GameObject($"{z.name} {KindName(s.kind)}");
@@ -461,6 +455,9 @@ namespace MeleeDuel
             e.Dormant = true;
             e.home = s.pos;
             e.leashRadius = s.leash;
+            e.hasArea = true;
+            e.area = new Rect(z.x0, z.z0, z.x1 - z.x0, z.z1 - z.z0);
+            e.chaseMargin = chaseMargin;
             s.enemy = e;
         }
 
@@ -485,42 +482,41 @@ namespace MeleeDuel
             }
             if (player.Dead) return;
 
+            // 今いる区画:区画の縁から enterMargin より内側にいる区画(帯・出入口にいる間は前の区画のまま)
             Vector3 p = player.transform.position;
             foreach (var z in zones)
-                if (z.state == ZoneState.Waiting && z.Contains(p, enterMargin)) { EnterZone(z); break; }
-            if (current != null && current.state == ZoneState.Active) UpdateZone(current);
+                if (z != current && z.Contains(p, enterMargin)) { EnterZone(z); break; }
+            // 動いている区画は全部見る(走り抜けた区画の敵も、残りが減れば後詰めが動き出す)
+            foreach (var z in zones)
+                if (z.state == ZoneState.Active) UpdateZone(z);
         }
 
+        /// <summary>区画に入った(今いる区画が変わった)。初めてなら敵を動かし始める。</summary>
         void EnterZone(Zone z)
         {
             current = z;
-            // やり直す場所:通ってきた入口の扉のすぐ内側(入口のない最初の区画は出撃地点)
+            // やり直す場所:通ってきた出入口のすぐ内側(近くに出入口がなければ前のまま。最初の区画は出撃地点)
             Link entry = null;
             float best = float.MaxValue;
             foreach (var l in links)
             {
-                if (l.b != z) continue;
-                float d = (DoorPos(l) - player.transform.position).sqrMagnitude;
+                if (l.a != z && l.b != z) continue;
+                float d = (GatePos(l) - player.transform.position).sqrMagnitude;
                 if (d < best) { best = d; entry = l; }
             }
-            if (entry != null)
+            if (entry != null && best < 25f * 25f)
             {
-                z.respawnPos = DoorPos(entry) + Inward(entry) * (Band / 2f + 8f);
-                z.respawnRot = Quaternion.LookRotation(Inward(entry));
+                Vector3 inward = entry.b == z ? Inward(entry) : -Inward(entry);
+                z.respawnPos = GatePos(entry) + inward * (Band / 2f + 8f);
+                z.respawnRot = Quaternion.LookRotation(inward);
             }
-            else
-            {
-                z.respawnPos = StartPos;
-                z.respawnRot = StartRot;
-            }
-            if (closeEntryOnEnter || z.boss)
-                foreach (var l in links)
-                    if (l.b == z && l.door != null) l.door.Close();
+            if (z.visited) return;
+            z.visited = true;
             ShowBanner(z.name);
             if (z.spawns.Count == 0) { ClearZone(z); return; }
             z.state = ZoneState.Active;
             z.wakeAt = Time.time + z.wakeDelay;
-            game.Log(z.boss ? $"{z.name}:入口が閉じた" : $"{z.name}:敵 {z.spawns.Count} 体");
+            game.Log($"{z.name}:敵 {z.spawns.Count} 体");
         }
 
         void UpdateZone(Zone z)
@@ -553,8 +549,6 @@ namespace MeleeDuel
         void ClearZone(Zone z)
         {
             z.state = ZoneState.Cleared;
-            foreach (var l in links)
-                if (l.a == z && l.door != null) l.door.Open();
             if (z.boss)
             {
                 Cleared = true;
@@ -563,13 +557,7 @@ namespace MeleeDuel
                 game.Log("ボスを倒した");
                 return;
             }
-            if (z.spawns.Count > 0) game.Log($"{z.name}を制圧 ― 扉が開いた");
-            else
-            {
-                int exits = 0;
-                foreach (var l in links) if (l.a == z) exits++;
-                if (exits > 1) game.Log("道が分かれている");
-            }
+            if (z.spawns.Count > 0) game.Log($"{z.name}を制圧");
         }
 
         void ShowBanner(string text)
@@ -580,7 +568,10 @@ namespace MeleeDuel
 
         public void OnPlayerDied() => respawnAt = Time.unscaledTime + respawnDelay;
 
-        /// <summary>いる区画の入口からやり直す。区画が終わっていなければ、その区画の敵を全部置き直す。</summary>
+        /// <summary>
+        /// 今いる区画の入口からやり直す。区画の敵が残っていれば、その区画の敵を全部置き直す(倒した敵も戻る)。
+        /// ほかの区画の敵はそのまま(区画から離れれば持ち場へ戻っている)。
+        /// </summary>
         void RespawnInZone()
         {
             var z = current;
@@ -614,7 +605,7 @@ namespace MeleeDuel
             {
                 if (current == null) return "";
                 if (current.state == ZoneState.Cleared)
-                    return Cleared ? "ステージクリア" : current.spawns.Count > 0 ? "制圧 ― 次の扉が開いた" : "敵なし";
+                    return Cleared ? "ステージクリア" : current.spawns.Count > 0 ? "制圧" : "敵なし";
                 int n = 0;
                 foreach (var s in current.spawns) if (s.enemy != null && !s.enemy.Dead) n++;
                 return $"残りの敵 {n}";
@@ -643,7 +634,7 @@ namespace MeleeDuel
                 }
             }
             Gizmos.color = new Color(1f, 0.5f, 0.2f);
-            foreach (var l in links) Gizmos.DrawCube(DoorPos(l) + Vector3.up * 3f, new Vector3(3f, 6f, 3f));
+            foreach (var l in links) Gizmos.DrawCube(GatePos(l) + Vector3.up * 3f, new Vector3(3f, 6f, 3f));
             foreach (var b in blocks)
             {
                 Gizmos.color = b.color;

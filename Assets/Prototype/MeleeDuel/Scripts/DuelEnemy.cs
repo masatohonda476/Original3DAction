@@ -18,8 +18,10 @@ namespace MeleeDuel
     /// ボス(大剣士):剣士を大きく硬くし、固有の技を3つ足したもの(大薙ぎ・突進・跳躍叩きつけ)。数値は BossMoves(ステージの DuelStage で触れる)。
     ///   大薙ぎ:深く沈み、上半身を左へ大きくひねって剣を担ぐ(普通の横薙ぎは右へひねる)→ その場で1回転して全周を斬る /
     ///   突進:剣を担いで深く前かがみになり、じりじり下がって溜める → 遠くから一直線に突っ込む(壁にぶつかると長くよろける) /
-    ///   跳躍叩きつけ:剣を掲げたまま深くしゃがみ込んで溜める → 自機のいた所へ跳び、落ちた所を叩いて衝撃波を広げる(空中にいれば衝撃波は当たらない)
+    ///   跳躍叩きつけ:剣を掲げたまま深くしゃがみ込んで溜める → 自機のいた所へ跳び、落ちた所を叩いて衝撃波を広げる(空中にいれば衝撃波は当たらない) /
+    ///   三段斬り(HPが半分を切ってから):剣を正面に構えたまま左右に揺れてリズムを刻む → 踏み込みながら右・左・縦の3連撃(最後が重い)
     /// ステージでは、自機が区画に入るまで待機し(Dormant)、持ち場(home・leashRadius)から出ない敵も置ける。
+    /// 受け持ちの区画(area)を持つ敵は区画の外へ出ず、自機が区画から離れたら追わずに持ち場へ戻る(区画どうしに扉がないため)。
     /// </summary>
     public class DuelEnemy : DuelFighter
     {
@@ -81,8 +83,16 @@ namespace MeleeDuel
             [Tooltip("衝撃波(ガード可。空中にいれば当たらない)")] public float waveDamage = 12f, waveGuardCost = 30f, waveStagger = 15f, waveKnock = 14f;
             [Tooltip("着地してからの隙(秒)")] public float leapRecover = 1.4f;
 
-            [Header("HPが半分を切ったら")]
-            [Tooltip("技を選び直す間隔に掛ける倍率(小さいほど攻めが速い)")] public float enragedThinkMul = 0.7f;
+            [Header("三段斬り(HPが半分を切ってから使い出す。踏み込みながら右・左・縦の3連撃)")]
+            [Tooltip("HPがこの割合を切ったら使い出す")] public float flurryFromHP = 0.5f;
+            [Tooltip("近い間合いで技を選ぶとき、三段斬りを選ぶ確率")] public float flurryChance = 0.3f;
+            [Tooltip("予備動作:剣を正面に構えたまま左右に揺れてリズムを刻み、最後に右へひねる(秒)")] public float flurryWindup = 1.0f;
+            [Tooltip("2段目・3段目の振りかぶり(秒)。この間に前へ踏み込む")] public float flurryStepWindup = 0.45f;
+            [Tooltip("2段目・3段目で踏み込む距離(m)")] public float flurryLunge = 6f;
+            [Tooltip("届くすき間の距離(大きさの倍率が掛かる)と、正面からの角度(度)")] public float flurryReach = 8f, flurryArc = 70f;
+            [Tooltip("1・2段目(横の斬り。ガード可)")] public float flurryDamage = 14f, flurryGuardCost = 25f, flurryStagger = 10f, flurryKnock = 10f;
+            [Tooltip("3段目(縦の振り下ろし。ガード可だが重い)")] public float flurryLastDamage = 22f, flurryLastGuardCost = 40f, flurryLastStagger = 20f, flurryLastKnock = 24f;
+            [Tooltip("3段目の後の隙(秒)")] public float flurryRecover = 1.6f;
         }
 
         /// <summary>剣士(中型):1対1で読み合う相手。</summary>
@@ -125,7 +135,7 @@ namespace MeleeDuel
         public enum State { Approach, Strafe, Windup, Active, Recover, Flinch, Dead }
         /// <summary>技を出している途中(予備動作か、出ている間)。同時に攻撃する数を数えるのに使う。</summary>
         public bool Attacking => Current is State.Windup or State.Active;
-        public enum Skill { Sweep, Slam, Thrust, AntiAir, WideSweep, Charge, LeapSlam }
+        public enum Skill { Sweep, Slam, Thrust, AntiAir, WideSweep, Charge, LeapSlam, Flurry }
         public bool IsBoss => Kind != null && Kind.boss != null;
         BossMoves B => Kind.boss;
 
@@ -135,6 +145,26 @@ namespace MeleeDuel
         [Tooltip("持ち場の中心と半径。0より大きければ、歩いてそこから出ない(段差の上で待ち構える敵など)")]
         public Vector3 home;
         public float leashRadius;
+        [Tooltip("受け持ちの区画(x と z の四角)を持つか。持てば区画の外へは出ず、自機が区画から chaseMargin より離れたら持ち場へ戻る")]
+        public bool hasArea;
+        public Rect area;
+        public float chaseMargin = 12f;
+
+        /// <summary>自機が受け持ちの区画から離れている(追わずに持ち場へ戻る)。</summary>
+        bool PlayerAway => hasArea && player != null && !InArea(player.transform.position, -chaseMargin);
+        bool InArea(Vector3 p, float inset) =>
+            p.x >= area.xMin + inset && p.x <= area.xMax - inset && p.z >= area.yMin + inset && p.z <= area.yMax - inset;
+
+        /// <summary>区画の外へ出たら、区画の縁(機体の半径ぶん内側)へ戻す。出入口から外へ出ていかない。</summary>
+        void ClampToArea()
+        {
+            Vector3 p = transform.position;
+            float r = Radius;
+            float x = Mathf.Clamp(p.x, area.xMin + r, area.xMax - r);
+            float z = Mathf.Clamp(p.z, area.yMin + r, area.yMax - r);
+            if (Mathf.Approximately(x, p.x) && Mathf.Approximately(z, p.z)) return;
+            Teleport(new Vector3(x, p.y, z), transform.rotation);
+        }
         public State Current { get; private set; }
         public float Stagger { get; private set; }
         public bool Flinching => Current == State.Flinch;
@@ -155,6 +185,7 @@ namespace MeleeDuel
         float lastDt;
         bool chargeWall;      // 突進が壁で止まった
         Quaternion spinFrom;  // 大薙ぎ:回り始めの向き
+        int flurryIndex;      // 三段斬りの何段目か(0〜2)
 
         public void Init(DuelGame g, DuelPlayer p, Spec spec)
         {
@@ -192,7 +223,7 @@ namespace MeleeDuel
         void UpdateFlight(float dt)
         {
             bool want = false;
-            if (CanFlyNow && player != null && !player.Dead && Current != State.Flinch && Current != State.Dead &&
+            if (CanFlyNow && player != null && !player.Dead && !PlayerAway && Current != State.Flinch && Current != State.Dead &&
                 !(Current == State.Active && skill == Skill.AntiAir))
             {
                 float above = player.transform.position.y - transform.position.y;
@@ -240,7 +271,20 @@ namespace MeleeDuel
             dashing = false;
             if (Current != State.Strafe) sideDashT = 0f;
 
-            switch (Current)
+            if (PlayerAway && Current is State.Approach or State.Strafe)
+            {
+                // 自機が区画から離れた:追わずに持ち場へ歩いて戻り、自機のほうを向いて待つ
+                if (Current == State.Strafe) Enter(State.Approach);
+                Vector3 toHome = home - transform.position;
+                toHome.y = 0f;
+                if (toHome.magnitude > 3f)
+                {
+                    Face(toHome, 8f, dt);
+                    vel = toHome.normalized * approachSpeed;
+                }
+                else Face(dir, 8f, dt);
+            }
+            else switch (Current)
             {
                 case State.Approach:
                     Face(dir, 8f, dt);
@@ -279,6 +323,9 @@ namespace MeleeDuel
                     // 突き・突進の溜め:少し後ろへ下がる
                     if (Current == State.Windup && skill == Skill.Thrust) vel = -transform.forward * 5f;
                     if (Current == State.Windup && skill == Skill.Charge) vel = -transform.forward * 6f;
+                    // 三段斬りの2段目・3段目:振りかぶりながら前へ踏み込む
+                    if (Current == State.Windup && skill == Skill.Flurry && flurryIndex > 0)
+                        vel = transform.forward * (B.flurryLunge / Mathf.Max(0.05f, B.flurryStepWindup));
                     break;
 
                 case State.Active:
@@ -310,6 +357,7 @@ namespace MeleeDuel
             lastPos = transform.position;
             lastDt = dt;
             Move(vel, dt);
+            if (hasArea) ClampToArea();
             Animate(dt, vel);
         }
 
@@ -326,8 +374,7 @@ namespace MeleeDuel
                 ph.y = 0f;
                 if (ph.magnitude > leashRadius + 6f) { thinkAt = Time.time + 0.3f; return; }
             }
-            float thinkMul = IsBoss && HP < MaxHP * 0.5f ? B.enragedThinkMul : 1f;
-            thinkAt = Time.time + Random.Range(Kind.thinkMin, Kind.thinkMax) * thinkMul;
+            thinkAt = Time.time + Random.Range(Kind.thinkMin, Kind.thinkMax);
             // 自機が頭上を飛んでいる:跳び上がり斬りで落とす(届かない高さ・選ばなかったときは見上げて待つ)
             float above = player.transform.position.y - transform.position.y;
             if (player.Airborne && above > game.mechHeight * Size * 0.8f)
@@ -350,7 +397,8 @@ namespace MeleeDuel
 
         /// <summary>
         /// ボスの技選び。遠ければ突進か跳躍叩きつけで詰め、近ければ横薙ぎ・叩きつけ・大薙ぎを混ぜる。
-        /// 固有の技(大薙ぎ・突進・跳躍叩きつけ)は続けて同じものを出さない。
+        /// HPが半分を切ったら、近い間合いで三段斬りも混ぜる。
+        /// 固有の技(大薙ぎ・突進・跳躍叩きつけ・三段斬り)は続けて同じものを出さない。
         /// </summary>
         void ThinkBoss(float gap, float r)
         {
@@ -362,12 +410,13 @@ namespace MeleeDuel
                 else if (gap <= B.leapMaxDistance) s = Skill.LeapSlam;
                 else return;   // 遠すぎる:歩いて詰める
             }
+            else if (HP < MaxHP * B.flurryFromHP && Random.value < B.flurryChance) s = Skill.Flurry;
             else if (r < 0.25f) s = Skill.WideSweep;
             else if (r < 0.55f) s = Skill.Sweep;
             else if (r < 0.75f) s = Skill.Slam;
             else if (r < 0.87f) s = Skill.LeapSlam;
             else s = Skill.Thrust;
-            if (s == lastSkill && s is Skill.WideSweep or Skill.Charge or Skill.LeapSlam) s = Skill.Sweep;
+            if (s == lastSkill && s is Skill.WideSweep or Skill.Charge or Skill.LeapSlam or Skill.Flurry) s = Skill.Sweep;
             if (Airborne && s is Skill.Slam or Skill.LeapSlam) s = Skill.Sweep;   // 空中では叩きつけ・跳躍は使わない
             StartSkill(s);
         }
@@ -377,6 +426,7 @@ namespace MeleeDuel
             Skill.WideSweep => B.wideWindup,
             Skill.Charge => B.chargeWindup,
             Skill.LeapSlam => B.leapWindup,
+            Skill.Flurry => flurryIndex == 0 ? B.flurryWindup : B.flurryStepWindup,
             _ => Kind.windupMul * skill switch
             {
                 Skill.Sweep => chain > 0 ? 0.35f : 0.55f,
@@ -399,6 +449,7 @@ namespace MeleeDuel
             if (s != Skill.Sweep) chain = 0;
             hitDone = false;
             chargeWall = false;
+            flurryIndex = 0;
             Enter(State.Windup, WindupTime);
         }
 
@@ -510,6 +561,14 @@ namespace MeleeDuel
                 if ((stateT > 0.25f && !Airborne) || stateT >= stateDur) { Land(); return Vector3.zero; }
                 return leapVel;
             }
+            if (stateT >= stateDur && skill == Skill.Flurry && flurryIndex < 2)
+            {
+                // 三段斬り:次の段へ(踏み込みながら振りかぶる)
+                flurryIndex++;
+                hitDone = false;
+                Enter(State.Windup, WindupTime);
+                return vel;
+            }
             if (stateT >= stateDur)
             {
                 // 横薙ぎは半分の確率で2発目へ。それ以外は隙(叩きつけが一番長い)
@@ -518,6 +577,7 @@ namespace MeleeDuel
                 {
                     Skill.Slam => 1.1f, Skill.Thrust => 0.8f, Skill.AntiAir => 1.2f,   // 跳び上がり斬りは落ちてくる間も隙
                     Skill.WideSweep => B.wideRecover,
+                    Skill.Flurry => B.flurryRecover,
                     Skill.Charge => chargeWall ? B.chargeWallRecover : B.chargeRecover,   // 壁にぶつかったら長くよろける
                     _ => 0.6f,
                 });
@@ -545,6 +605,19 @@ namespace MeleeDuel
                     inRange = true;   // 触れた時点で呼ばれる
                     h.damage = 20f; h.guardable = true; h.guardCost = 35f; h.stagger = 15f; h.hurtTime = 0.3f; h.knock = 18f;
                     break;
+                case Skill.Flurry:
+                {
+                    Vector3 tf = player.transform.position - transform.position;
+                    tf.y = 0f;
+                    inRange = GapTo(player) <= B.flurryReach * Size && (tf.magnitude < Radius + player.Radius + 1f || Vector3.Angle(commitDir, tf) <= B.flurryArc);
+                    bool last = flurryIndex >= 2;
+                    h.damage = last ? B.flurryLastDamage : B.flurryDamage; h.guardable = true;
+                    h.guardCost = last ? B.flurryLastGuardCost : B.flurryGuardCost;
+                    h.stagger = last ? B.flurryLastStagger : B.flurryStagger;
+                    h.hurtTime = last ? 0.5f : 0.25f;
+                    h.knock = last ? B.flurryLastKnock : B.flurryKnock;
+                    break;
+                }
                 case Skill.WideSweep:
                     inRange = GapTo(player) <= B.wideReach * Size;   // 全周
                     h.damage = B.wideDamage; h.guardable = true; h.guardCost = B.wideGuardCost; h.stagger = B.wideStagger; h.hurtTime = 0.5f; h.knock = B.wideKnock;
@@ -652,6 +725,30 @@ namespace MeleeDuel
                             tLean = -24f * Mathf.Clamp01(k * 1.5f);
                             tLift = -1.8f * k;
                             break;
+                        case Skill.Flurry:
+                            if (flurryIndex == 0)
+                            {
+                                // 三段斬り:剣を正面に半ば掲げたまま、左右に揺れてリズムを刻む。最後に右へひねって1段目へ
+                                Pose(clip, R * 0.6f, 20f);
+                                tTwist = Mathf.Lerp(12f * Mathf.Sin(k * Mathf.PI * 4f), 30f, Mathf.Clamp01((k - 0.7f) / 0.3f));
+                                tLift = -1f * k;
+                            }
+                            else if (flurryIndex == 1)
+                            {
+                                // 2段目:剣を振り上げ直しながら左へひねる
+                                Pose(clip, Mathf.Lerp(S, R, k), 25f);
+                                tTwist = Mathf.Lerp(-30f, -35f, k);
+                                tLean = 8f;
+                            }
+                            else
+                            {
+                                // 3段目:剣を頭上へ高く掲げ、のけぞる
+                                Pose(clip, Mathf.Lerp(S, R, k), 25f);
+                                tTwist = Mathf.Lerp(30f, 0f, k);
+                                tLean = -12f * k;
+                            }
+                            rate = 20f;
+                            break;
                         case Skill.WideSweep:
                             // 大薙ぎ:深く沈み、上半身を左へ大きくひねって剣を担ぐ(普通の横薙ぎは右へひねる)
                             Pose(clip, R * Mathf.Clamp01(k * 1.4f), 20f);
@@ -684,6 +781,15 @@ namespace MeleeDuel
                     if (skill == Skill.Thrust) { Pose(MechRig.Dash, 0f, 20f); tLean = 24f; break; }
                     if (skill == Skill.AntiAir) { Pose(clip, Mathf.Lerp(R, S, k), 25f); tLean = -32f; break; }   // 上へ斬り上げながら跳ぶ
                     if (skill == Skill.Charge) { Pose(clip, hitDone ? S : R, 25f); tLean = 30f; tTwist = hitDone ? -20f : 45f; break; }   // 担いだまま突っ込む
+                    if (skill == Skill.Flurry)
+                    {
+                        // 右→左 / 左→右 / 縦の振り下ろし
+                        Pose(clip, Mathf.Lerp(R, S, k), 25f);
+                        if (flurryIndex == 0) tTwist = Mathf.Lerp(30f, -30f, k);
+                        else if (flurryIndex == 1) tTwist = Mathf.Lerp(-35f, 30f, k);
+                        else tLean = Mathf.Lerp(-12f, 24f, k);
+                        break;
+                    }
                     if (skill == Skill.WideSweep) { Pose(clip, Mathf.Lerp(R, S, k), 25f); tTwist = Mathf.Lerp(-70f, 0f, k); tLift = Mathf.Lerp(-2.2f, -1f, k); break; }   // 機体ごと回る
                     if (skill == Skill.LeapSlam)
                     {
@@ -702,6 +808,7 @@ namespace MeleeDuel
                     Pose(clip, Mathf.Lerp(S, E, k), 20f);
                     if (skill == Skill.AntiAir) tLean = -32f * (1f - k);
                     if (skill == Skill.WideSweep) tLift = -1f * (1f - k);
+                    if (skill == Skill.Flurry) { tLean = 24f * (1f - k); tLift = -1.2f * (1f - k); }   // 振り下ろしたまま沈んで、ゆっくり起き上がる
                     if (skill == Skill.Charge)
                     {
                         // 壁にぶつかったら、のけぞって左右によろける

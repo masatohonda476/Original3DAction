@@ -77,7 +77,7 @@ namespace MeleeDuel
             if (stage != null)
             {
                 stage.Begin(player);
-                Log("ステージの試作:区画の敵を全滅させると次の扉が開く。F1で最初から");
+                Log("ステージの試作:区画を進み、奥のボスを倒せばクリア。F1で最初から");
             }
             else
             {

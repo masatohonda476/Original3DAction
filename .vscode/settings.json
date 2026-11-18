@@ -67,5 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "Original3DAction_6.3.slnx"
+    "dotnet.defaultSolution": "Original3DAction.slnx"
 }

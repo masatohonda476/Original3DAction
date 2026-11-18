@@ -9,7 +9,7 @@ namespace MeleeDuel
     /// 確かめたいこと:剣士との1対1を続けて面白いか / 群れを位置取りと回避斬りでさばけるか /
     /// 回避が軸になっているか / ガードが便利すぎないか。
     /// F1(または SHARE+△)でやり直し。
-    /// stage(DuelStage)があれば、波で出す代わりに区画を進むステージになる(MeleeDuelStage.unity)。
+    /// stage(DuelStage)があれば、波で出す代わりに、墜落した船の中を登るステージになる(MeleeDuelStage.unity)。
     /// </summary>
     public class DuelGame : MonoBehaviour
     {
@@ -23,7 +23,7 @@ namespace MeleeDuel
         [Tooltip("部屋の半分の広さ。0 以下なら外へ出ないようにはしない(ステージは壁で止める)")]
         public float arenaHalf = 60f;
 
-        [Header("ステージ(あれば波の代わりに区画を進む)")]
+        [Header("ステージ(あれば波の代わりにステージを進む)")]
         public DuelStage stage;
 
         [Header("敵")]
@@ -77,7 +77,7 @@ namespace MeleeDuel
             if (stage != null)
             {
                 stage.Begin(player);
-                Log("ステージの試作:区画を進み、奥のボスを倒せばクリア。F1で最初から");
+                Log("ステージの試作:船の中を上へ登り、頭頂部のボスを倒せばクリア。F1で最初から");
             }
             else
             {
@@ -167,8 +167,9 @@ namespace MeleeDuel
         {
             if (stage != null)
             {
-                // ステージ:区画の残りは DuelStage が数える。やり直しで置き直した敵は二重に数えない
-                if (stage.CountKill(e)) kills++;
+                // ステージ:倒した敵は復活しないので、そのまま数える。ボスならクリア
+                kills++;
+                stage.OnEnemyDied(e);
                 return;
             }
             kills++;
@@ -180,7 +181,7 @@ namespace MeleeDuel
         public void OnPlayerDied()
         {
             Log("撃墜された");
-            if (stage != null) stage.OnPlayerDied();   // 区画の入口からやり直す
+            if (stage != null) stage.OnPlayerDied();   // 最後に触れたセーブポイントから再開する
             else restartAt = Time.unscaledTime + 2.5f;
         }
 
@@ -279,14 +280,14 @@ namespace MeleeDuel
             GUI.color = Color.white;
 
             if (stage != null) DrawStage();
-            if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― 区画の入口からやり直します" : "撃墜 ― やり直します", big);
+            if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― セーブポイントから再開します" : "撃墜 ― やり直します", big);
         }
 
-        /// <summary>ステージ:左上に区画名と残りの敵、区画に入ったときに中央へ区画名、ボスを倒したら「ステージクリア」。</summary>
+        /// <summary>ステージ:左上に今いる場所と全体の残りの敵、初めて入った場所・セーブのときに中央へ短い知らせ、ボスを倒したら「ステージクリア」。</summary>
         void DrawStage()
         {
-            GUI.Label(new Rect(24f, 12f, 360f, 28f), stage.ZoneName, label);
-            GUI.Label(new Rect(24f, 40f, 360f, 24f), stage.ZoneStatus, small);
+            GUI.Label(new Rect(24f, 12f, 360f, 28f), stage.PlaceName, label);
+            GUI.Label(new Rect(24f, 40f, 360f, 24f), stage.Status, small);
 
             if (stage.Cleared)
             {

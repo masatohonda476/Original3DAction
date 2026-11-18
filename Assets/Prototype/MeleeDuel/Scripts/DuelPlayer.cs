@@ -176,7 +176,55 @@ namespace MeleeDuel
             combo = 0;
             airVel = Vector3.zero;
             Target = null;
+            stepTravel = 0f;
+            FootstepRadius = 0f;
             Enter(State.Free);
+        }
+
+        /// <summary>HPとガードを満タンにする(セーブポイント)。</summary>
+        public void RestoreHP()
+        {
+            if (Dead) return;
+            HP = MaxHP;
+            Guard = maxGuard;
+        }
+
+        // ───────── 足音(敵が聞く。音の大きさの設定には関係なく、動いた距離から出す) ─────────
+
+        /// <summary>一歩ごとに増える番号(敵は変わったときだけ聞く)・鳴った所・届く範囲(m)・鳴った時刻。</summary>
+        public int FootstepSequence { get; private set; }
+        public Vector3 FootstepPosition { get; private set; }
+        public float FootstepRadius { get; private set; }
+        public float FootstepTime { get; private set; } = -100f;
+        float stepTravel;
+
+        /// <summary>
+        /// 動いた距離から足音を出す(ステージだけ)。歩き・走りはスティックの倒し具合(速さ)で届く範囲が変わり、
+        /// ブースト移動・回避・飛行は遠くまで届く。飛行は止まって浮いていても鳴る。空中を流れているだけ・押されただけ・瞬間移動は数えない。
+        /// </summary>
+        void RecordFootsteps(Vector3 before, float dt, bool moveInput)
+        {
+            var s = game.stage != null ? game.stage.senses : null;
+            if (s == null || dt <= 0f) return;
+            Vector3 d = transform.position - before;
+            float flat = new Vector2(d.x, d.z).magnitude;
+            bool dodge = Current == State.Dodge;
+            bool walking = (Current is State.Free or State.Guard) && moveInput && !Airborne;
+            if (d.magnitude > Mathf.Max(6f, dt * 80f) || !(flying || dodge || walking))
+            {
+                stepTravel = 0f;
+                return;
+            }
+            if (!flying && flat / dt < 0.5f) { stepTravel = 0f; return; }
+            bool hard = flying || dodge || Dashing;
+            stepTravel += flying ? Mathf.Max(d.magnitude, 12f * dt) : flat;
+            if (stepTravel < (hard ? s.strideHard : s.strideWalk)) return;
+            stepTravel = 0f;
+            FootstepSequence++;
+            FootstepPosition = transform.position;
+            FootstepTime = Time.time;
+            FootstepRadius = flying ? s.flyStep : dodge ? s.dodgeStep : Dashing ? s.boostStep
+                : Mathf.Lerp(s.walkMin, s.walkMax, Mathf.InverseLerp(0.15f, 1f, flat / dt / runSpeed));
         }
 
         void Update()
@@ -285,7 +333,9 @@ namespace MeleeDuel
             }
             else airVel = vel;
 
+            Vector3 before = transform.position;
             Move(vel, dt);
+            RecordFootsteps(before, dt, worldMove.sqrMagnitude > 0.02f);
             Animate(dt, vel);
         }
 
@@ -304,8 +354,22 @@ namespace MeleeDuel
 
         // ───────── ロックオン ─────────
 
+        /// <summary>ロックオンできる距離(ステージだけ。0 なら制限なし)。</summary>
+        float LockRange => game.stage != null ? game.stage.lockRange : 0f;
+
+        /// <summary>ロックオンしてよい敵か(ステージでは、ロックオンできる距離の内側で、壁・床ごしでない敵だけ)。</summary>
+        bool Lockable(DuelEnemy e)
+        {
+            if (e == null || e.Dead) return false;
+            float r = LockRange;
+            if (r <= 0f) return true;
+            return (e.transform.position - transform.position).sqrMagnitude <= r * r && DuelSenses.ClearSight(LockPoint, e.LockPoint);
+        }
+
         void UpdateLock()
         {
+            // ステージ:ロックオンできる距離の1.5倍より離れたら外す
+            if (Target != null && LockRange > 0f && (Target.transform.position - transform.position).sqrMagnitude > LockRange * LockRange * 2.25f) Target = null;
             if (Target != null && Target.Dead) Target = Nearest();   // 倒したら、残っている一番近い敵へ
             if (ProtoInput.LockToggle) Target = Target == null ? Nearest() : null;
             if (ProtoInput.SwitchTarget) Target = Nearest(Target);
@@ -331,7 +395,7 @@ namespace MeleeDuel
             float bestAngle = float.MaxValue;
             foreach (var e in game.Enemies)
             {
-                if (e == null || e.Dead || e == Target) continue;
+                if (e == null || e.Dead || e == Target || !Lockable(e)) continue;
                 float a = Vector3.SignedAngle(toCur, Flat(e.transform.position - transform.position), Vector3.up);
                 if (a * side <= 0f) continue;
                 if (Mathf.Abs(a) < bestAngle) { bestAngle = Mathf.Abs(a); best = e; }
@@ -348,15 +412,15 @@ namespace MeleeDuel
             {
                 if (e == null || e.Dead || e == except) continue;
                 float d = (e.transform.position - transform.position).sqrMagnitude;
-                if (d < bestD) { bestD = d; best = e; }
+                if (d < bestD && Lockable(e)) { bestD = d; best = e; }
             }
-            return best != null ? best : except;
+            return best != null ? best : except != null && !except.Dead ? except : null;
         }
 
-        /// <summary>敵が出てきたとき、ロックオンしていなければその敵に合わせる。</summary>
+        /// <summary>敵が出てきた・こちらに気づいたとき、ロックオンしていなければその敵に合わせる。</summary>
         public void AutoLock(DuelEnemy e)
         {
-            if (Target == null || Target.Dead) Target = e;
+            if ((Target == null || Target.Dead) && Lockable(e)) Target = e;
         }
 
         // ───────── 回避 ─────────

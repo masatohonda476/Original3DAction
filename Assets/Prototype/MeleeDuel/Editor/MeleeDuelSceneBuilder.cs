@@ -76,8 +76,9 @@ namespace MeleeDuel.EditorTools
         public const string StageScenePath = Root + "/MeleeDuelStage.unity";
 
         /// <summary>
-        /// ステージ(区画を進む一本道+分岐+ボス)のシーン。地形と敵は DuelStage が Play の開始時にコードから組み立てるので、
-        /// シーンにはカメラ・光・DuelGame と DuelStage だけを置く(区画と敵の位置はシーンビューにギズモで出る)。
+        /// ステージ(墜落した船の中を下から上へ登る。途中で外殻の道と配管の道に分かれ、頭頂部の大ホールにボス)のシーン。
+        /// 地形と敵は DuelStage が Play の開始時にコードから組み立てるので、シーンにはカメラ・光・DuelGame と DuelStage だけを置く
+        /// (地形・敵の位置と向き・セーブポイントはシーンビューにギズモで出る)。
         /// </summary>
         [MenuItem("Prototype/MeleeDuel/ステージのシーンを組み立てる")]
         public static void BuildStage()

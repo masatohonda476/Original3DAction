@@ -5,32 +5,35 @@ using UnityEngine;
 namespace MeleeDuel
 {
     /// <summary>
-    /// 近接の試作のステージ:区画を進む一本道。途中で2本(A・B)に分かれ、ボスの手前で合流する。
+    /// 近接の試作のステージ:墜落して地面に斜めに突き刺さった、横倒しの巨大な船の中を、下から上へ登る。区画の区切りはなく、ひと続きの地形。
+    ///   地面の裂け目(入口・最下層。開けている)→ 横倒しの居住区(元の壁が床になった狭い部屋が3つ。ドアの穴が床・天井にある)→
+    ///   大きな竪穴(張り出した足場・折れた梁をブースト飛行で上る。足場に敵)→ 分岐:外殻を伝う外の道(開けた斜面)/ 内部の配管の道(狭いダクト)→
+    ///   合流(機関区画)→ 頭頂部の大ホール(天井が裂けている。ボス)。
+    /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
+    /// セーブポイント(光る柱)に触れると再開地点が変わる。撃墜されたら最後に触れたセーブポイントから再開し、
+    /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
-    /// 扉はなく、区画どうしは開いた出入口でつながる(敵を倒さなくても先へ進め、分岐もいつでも行き来できる)。
-    /// 敵は区画ごとに位置が決まっていて、波で湧かず、倒したら復活しない。自機が区画に入るまで待機し、入ったら動き出す。
-    /// 敵は受け持ちの区画の外へは出ず、自機が区画から離れたら追わずに持ち場へ戻る(走り抜けても後ろに溜まらない)。
-    /// 一度に動き出す数を絞るため、敵ごとに「近づいたら動き出す」「残りが n 体まで減ったら動き出す」を付けられる。
-    /// 撃墜されたら、いる区画の入口からやり直す(その区画の敵は置き直す)。F1 は最初から。
-    /// ボスを倒すと「ステージクリア」。
     /// </summary>
     public class DuelStage : MonoBehaviour
     {
         [Header("見た目(シーンを組み立てるときに入る。なければ仮の色)")]
         public Material groundMat;
         public Material wallMat;
+        [Tooltip("地形が影を落とすか。オフなら天井のある部屋の中にも日が当たって見やすい")]
+        public bool terrainShadows;
 
-        [Header("区画")]
-        [Tooltip("区画の縁からこの距離(m)だけ内側へ入ったら、区画に入ったとみなす")]
-        public float enterMargin = 5f;
-        [Tooltip("自機が区画の縁からこの距離(m)より外へ離れたら、その区画の敵は追うのをやめて持ち場へ戻る(区画の外へはもともと出ない)")]
-        public float chaseMargin = 6f;
-        [Tooltip("待機中の敵は、自機がこの距離(m)まで近づいたら区画に入る前でも起きる(出入口ごしに目の前にいるのに斬れない置物にならないように)")]
-        public float wakeNear = 20f;
-        [Tooltip("撃墜されてから、区画の入口でやり直すまでの秒数")]
+        [Header("発覚(敵が自機に気づく仕組み)")]
+        public DuelSenses senses = new();
+        [Tooltip("ロックオンできる距離(m)。壁・床ごしの敵はロックオンしない")]
+        public float lockRange = 80f;
+
+        [Header("セーブポイント")]
+        [Tooltip("触れたとみなす水平の距離(m)")]
+        public float saveRadius = 14f;
+        [Tooltip("触れたら HP とガードを満タンにする(作者に未確認。切るなら外す)")]
+        public bool saveHeals = true;
+        [Tooltip("撃墜されてから、セーブポイントで再開するまでの秒数")]
         public float respawnDelay = 2.5f;
-        [Tooltip("やり直した後、敵が動き出すまでの秒数")]
-        public float respawnGrace = 1.2f;
 
         [Header("ボス(大剣士)")]
         public float bossHP = 520f;
@@ -38,94 +41,78 @@ namespace MeleeDuel
         public float bossSize = 2.5f;
         [Tooltip("怯みゲージの最大(剣士は25)。大きいほど怯みにくい")]
         public float bossMaxStagger = 70f;
+        [Tooltip("ボスが歩いて出ない、持ち場からの半径(m。大ホールの外へ出ないように)")]
+        public float bossLeash = 70f;
         public DuelEnemy.BossMoves bossMoves = new();
 
         public enum Kind { Grunt, Duelist, Boss }
 
-        /// <summary>区画と区画の間の帯の幅(両側の壁の厚み)。出入口はこの帯を抜ける。</summary>
-        const float Band = 4f;
-        const float WallThick = Band * 0.5f;
+        /// <summary>壁の厚み。</summary>
+        const float T = 3f;
         /// <summary>見えない天井の高さ。見えない壁はここまで伸びる(飛んで越えられない)。</summary>
-        const float CeilingY = 120f;
+        const float CeilingY = 280f;
 
-        static readonly Color WallColor = new(0.42f, 0.44f, 0.47f), PillarColor = new(0.5f, 0.5f, 0.53f),
-            CoverColor = new(0.55f, 0.5f, 0.42f), LedgeColor = new(0.55f, 0.5f, 0.38f),
-            GroundColor = new(0.32f, 0.33f, 0.31f);
+        static readonly Color HullColor = new(0.36f, 0.38f, 0.42f), WallColor = new(0.45f, 0.46f, 0.48f),
+            FloorColor = new(0.34f, 0.35f, 0.36f), DebrisColor = new(0.5f, 0.46f, 0.4f), FurnitureColor = new(0.55f, 0.5f, 0.42f),
+            PipeColor = new(0.42f, 0.5f, 0.46f), MachineColor = new(0.5f, 0.47f, 0.52f), RockColor = new(0.36f, 0.33f, 0.3f),
+            DoorColor = new(0.16f, 0.17f, 0.19f), LampColor = new(0.85f, 0.85f, 0.7f);
 
-        enum Side { North, South, East, West }
-        enum ZoneState { Waiting, Active, Cleared }
+        struct Block
+        {
+            public Vector3 center, size;
+            public Quaternion rot;
+            public Color color;
+            /// <summary>上に見えない壁を天井まで伸ばす(飛んで越えられない。回していない箱だけ)。</summary>
+            public bool barrier;
+            /// <summary>当たり判定なし(床・天井に描いたドアの印など)。</summary>
+            public bool decal;
+            /// <summary>見えない(見えない壁そのもの)。</summary>
+            public bool invisible;
+            /// <summary>床に使う(groundMat を貼る)。</summary>
+            public bool floor;
+        }
 
         class Spawn
         {
             public Kind kind;
             public Vector3 pos;
-            /// <summary>自機がこの距離(m)まで近づいたら動き出す。0 以下なら使わない。</summary>
-            public float wakeDistance;
-            /// <summary>区画の残り(これと同じく残りを待っている敵を除く)がこの数以下になったら動き出す。負なら使わない。</summary>
-            public int wakeWhenLeft = -1;
-            /// <summary>持ち場の半径(0 なら制限なし)。</summary>
-            public float leash;
+            public float yaw, leash;
             public DuelEnemy enemy;
-            /// <summary>撃破数に数えた(やり直しで置き直した敵を倒しても二重に数えない)。</summary>
-            public bool counted;
-            /// <summary>どちらの条件もなければ、区画に入った時点で動き出す。</summary>
-            public bool WakeOnEntry => wakeDistance <= 0f && wakeWhenLeft < 0;
         }
 
-        class Zone
+        class Area
         {
             public string name;
-            public float x0, x1, z0, z1, wallHeight;
-            public bool boss;
-            /// <summary>区画に入ってから敵が動き出すまでの秒数(ボスの登場の間)。</summary>
-            public float wakeDelay;
-            public readonly List<Spawn> spawns = new();
-            public ZoneState state;
-            public float wakeAt;
-            /// <summary>一度でも入ったか(区画名の知らせは最初の1回だけ)。</summary>
+            public Bounds bounds;
             public bool visited;
-            public Vector3 respawnPos;
-            public Quaternion respawnRot = Quaternion.identity;
-
-            public bool Contains(Vector3 p, float margin) =>
-                p.x > x0 + margin && p.x < x1 - margin && p.z > z0 + margin && p.z < z1 - margin;
-            public Vector3 Center => new((x0 + x1) * 0.5f, 0f, (z0 + z1) * 0.5f);
         }
 
-        /// <summary>区画 a と b の間の出入口(a の side の壁にある)。a が手前、b が奥。</summary>
-        class Link
+        class SavePoint
         {
-            public Zone a, b;
-            public Side side;
-            public float center, width;
+            public string name;
+            public Vector3 pos;
+            public float yaw;
+            public Renderer glow;
+            public Light light;
+            public bool inside;
+            public Vector3 RespawnPos => pos + Quaternion.Euler(0f, yaw, 0f) * Vector3.forward * 7f;
+            public Quaternion RespawnRot => Quaternion.Euler(0f, yaw, 0f);
         }
 
-        struct Block
-        {
-            public Vector3 min, max;
-            public Color color;
-            /// <summary>上に見えない壁を天井まで伸ばす(柱の上に乗れない)。</summary>
-            public bool tall;
-        }
-
-        /// <summary>+z へ上る坂。</summary>
-        struct Ramp
-        {
-            public float x0, x1, z0, z1, height;
-        }
-
-        readonly List<Zone> zones = new();
-        readonly List<Link> links = new();
         readonly List<Block> blocks = new();
-        readonly List<Ramp> ramps = new();
+        readonly List<Spawn> spawns = new();
+        readonly List<Area> places = new();
+        readonly List<SavePoint> saves = new();
+        Bounds bossRoom;
 
         public Vector3 StartPos { get; private set; }
         public Quaternion StartRot { get; private set; } = Quaternion.identity;
 
         DuelGame game;
         DuelPlayer player;
-        Zone current;
         Spawn bossSpawn;
+        SavePoint currentSave;
+        Area currentPlace;
         float respawnAt = -1f, beganAt;
         bool built;
 
@@ -133,155 +120,328 @@ namespace MeleeDuel
         public bool Cleared { get; private set; }
         /// <summary>ボスを倒すまでにかかった秒数。</summary>
         public float ClearTime { get; private set; }
-        /// <summary>画面の中央に少しの間出す知らせ(区画名など)と、出した時刻。</summary>
+        /// <summary>画面の中央に少しの間出す知らせ(場所の名前・セーブなど)と、出した時刻。</summary>
         public string Banner { get; private set; }
         public float BannerAt { get; private set; } = -10f;
 
         // ───────── 地形と敵の配置 ─────────
 
         /// <summary>
-        /// ステージの形。座標は x が左右、z が奥。区画どうしは Band(4m)の帯をはさんで並べ、帯に出入口(幅16m)を空ける。
-        /// 敵の書き方:G = 兵卒、D = 剣士、Boss = ボス。wake = 近づいたら動き出す距離、left = 残りがこの数まで減ったら動き出す、leash = 持ち場の半径。
+        /// ステージの形。座標は x が左右、z が奥(船の頭のほう)、y が上。船は奥へ行くほど高い。
+        /// 敵:G = 兵卒、D = 剣士、Boss = ボス。yaw は立ち番の向き(0 = 奥(+z)、90 = 右(+x)、180 = 手前)。leash は歩いて出ない半径(足場の敵)。
         /// </summary>
         void Define()
         {
-            zones.Clear();
-            links.Clear();
             blocks.Clear();
-            ramps.Clear();
+            spawns.Clear();
+            places.Clear();
+            saves.Clear();
             bossSpawn = null;
-            StartPos = new Vector3(0f, 0f, 8f);
-            StartRot = Quaternion.identity;
 
-            // 第1区画:広め。柱2本。兵卒2体は近づくと動き出し、3体目は1体まで減ったら来る
-            var z1 = AddZone("第1区画", -30, 30, 0, 60);
-            Pillar(-14, 30, 6, 6);
-            Pillar(14, 40, 6, 6);
-            G(z1, -8, 44, wake: 30);
-            G(z1, 10, 50, wake: 30);
-            G(z1, 0, 56, left: 1);
+            // ── 1. 地面の裂け目(入口・最下層):開けた窪地。正面に船の外板がそびえ、瓦礫の斜面を登って裂け目から中へ入る ──
+            Region("地面の裂け目", -96, 96, -10, 80, -46, 112);
+            Slab(-96, 96, -46, 113, 0f, FloorColor, 3f, floor: true);
+            Solid(-96, -90, 0, 40, -46, 113, RockColor, barrier: true);   // 窪地の崖
+            Solid(90, 96, 0, 40, -46, 113, RockColor, barrier: true);
+            Solid(-96, 96, 0, 40, -46, -40, RockColor, barrier: true);
+            // 船の外板(下端)。裂け目は高さ14〜34m
+            WallX(113.5f, -90, 90, -3, 60, HullColor, -12, 12, 14, 34, barrier: true);
+            RampZ(-14, 14, 70, 0, 112, 14, DebrisColor, 4f);   // 瓦礫の斜面(19°)
+            Solid(-24, -14, 0, 8, 90, 112, DebrisColor);         // 斜面の脇の瓦礫
+            Solid(14, 22, 0, 10, 96, 112, DebrisColor);
+            Decal(-22, 22, 0, 0.06f, 56, 70, DoorColor);          // 地面の裂け目
+            // 剥がれ落ちた外板・折れた桁(物陰)
+            Solid(-44, -26, 0, 7, 24, 28, HullColor);
+            Solid(22, 30, 0, 6, 38, 50, HullColor);
+            Solid(-40, -34, 0, 5, 60, 86, DebrisColor);
+            Solid(40, 60, 0, 14, 70, 90, HullColor);
+            Save("入口", 0, 0, -6, 0f);
+            G(-30, 0, 44, 90);    // 横を向いて立つ(物陰づたいに近づける)
+            G(34, 0, 64, 200);
+            G(6, 12, 104, 180);   // 裂け目の見張り(斜面を見下ろす)
 
-            // 第2区画:狭い通路(幅22m)。奥で剣士が1体待つ
-            var z2 = AddZone("第2区画", -11, 11, 64, 144);
-            Connect(z1, z2, 0);
-            D(z2, 0, 128);
+            // ── 2. 横倒しの居住区:元の壁が床になった狭い部屋が3つ。寝台・ロッカーが壁から横に突き出し、ドアの穴が床と天井にある ──
+            Region("居住区", -27, 27, 8, 82, 112, 251);
+            // 部屋1(床14m):奥の天井にドアの穴(部屋2へ)。下に倒れた寝台の山を踏み台に、飛んで抜ける
+            Slab(-27, 27, 112, 161, 14f, FloorColor, 3f, floor: true);
+            WallZ(-25.5f, 112, 200, 11, 63, WallColor);
+            WallZ(25.5f, 112, 200, 11, 63, WallColor);
+            WallX(161.5f, -27, 27, 11, 37, WallColor);
+            SlabHole(-27, 27, 112, 199, 37f, -22, -4, 142, 158, FloorColor);   // 部屋1の天井 = 部屋2の床(ドアの穴)
+            Solid(-24, -12, 14, 22, 144, 158, FurnitureColor);    // 倒れた寝台の山(踏み台)
+            Solid(16, 24, 14, 19, 118, 136, FurnitureColor);      // 横倒しのロッカー
+            Decal(-6, 6, 14, 14.06f, 120, 128, DoorColor);        // 床のドア(元は横の部屋への扉)
+            Decal(6, 16, 33.94f, 34f, 120, 130, DoorColor);       // 天井のドア
+            Decal(-24, -23.9f, 22, 23, 116, 140, LampColor);      // 壁を走る照明(元は天井の照明)
+            G(12, 14, 146, 270);
+            // 部屋2(床37m):剣士が1体。奥の扉の穴へ瓦礫の坂
+            WallX(138.5f, -27, 27, 37, 63, WallColor);
+            WallX(197.5f, -27, 27, 34, 63, WallColor, -10, 10, 45, 58);
+            Slab(-27, 27, 137, 199, 63f, WallColor);
+            Solid(14, 24, 37, 43, 150, 186, FurnitureColor);      // 横倒しのロッカーの列
+            Solid(-24, -20, 37, 52, 168, 184, WallColor);         // 倒れかかった仕切り
+            RampZ(-10, 10, 178, 37, 196, 45, DebrisColor);        // 瓦礫の坂(24°)
+            Decal(-18, -6, 59.94f, 60f, 170, 180, DoorColor);
+            Decal(0, 10, 37, 37.06f, 150, 158, DoorColor);
+            D(2, 37, 166, 120);
+            // 部屋3(元の通路):床が奥へ少し上る(8°)。天井にドアの穴が並ぶ。奥の裂け目から竪穴へ
+            RampZ(-27, 27, 196, 45, 254, 53, FloorColor, 3f, floor: true);
+            WallZ(-25.5f, 196, 254, 40, 81, WallColor);
+            WallZ(25.5f, 196, 254, 40, 81, WallColor);
+            Slab(-27, 27, 196, 254, 81f, WallColor);
+            RampZ(-24, -18, 204, R3(204) + 5f, 246, R3(246) + 5f, FurnitureColor, 5f);   // 横倒しのロッカー
+            RampZ(18, 24, 214, R3(214) + 4f, 236, R3(236) + 4f, FurnitureColor, 4f);     // 横倒しの寝台
+            Decal(-6, 6, 77.94f, 78f, 214, 222, DoorColor);
+            Decal(-6, 6, 77.94f, 78f, 232, 240, DoorColor);
+            G(-8, R3(222), 222, 0);     // 奥(竪穴のほう)を向く
+            G(12, R3(240), 240, 270);
 
-            // 第3区画:高低差。左奥に高さ5mの台(手前の左端に坂)。床に兵卒2、台の上に持ち場から動かない兵卒2
-            var z3 = AddZone("第3区画", -40, 40, 148, 218);
-            Connect(z2, z3, 0);
-            Platform(-40, -2, 180, 218, 5f);
-            RampZ(-40, -28, 162, 180, 5f);
-            Pillar(31, 180, 6, 6);
-            Cover(6, 168, 14, 3);
-            G(z3, 10, 190);
-            G(z3, 26, 204);
-            G(z3, -14, 200, y: 5f, leash: 8f);
-            G(z3, -28, 208, y: 5f, leash: 8f);
+            // ── 3. 大きな竪穴:縦に長い吹き抜け(床30m〜天井160m)。張り出した足場と折れた梁を、ブースト飛行で上る ──
+            Region("竪穴", -48, 48, 25, 165, 251, 327);
+            Slab(-48, 48, 251, 327, 30f, FloorColor, 3f, floor: true);
+            Slab(-48, 48, 251, 327, 163f, WallColor);
+            WallX(252.5f, -48, 48, 27, 163, WallColor, -14, 14, 53, 72);   // 居住区からの裂け目
+            WallX(325.5f, -48, 48, 27, 163, WallColor);
+            WallZ(-46.5f, 251, 327, 27, 163, WallColor, 309, 323, 124, 140);                // 西:配管の道へ
+            WallZ(46.5f, 251, 327, 27, 163, HullColor, 309, 323, 124, 142, barrier: true);  // 東:外殻の外へ
+            Solid(-20, 5, 30, 38, 280, 300, DebrisColor);   // 底の瓦礫
+            Solid(10, 30, 30, 34, 300, 320, DebrisColor);
+            Slab(-14, 14, 254, 265, 53f, FloorColor);       // 足場0(入ったところ)
+            Slab(22, 45, 258, 290, 70f, FloorColor);        // 足場1(東)
+            RampZ(25, 45, 290, 70, 302, 62, FloorColor);    // 足場1の先の折れた床(垂れ下がる)
+            Solid(-20, 22, 75, 78, 282, 288, DebrisColor);  // 折れた梁(足場1 → 足場2 の中継)
+            Slab(-45, -20, 272, 306, 88f, FloorColor);      // 足場2(西)
+            Solid(-20, 15, 94, 97, 293, 299, DebrisColor);  // 折れた梁(足場2 → 足場3 の中継)
+            Slab(15, 45, 280, 302, 106f, FloorColor);       // 足場3(東)
+            Slab(-45, 45, 306, 324, 124f, FloorColor);      // 竪穴の上の踊り場(分岐)
+            G(30, 70, 268, 270, leash: 9f);
+            G(40, 70, 282, 200, leash: 9f);
+            G(-33, 88, 290, 90, leash: 9f);
+            G(25, 106, 292, 180, leash: 8f);
+            G(38, 106, 286, 270, leash: 8f);
+            Save("竪穴の上", 30, 124, 316, 270f);   // 足場3から上がったところ(東へも西へも、この脇を通る)
 
-            // 分岐点:敵はいない(一息)。左右に出入口
-            var z4 = AddZone("分岐点", -10, 50, 222, 262);
-            Connect(z3, z4, 20);
+            // ── 4a. 外殻を伝う外の道(開けている):横倒しの船の側面(いまは上面)の外板の上を、斜面(20°)で上る ──
+            Region("外殻", 43, 155, 100, 280, 285, 466);
+            Slab(48, 150, 290, 332, 124f, HullColor, 6f, floor: true);              // 出たところの外板
+            RampZ(48, 150, 332, 124, 432, 160, HullColor, 6f, floor: true);         // 外板の斜面
+            Slab(43, 150, 432, 462, 160f, HullColor, 6f, floor: true);              // 上の外板(機関区画の入口)
+            // 縁:低い縁取り+見えない壁(落ちない)
+            Solid(150, 153, 118, 127, 290, 332, HullColor);
+            RampZ(150, 153, 332, 127, 432, 163, HullColor, 9f);
+            Solid(150, 153, 154, 163, 432, 462, HullColor);
+            Solid(48, 153, 118, 127, 287, 290, HullColor);
+            Barrier(150, 153, 287, 465, 100f);
+            Barrier(48, 153, 287, 290, 100f);
+            Solid(43, 153, 154, 176, 462, 465, HullColor, barrier: true);
+            Solid(43, 48, 100, 200, 326, 432, HullColor, barrier: true);   // 船体の張り出し(内側の壁)
+            // めくれた外板・アンテナの柱・砲塔の残骸(物陰)
+            Solid(70, 80, 124, 130, 300, 308, DebrisColor);
+            Solid(66, 82, Outer(356) - 3f, Outer(360) + 6f, 356, 360, HullColor);
+            Solid(100, 104, Outer(372) - 3f, Outer(388) + 5f, 372, 388, HullColor);
+            Solid(128, 132, Outer(400) - 3f, Outer(404) + 45f, 400, 404, MachineColor);
+            Solid(60, 76, Outer(404) - 3f, Outer(418) + 8f, 404, 418, MachineColor);
+            Solid(95, 110, 160, 166, 440, 446, DebrisColor);
+            // 斜面の中ほどに3体、上の外板に3体(群れ)
+            G(75, Outer(372), 372, 180);
+            G(92, Outer(395), 395, 210);
+            G(122, Outer(380), 380, 250);
+            G(62, 160, 452, 90);
+            G(88, 160, 447, 180);
+            G(125, 160, 455, 225);
 
-            // 分岐A:兵卒の群れが多い、開けた道。低い遮蔽物の間で群れをさばく
-            var a1 = AddZone("分岐A-1", -104, -14, 222, 302);
-            Connect(z4, a1, 242);
-            Cover(-40, 236, 3, 14);
-            Cover(-70, 260, 14, 3);
-            Cover(-50, 284, 3, 12);
-            Pillar(-88, 246, 6, 6);
-            G(a1, -50, 245);
-            G(a1, -56, 267);
-            G(a1, -44, 275);
-            G(a1, -90, 272, left: 1);
-            G(a1, -85, 232, left: 1);
+            // ── 4b. 内部の配管の道(狭い):ダクトを西へ、折れて北へ上り、ポンプ室を抜けて機関区画へ ──
+            Region("配管", -135, -40, 119, 192, 300, 445);
+            // ダクト1(西へ。幅20m・高さ16m)
+            Slab(-119, -48, 303, 329, 124f, FloorColor, 3f, floor: true);
+            Slab(-119, -45, 303, 329, 143f, WallColor);
+            WallX(304.5f, -119, -48, 121, 143, PipeColor);
+            WallX(327.5f, -96, -48, 121, 143, PipeColor);
+            Solid(-60, -52, 124, 130, 306, 316, PipeColor);   // 床を這う配管
+            // ダクト2(北へ上る。14°)。壁沿いの配管の束で、さらに狭い
+            RampZ(-116, -96, 326, 124, 398, 142, FloorColor, 3f, floor: true);
+            RampZ(-119, -93, 326, 145, 400, 163, WallColor);   // 天井(床と平行)
+            WallZ(-117.5f, 303, 400, 121, 165, PipeColor);
+            WallZ(-94.5f, 326, 400, 121, 165, PipeColor);
+            RampZ(-116, -111, 330, D2(330) + 5f, 396, D2(396) + 5f, PipeColor, 5f);   // 配管の束
+            Solid(-111, -96, D2(352) - 1f, D2(356) + 3.5f, 352, 356, PipeColor);       // 床を横切る太い配管(跳び越える)
+            G(-90, 124, 316, 0);
+            D(-103, D2(385), 385, 160);
+            // ポンプ室(床142m)
+            Slab(-133, -77, 397, 443, 142f, FloorColor, 3f, floor: true);
+            Slab(-133, -77, 397, 443, 173f, WallColor);
+            WallX(398.5f, -133, -77, 139, 173, PipeColor, -116, -96, 142, 160);
+            WallX(441.5f, -133, -77, 139, 173, PipeColor);
+            WallZ(-131.5f, 397, 443, 139, 173, PipeColor);
+            WallZ(-78.5f, 397, 443, 139, 173, PipeColor, 410, 430, 142, 165);
+            Solid(-112, -106, 142, 170, 412, 418, PipeColor);   // 縦の配管(柱)
+            Solid(-98, -92, 142, 170, 424, 430, PipeColor);
+            Solid(-128, -118, 142, 150, 426, 440, MachineColor);   // ポンプ
+            G(-88, 142, 432, 270);
+            G(-122, 142, 408, 90);
+            // ダクト3(東へ上る。26°)→ 機関区画
+            RampX(-80, 142, -43, 160, 410, 430, FloorColor, 3f, floor: true);
+            RampX(-80, 168, -40, 187.5f, 407, 433, WallColor);
+            WallX(408.5f, -80, -40, 139, 190, PipeColor);
+            WallX(431.5f, -80, -40, 139, 190, PipeColor);
 
-            var a2 = AddZone("分岐A-2", -100, -30, 306, 366);
-            Connect(a1, a2, -60);
-            Pillar(-78, 330, 6, 6);
-            Pillar(-52, 344, 6, 6);
-            G(a2, -70, 340);
-            G(a2, -45, 330);
-            G(a2, -88, 356, left: 1);
-            G(a2, -42, 358, left: 1);
+            // ── 5. 合流:機関区画(床160m)。中央に大きな機関。敵はいない(ボスの前の一息) ──
+            Region("機関区画", -40, 43, 155, 195, 400, 463);
+            Slab(-43, 43, 402, 463, 160f, FloorColor, 3f, floor: true);
+            Slab(-43, 43, 402, 463, 191f, WallColor);
+            WallZ(-41.5f, 402, 463, 157, 191, WallColor, 410, 430, 160, 180);
+            WallZ(41.5f, 402, 463, 157, 191, HullColor, 435, 455, 160, 178, barrier: true);
+            WallX(403.5f, -43, 43, 157, 191, WallColor);
+            WallX(461.5f, -43, 43, 157, 191, WallColor, -14, 14, 160, 183);
+            Solid(-12, 12, 160, 174, 425, 445, MachineColor);   // 機関
+            Solid(-34, -26, 160, 188, 446, 454, PipeColor);
+            Solid(26, 34, 160, 188, 408, 416, PipeColor);
+            Save("機関区画", 0, 160, 449, 0f);    // 大ホールへの坂の手前(どちらの道から来ても通る)
 
-            // 分岐B:剣士が待つ狭い道(幅22m)。壁から張り出した柱で、ところどころさらに狭い
-            var b1 = AddZone("分岐B-1", 54, 134, 232, 254);
-            Connect(z4, b1, 242);
-            Pillar(100, 251, 6, 6);
-            D(b1, 120, 243);
+            // ── 6. 頭頂部の大ホール(床176m):広い。天井が大きく裂けている。四隅寄りに柱(突進を柱にぶつけられる) ──
+            Region("大ホール", -75, 75, 155, 280, 463, 625);
+            RampZ(-14, 14, 463, 160, 497, 176, FloorColor, 3f, floor: true);   // 機関区画からの坂(25°)
+            WallZ(-15.5f, 460, 499, 157, 200, WallColor);
+            WallZ(15.5f, 460, 499, 157, 200, WallColor);
+            Slab(-17, 17, 460, 499, 200f, WallColor);
+            Slab(-73, 73, 496, 622, 176f, FloorColor, 4f, floor: true);
+            WallX(497.5f, -73, 73, 172, 236, HullColor, -14, 14, 176, 197, barrier: true);
+            WallX(620.5f, -73, 73, 172, 236, HullColor, barrier: true);
+            WallZ(-71.5f, 496, 622, 172, 236, HullColor, barrier: true);
+            WallZ(71.5f, 496, 622, 172, 236, HullColor, barrier: true);
+            Slab(-73, 73, 496, 528, 236f, HullColor);       // 天井(手前)
+            Slab(-73, 73, 592, 622, 236f, HullColor);       // 天井(奥)
+            Slab(-73, -30, 528, 592, 236f, HullColor);      // 天井(西)。残りは裂けて空が見える
+            RampZ(-10, 30, 528, 236, 548, 214, HullColor);  // 裂けて垂れ下がった天井板
+            Solid(-50, -42, 176, 236, 526, 534, WallColor);
+            Solid(42, 50, 176, 236, 526, 534, WallColor);
+            Solid(-50, -42, 176, 236, 586, 594, WallColor);
+            Solid(42, 50, 176, 236, 586, 594, WallColor);
+            bossRoom = new Bounds(new Vector3(0f, 225f, 559.5f), new Vector3(140f, 110f, 119f));   // 入口の坂を上りきったら
+            bossSpawn = Add(Kind.Boss, 0, 176, 575, 180, 0f);
 
-            var b2 = AddZone("分岐B-2", 112, 134, 258, 338);
-            Connect(b1, b2, 123);
-            Pillar(115, 290, 6, 6);
-            Pillar(131, 312, 6, 6);
-            D(b2, 123, 300);
-            D(b2, 123, 326, left: 0);   // 1体目を倒したら2体目
-
-            // 合流点:敵はいない(ボスの前の一息)。A・B どちらからも入れる
-            var m = AddZone("合流点", -26, 140, 342, 382);
-            Connect(a2, m, 354);
-            Connect(b2, m, 123);
-            Pillar(30, 362, 6, 6);
-            Pillar(84, 362, 6, 6);
-
-            // ボス区画:広い四角の部屋。四隅に柱(突進を柱にぶつけられる)。入ってから少しして動き出す
-            var bz = AddZone("ボス区画", 7, 107, 386, 486, wallHeight: 30f, boss: true, wakeDelay: 1.5f);
-            Connect(m, bz, 57);
-            Pillar(20, 399, 8, 8, 30f);
-            Pillar(94, 399, 8, 8, 30f);
-            Pillar(20, 473, 8, 8, 30f);
-            Pillar(94, 473, 8, 8, 30f);
-            bossSpawn = Add(bz, Kind.Boss, 57, 450, 0f, 0f, -1, 0f);
+            StartPos = saves[0].RespawnPos;
+            StartRot = saves[0].RespawnRot;
         }
 
-        Zone AddZone(string name, float x0, float x1, float z0, float z1, float wallHeight = 14f, bool boss = false, float wakeDelay = 0f)
+        /// <summary>居住区の部屋3の床の高さ(奥へ 8° 上る)。</summary>
+        static float R3(float z) => 45f + (z - 196f) * 8f / 58f;
+        /// <summary>外殻の斜面の高さ。</summary>
+        static float Outer(float z) => 124f + Mathf.Clamp(z - 332f, 0f, 100f) * 0.36f;
+        /// <summary>配管の道のダクト2の床の高さ。</summary>
+        static float D2(float z) => 124f + Mathf.Clamp(z - 326f, 0f, 72f) * 0.25f;
+
+        // ───────── 配置の書き方 ─────────
+
+        void Region(string name, float x0, float x1, float y0, float y1, float z0, float z1)
         {
-            var z = new Zone { name = name, x0 = x0, x1 = x1, z0 = z0, z1 = z1, wallHeight = wallHeight, boss = boss, wakeDelay = wakeDelay };
-            z.respawnPos = z.Center;
-            zones.Add(z);
-            return z;
+            var b = new Bounds();
+            b.SetMinMax(new Vector3(x0, y0, z0), new Vector3(x1, y1, z1));
+            places.Add(new Area { name = name, bounds = b });
         }
 
-        /// <summary>区画 a(手前)と b(奥)の間の出入口。center は出入口のある壁に沿った位置(南北の壁なら x、東西の壁なら z)。</summary>
-        void Connect(Zone a, Zone b, float center, float width = 16f)
-        {
-            Side s;
-            if (Mathf.Abs(a.z1 + Band - b.z0) < 0.01f) s = Side.North;
-            else if (Mathf.Abs(a.z0 - Band - b.z1) < 0.01f) s = Side.South;
-            else if (Mathf.Abs(a.x1 + Band - b.x0) < 0.01f) s = Side.East;
-            else if (Mathf.Abs(a.x0 - Band - b.x1) < 0.01f) s = Side.West;
-            else
-            {
-                Debug.LogError($"[DuelStage] {a.name} と {b.name} が帯をはさんで隣り合っていません");
-                return;
-            }
-            links.Add(new Link { a = a, b = b, side = s, center = center, width = width });
-        }
+        void Save(string name, float x, float y, float z, float yaw) =>
+            saves.Add(new SavePoint { name = name, pos = new Vector3(x, y, z), yaw = yaw });
 
-        void G(Zone z, float x, float zz, float wake = 0f, int left = -1, float leash = 0f, float y = 0f) => Add(z, Kind.Grunt, x, zz, y, wake, left, leash);
-        void D(Zone z, float x, float zz, float wake = 0f, int left = -1) => Add(z, Kind.Duelist, x, zz, 0f, wake, left, 0f);
+        void G(float x, float y, float z, float yaw, float leash = 0f) => Add(Kind.Grunt, x, y, z, yaw, leash);
+        void D(float x, float y, float z, float yaw) => Add(Kind.Duelist, x, y, z, yaw, 0f);
 
-        Spawn Add(Zone z, Kind kind, float x, float zz, float y, float wake, int left, float leash)
+        Spawn Add(Kind kind, float x, float y, float z, float yaw, float leash)
         {
-            var s = new Spawn { kind = kind, pos = new Vector3(x, y, zz), wakeDistance = wake, wakeWhenLeft = left, leash = leash };
-            z.spawns.Add(s);
+            var s = new Spawn { kind = kind, pos = new Vector3(x, y, z), yaw = yaw, leash = leash };
+            spawns.Add(s);
             return s;
         }
 
-        /// <summary>天井まで届く柱(上に乗れない)。x・z は中心。</summary>
-        void Pillar(float x, float z, float w, float d, float h = 14f) =>
-            blocks.Add(new Block { min = new Vector3(x - w / 2, 0f, z - d / 2), max = new Vector3(x + w / 2, h, z + d / 2), color = PillarColor, tall = true });
+        /// <summary>軸にそろった箱(x・y・z の範囲)。</summary>
+        void Solid(float x0, float x1, float y0, float y1, float z0, float z1, Color c, bool barrier = false, bool floor = false)
+        {
+            var min = new Vector3(Mathf.Min(x0, x1), Mathf.Min(y0, y1), Mathf.Min(z0, z1));
+            var max = new Vector3(Mathf.Max(x0, x1), Mathf.Max(y0, y1), Mathf.Max(z0, z1));
+            if ((max - min).x < 0.01f || (max - min).y < 0.01f || (max - min).z < 0.01f) return;
+            blocks.Add(new Block { center = (min + max) / 2f, size = max - min, rot = Quaternion.identity, color = c, barrier = barrier, floor = floor });
+        }
 
-        /// <summary>低い遮蔽物(高さ4m。機体の半分ほど)。x・z は中心。</summary>
-        void Cover(float x, float z, float w, float d, float h = 4f) =>
-            blocks.Add(new Block { min = new Vector3(x - w / 2, 0f, z - d / 2), max = new Vector3(x + w / 2, h, z + d / 2), color = CoverColor });
+        /// <summary>床・天井の板(上面の高さ top、厚み thick)。</summary>
+        void Slab(float x0, float x1, float z0, float z1, float top, Color c, float thick = 3f, bool floor = false) =>
+            Solid(x0, x1, top - thick, top, z0, z1, c, floor: floor);
 
-        /// <summary>上に乗れる台。</summary>
-        void Platform(float x0, float x1, float z0, float z1, float h) =>
-            blocks.Add(new Block { min = new Vector3(x0, 0f, z0), max = new Vector3(x1, h, z1), color = LedgeColor });
+        /// <summary>四角い穴の空いた板(穴の周りを4枚で組む)。</summary>
+        void SlabHole(float x0, float x1, float z0, float z1, float top, float hx0, float hx1, float hz0, float hz1, Color c, float thick = 3f)
+        {
+            Slab(x0, x1, z0, hz0, top, c, thick);
+            Slab(x0, x1, hz1, z1, top, c, thick);
+            Slab(x0, hx0, hz0, hz1, top, c, thick);
+            Slab(hx1, x1, hz0, hz1, top, c, thick);
+        }
 
-        void RampZ(float x0, float x1, float z0, float z1, float h) =>
-            ramps.Add(new Ramp { x0 = x0, x1 = x1, z0 = z0, z1 = z1, height = h });
+        /// <summary>
+        /// x に沿った壁(z の位置が中心、厚み T)。開口(ox0〜ox1、高さ oy0〜oy1)があれば、その周りを組む。
+        /// barrier なら上へ見えない壁を伸ばす(開口の下の部分には付けない)。
+        /// </summary>
+        void WallX(float z, float x0, float x1, float y0, float y1, Color c, float ox0 = 0f, float ox1 = 0f, float oy0 = 0f, float oy1 = 0f, bool barrier = false)
+        {
+            float z0 = z - T / 2f, z1 = z + T / 2f;
+            if (ox1 <= ox0) { Solid(x0, x1, y0, y1, z0, z1, c, barrier); return; }
+            Solid(x0, ox0, y0, y1, z0, z1, c, barrier);
+            Solid(ox1, x1, y0, y1, z0, z1, c, barrier);
+            Solid(ox0, ox1, y0, oy0, z0, z1, c);
+            Solid(ox0, ox1, oy1, y1, z0, z1, c, barrier);
+        }
+
+        /// <summary>z に沿った壁(x の位置が中心、厚み T)。開口は oz0〜oz1、高さ oy0〜oy1。</summary>
+        void WallZ(float x, float z0, float z1, float y0, float y1, Color c, float oz0 = 0f, float oz1 = 0f, float oy0 = 0f, float oy1 = 0f, bool barrier = false)
+        {
+            float x0 = x - T / 2f, x1 = x + T / 2f;
+            if (oz1 <= oz0) { Solid(x0, x1, y0, y1, z0, z1, c, barrier); return; }
+            Solid(x0, x1, y0, y1, z0, oz0, c, barrier);
+            Solid(x0, x1, y0, y1, oz1, z1, c, barrier);
+            Solid(x0, x1, y0, oy0, oz0, oz1, c);
+            Solid(x0, x1, oy1, y1, oz0, oz1, c, barrier);
+        }
+
+        /// <summary>z に沿った斜めの板。上面が (z0, y0) から (z1, y1) へ(z0 &lt; z1)。</summary>
+        void RampZ(float x0, float x1, float z0, float y0, float z1, float y1, Color c, float thick = 3f, bool floor = false)
+        {
+            float run = z1 - z0, rise = y1 - y0;
+            var rot = Quaternion.Euler(-Mathf.Atan2(rise, run) * Mathf.Rad2Deg, 0f, 0f);
+            Vector3 topMid = new((x0 + x1) / 2f, (y0 + y1) / 2f, (z0 + z1) / 2f);
+            blocks.Add(new Block
+            {
+                center = topMid - rot * Vector3.up * (thick / 2f), size = new Vector3(Mathf.Abs(x1 - x0), thick, Mathf.Sqrt(run * run + rise * rise)),
+                rot = rot, color = c, floor = floor,
+            });
+        }
+
+        /// <summary>x に沿った斜めの板。上面が (x0, y0) から (x1, y1) へ(x0 &lt; x1)。</summary>
+        void RampX(float x0, float y0, float x1, float y1, float z0, float z1, Color c, float thick = 3f, bool floor = false)
+        {
+            float run = x1 - x0, rise = y1 - y0;
+            var rot = Quaternion.Euler(0f, 0f, Mathf.Atan2(rise, run) * Mathf.Rad2Deg);
+            Vector3 topMid = new((x0 + x1) / 2f, (y0 + y1) / 2f, (z0 + z1) / 2f);
+            blocks.Add(new Block
+            {
+                center = topMid - rot * Vector3.up * (thick / 2f), size = new Vector3(Mathf.Sqrt(run * run + rise * rise), thick, Mathf.Abs(z1 - z0)),
+                rot = rot, color = c, floor = floor,
+            });
+        }
+
+        /// <summary>見えない壁(y0 から見えない天井まで。機体だけが当たり、レイ・カメラは素通り)。</summary>
+        void Barrier(float x0, float x1, float z0, float z1, float y0) =>
+            blocks.Add(new Block
+            {
+                center = new Vector3((x0 + x1) / 2f, (y0 + CeilingY) / 2f, (z0 + z1) / 2f), size = new Vector3(x1 - x0, CeilingY - y0, z1 - z0),
+                rot = Quaternion.identity, invisible = true,
+            });
+
+        /// <summary>当たり判定のない薄い印(床・天井・壁に描いたドア・照明)。</summary>
+        void Decal(float x0, float x1, float y0, float y1, float z0, float z1, Color c)
+        {
+            Solid(x0, x1, y0, y1, z0, z1, c);
+            var b = blocks[^1];
+            b.decal = true;
+            blocks[^1] = b;
+        }
 
         // ───────── 組み立て ─────────
 
@@ -295,160 +455,127 @@ namespace MeleeDuel
             BuildGeometry();
         }
 
-        /// <summary>敵を(待機したまま)全部置いて始める。</summary>
+        /// <summary>敵を全部、持ち場に(まだ気づいていない状態で)置き、セーブポイントを立てて始める。</summary>
         public void Begin(DuelPlayer p)
         {
             player = p;
-            foreach (var z in zones)
-                if (z.Contains(StartPos, 0f)) { z.respawnPos = StartPos; z.respawnRot = StartRot; }   // 最初の区画は出撃地点からやり直す
-            foreach (var z in zones)
-                foreach (var s in z.spawns) Place(s, z);
+            foreach (var s in spawns) PlaceEnemy(s);
+            foreach (var sp in saves) BuildSaveMarker(sp);
+            SetCurrentSave(saves[0]);
             beganAt = Time.time;
         }
 
         void BuildGeometry()
         {
             var root = new GameObject("Stage").transform;
-            var wallM = wallMat != null ? wallMat : ProtoFx.Lit(WallColor);
-
-            // 床:全区画を覆う1枚(上面が高さ0)
-            float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
-            foreach (var z in zones)
+            var mats = new Dictionary<Color, Material>();
+            Material Mat(Color c)
             {
-                minX = Mathf.Min(minX, z.x0); maxX = Mathf.Max(maxX, z.x1);
-                minZ = Mathf.Min(minZ, z.z0); maxZ = Mathf.Max(maxZ, z.z1);
+                if (!mats.TryGetValue(c, out var m)) mats[c] = m = ProtoFx.Lit(c);
+                return m;
             }
-            minX -= 20f; maxX += 20f; minZ -= 20f; maxZ += 20f;
-            Box("Ground", new Vector3((minX + maxX) / 2f, -0.5f, (minZ + maxZ) / 2f), new Vector3(maxX - minX, 1f, maxZ - minZ),
-                groundMat != null ? groundMat : ProtoFx.Lit(GroundColor), false, root);
+
+            var all = new Bounds();
+            bool first = true;
+            foreach (var b in blocks)
+            {
+                if (b.invisible)
+                {
+                    var bar = new GameObject("Barrier") { layer = DuelFighter.FighterLayer };
+                    bar.transform.SetParent(root, false);
+                    bar.transform.position = b.center;
+                    bar.AddComponent<BoxCollider>().size = b.size;
+                    continue;
+                }
+                var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                go.name = b.decal ? "Mark" : b.floor ? "Floor" : "Block";
+                go.transform.SetParent(root, false);
+                go.transform.SetPositionAndRotation(b.center, b.rot);
+                go.transform.localScale = b.size;
+                var r = go.GetComponent<Renderer>();
+                r.sharedMaterial = b.floor && groundMat != null ? groundMat : b.color == WallColor && wallMat != null ? wallMat : Mat(b.color);
+                if (!terrainShadows) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                if (b.decal)
+                {
+                    DestroyImmediate(go.GetComponent<Collider>());   // 同じフレームの床の高さのレイに当たらないように、すぐ消す
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    continue;
+                }
+                if (first) { all = new Bounds(b.center, b.size); first = false; }
+                else all.Encapsulate(new Bounds(b.center, b.size));
+                if (b.barrier)
+                {
+                    // 箱の上から見えない天井まで、見えない壁を伸ばす
+                    float top = b.center.y + b.size.y / 2f;
+                    if (top < CeilingY)
+                    {
+                        var bar = new GameObject("Barrier") { layer = DuelFighter.FighterLayer };
+                        bar.transform.SetParent(go.transform, false);
+                        var bc = bar.AddComponent<BoxCollider>();
+                        float ly = (CeilingY - top) / b.size.y;   // 親の大きさで割った、ローカルの高さ
+                        bc.center = new Vector3(0f, 0.5f + ly / 2f, 0f);
+                        bc.size = new Vector3(1f, ly, 1f);
+                    }
+                }
+            }
             // 見えない天井
             var ceil = new GameObject("Ceiling") { layer = DuelFighter.FighterLayer };
             ceil.transform.SetParent(root, false);
-            ceil.transform.position = new Vector3((minX + maxX) / 2f, CeilingY + 1f, (minZ + maxZ) / 2f);
-            ceil.AddComponent<BoxCollider>().size = new Vector3(maxX - minX, 2f, maxZ - minZ);
-
-            // 区画の壁(出入口のところは空ける)
-            foreach (var z in zones)
-            {
-                var zr = new GameObject(z.name).transform;
-                zr.SetParent(root, false);
-                foreach (Side side in System.Enum.GetValues(typeof(Side))) BuildWall(z, side, wallM, zr);
-            }
-
-            foreach (var b in blocks)
-                Box(b.tall ? "Pillar" : "Block", (b.min + b.max) / 2f, b.max - b.min, ProtoFx.Lit(b.color), b.tall, root);
-
-            foreach (var r in ramps)
-            {
-                // 上面が (z0, 高さ0) から (z1, height) へ上る板
-                float run = r.z1 - r.z0;
-                float len = Mathf.Sqrt(run * run + r.height * r.height);
-                var rot = Quaternion.Euler(-Mathf.Atan2(r.height, run) * Mathf.Rad2Deg, 0f, 0f);
-                Vector3 topMid = new((r.x0 + r.x1) / 2f, r.height / 2f, (r.z0 + r.z1) / 2f);
-                var go = Box("Ramp", topMid - rot * Vector3.up * 0.5f, new Vector3(r.x1 - r.x0, 1f, len), ProtoFx.Lit(LedgeColor), false, root);
-                go.transform.rotation = rot;
-            }
-            Physics.SyncTransforms();   // 置いたばかりの地形に、すぐレイ(足もとの高さ)が当たるように
+            ceil.transform.position = new Vector3(all.center.x, CeilingY + 1f, all.center.z);
+            ceil.AddComponent<BoxCollider>().size = new Vector3(all.size.x + 40f, 2f, all.size.z + 40f);
+            Physics.SyncTransforms();   // 置いたばかりの地形に、すぐレイ(足もとの高さ・敵の目線)が当たるように
         }
 
-        /// <summary>区画の1辺の壁。壁は区画の外側(帯の半分)に立て、出入口の幅だけ空ける。南北の壁は角を埋めるため両端へ伸ばす。</summary>
-        void BuildWall(Zone z, Side side, Material mat, Transform parent)
+        /// <summary>セーブポイントの目印:細く光る柱(当たり判定なし)と、まわりを照らす小さな明かり。</summary>
+        void BuildSaveMarker(SavePoint sp)
         {
-            bool ns = side is Side.North or Side.South;
-            float from = ns ? z.x0 - WallThick : z.z0;
-            float to = ns ? z.x1 + WallThick : z.z1;
-            float line = side switch
-            {
-                Side.North => z.z1 + WallThick / 2f,
-                Side.South => z.z0 - WallThick / 2f,
-                Side.East => z.x1 + WallThick / 2f,
-                _ => z.x0 - WallThick / 2f,
-            };
-            var gaps = new List<(float lo, float hi)>();
-            foreach (var l in links)
-            {
-                if ((l.a == z && l.side == side) || (l.b == z && Opposite(l.side) == side))
-                    gaps.Add((l.center - l.width / 2f, l.center + l.width / 2f));
-            }
-            gaps.Sort((p, q) => p.lo.CompareTo(q.lo));
-            float h = z.wallHeight;
-            float cursor = from;
-            void Segment(float lo, float hi)
-            {
-                if (hi - lo < 0.01f) return;
-                float mid = (lo + hi) / 2f, len = hi - lo;
-                Box("Wall", ns ? new Vector3(mid, h / 2f, line) : new Vector3(line, h / 2f, mid),
-                    ns ? new Vector3(len, h, WallThick) : new Vector3(WallThick, h, len), mat, true, parent);
-            }
-            foreach (var (lo, hi) in gaps)
-            {
-                Segment(cursor, lo);
-                cursor = Mathf.Max(cursor, hi);
-            }
-            Segment(cursor, to);
+            var root = new GameObject($"セーブポイント {sp.name}").transform;
+            root.position = sp.pos;
+            var pillar = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Destroy(pillar.GetComponent<Collider>());
+            pillar.transform.SetParent(root, false);
+            pillar.transform.localPosition = Vector3.up * 5f;
+            pillar.transform.localScale = new Vector3(1.6f, 5f, 1.6f);
+            sp.glow = pillar.GetComponent<Renderer>();
+            sp.glow.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var foot = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            Destroy(foot.GetComponent<Collider>());
+            foot.transform.SetParent(root, false);
+            foot.transform.localPosition = Vector3.up * 0.15f;
+            foot.transform.localScale = new Vector3(6f, 0.15f, 6f);
+            foot.GetComponent<Renderer>().sharedMaterial = ProtoFx.Lit(new Color(0.3f, 0.34f, 0.38f));
+            var lg = new GameObject("Light").AddComponent<Light>();
+            lg.transform.SetParent(root, false);
+            lg.transform.localPosition = Vector3.up * 8f;
+            lg.type = LightType.Point;
+            lg.range = 30f;
+            lg.shadows = LightShadows.None;
+            sp.light = lg;
+            Paint(sp, false);
         }
 
-        static Side Opposite(Side s) => s switch { Side.North => Side.South, Side.South => Side.North, Side.East => Side.West, _ => Side.East };
-
-        /// <summary>出入口の真ん中(床の高さ)。</summary>
-        static Vector3 GatePos(Link l) => l.side switch
+        static void Paint(SavePoint sp, bool active)
         {
-            Side.North => new Vector3(l.center, 0f, l.a.z1 + Band / 2f),
-            Side.South => new Vector3(l.center, 0f, l.a.z0 - Band / 2f),
-            Side.East => new Vector3(l.a.x1 + Band / 2f, 0f, l.center),
-            _ => new Vector3(l.a.x0 - Band / 2f, 0f, l.center),
-        };
-
-        /// <summary>出入口から区画 b(奥)の中へ向かう向き。</summary>
-        static Vector3 Inward(Link l) => l.side switch
-        {
-            Side.North => Vector3.forward,
-            Side.South => Vector3.back,
-            Side.East => Vector3.right,
-            _ => Vector3.left,
-        };
-
-        /// <summary>箱を置く。barrier なら、見える部分の上から天井まで見えない壁を伸ばす(機体だけが当たり、レイ・カメラは素通り)。</summary>
-        static GameObject Box(string name, Vector3 center, Vector3 size, Material mat, bool barrier, Transform parent)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            go.transform.position = center;
-            go.transform.localScale = size;
-            go.GetComponent<Renderer>().sharedMaterial = mat;
-            if (barrier)
+            var c = active ? new Color(0.55f, 1f, 0.85f) : new Color(0.25f, 0.55f, 0.6f);
+            if (sp.glow != null) sp.glow.sharedMaterial = ProtoFx.Unlit(c);
+            if (sp.light != null)
             {
-                float top = center.y + size.y / 2f;
-                float extra = CeilingY - top;
-                if (extra > 0f)
-                {
-                    var b = new GameObject("Barrier") { layer = DuelFighter.FighterLayer };
-                    b.transform.SetParent(go.transform, false);
-                    var bc = b.AddComponent<BoxCollider>();
-                    float ly = extra / size.y;   // 親の大きさで割った、ローカルの高さ
-                    bc.center = new Vector3(0f, 0.5f + ly / 2f, 0f);
-                    bc.size = new Vector3(1f, ly, 1f);
-                }
+                sp.light.color = c;
+                sp.light.intensity = active ? 3f : 1.2f;
             }
-            return go;
         }
 
         // ───────── 敵 ─────────
 
-        /// <summary>
-        /// 敵を待機した状態で置く(手前の出入口のほうを向く)。受け持ちの区画を渡すので、区画の外へは出ず、
-        /// 自機が区画から chaseMargin より離れたら持ち場へ戻る。
-        /// </summary>
-        void Place(Spawn s, Zone z)
+        /// <summary>敵を持ち場に置く(足もとの床の高さに合わせ、決まった向きで立ち番。まだ気づいていない)。</summary>
+        void PlaceEnemy(Spawn s)
         {
-            Vector3 lookAt = StartPos;
-            foreach (var l in links)
-                if (l.b == z) { lookAt = GatePos(l); break; }
-            Vector3 dir = lookAt - s.pos;
-            dir.y = 0f;
-            var go = new GameObject($"{z.name} {KindName(s.kind)}");
-            go.transform.SetPositionAndRotation(s.pos, dir.sqrMagnitude > 0.01f ? Quaternion.LookRotation(dir) : Quaternion.identity);
+            Vector3 pos = s.pos;
+            if (Physics.Raycast(pos + Vector3.up * 8f, Vector3.down, out var hit, 40f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                pos.y = hit.point.y;
+            var rot = Quaternion.Euler(0f, s.yaw, 0f);
+            var go = new GameObject($"{KindName(s.kind)}");
+            go.transform.SetPositionAndRotation(pos + Vector3.up * 0.2f, rot);
             var e = go.AddComponent<DuelEnemy>();
             e.Init(game, player, s.kind switch
             {
@@ -456,23 +583,15 @@ namespace MeleeDuel
                 Kind.Boss => DuelEnemy.Boss(bossHP, bossMoves, bossSize, bossMaxStagger),
                 _ => DuelEnemy.Grunt(game.gruntHP),
             });
-            e.Dormant = true;
-            e.home = s.pos;
-            e.leashRadius = s.leash;
-            e.hasArea = true;
-            e.area = new Rect(z.x0, z.z0, z.x1 - z.x0, z.z1 - z.z0);
-            e.chaseMargin = chaseMargin;
+            e.home = pos + Vector3.up * 0.2f;
+            e.homeRotation = rot;
+            e.leashRadius = s.kind == Kind.Boss ? bossLeash : s.leash;
+            e.UseSenses(senses);
             s.enemy = e;
+            game.Enemies.Add(e);
         }
 
         static string KindName(Kind k) => k switch { Kind.Duelist => "剣士", Kind.Boss => "大剣士", _ => "兵卒" };
-
-        void WakeUp(Spawn s)
-        {
-            s.enemy.Wake();
-            game.Enemies.Add(s.enemy);
-            player.AutoLock(s.enemy);   // ロックオンしていなければ、最初に動き出した敵に合わせる
-        }
 
         // ───────── 進行 ─────────
 
@@ -482,110 +601,49 @@ namespace MeleeDuel
             if (respawnAt > 0f && Time.unscaledTime >= respawnAt)
             {
                 respawnAt = -1f;
-                RespawnInZone();
+                Respawn();
             }
-            // 区画の残りの数え直しとクリアの判定は、自機がやられていても行う(撃墜と同じフレームの撃破を取り消さない)
-            bool alive = !player.Dead;
-            foreach (var z in zones)
-                if (z.state == ZoneState.Active) UpdateZone(z, alive);
-            if (!alive) return;
-
-            // 今いる区画:区画の縁から enterMargin より内側にいる区画(帯・出入口にいる間は前の区画のまま)
+            if (player.Dead) return;
             Vector3 p = player.transform.position;
-            foreach (var z in zones)
-                if (z != current && z.Contains(p, enterMargin)) { EnterZone(z); break; }
-            WakeNearby(p);
+
+            // 今いる場所(初めて入ったら名前を出す)
+            Area now = null;
+            foreach (var pl in places)
+                if (pl.bounds.Contains(p)) { now = pl; break; }
+            if (now != null && now != currentPlace)
+            {
+                currentPlace = now;
+                if (!now.visited) { now.visited = true; ShowBanner(now.name); }
+            }
+
+            // セーブポイント:近づいたら触れたことにする(離れて戻ればもう一度)
+            foreach (var sp in saves)
+            {
+                Vector3 d = p - sp.pos;
+                float flat = new Vector2(d.x, d.z).magnitude;
+                bool near = flat < saveRadius && Mathf.Abs(d.y) < 12f;
+                if (near && !sp.inside) Touch(sp);
+                if (flat > saveRadius * 1.5f || Mathf.Abs(d.y) > 18f) sp.inside = false;
+                else if (near) sp.inside = true;
+            }
+
+            // ボス:大ホールに入っている間は、気づいて戦う(見失わない)
+            var boss = bossSpawn != null ? bossSpawn.enemy : null;
+            if (boss != null && !boss.Dead && bossRoom.Contains(p)) boss.KeepEngaged();
         }
 
-        /// <summary>待機中の敵に自機が wakeNear まで近づいたら、区画に入る前でも起こす(その区画も動き出す)。区画の外から近づいた場合も含む。</summary>
-        void WakeNearby(Vector3 p)
+        void Touch(SavePoint sp)
         {
-            foreach (var z in zones)
-            {
-                // 自機がその区画の中か、縁から chaseMargin 以内(出入口のあたり)にいるときだけ。壁ごしには起こさない
-                if (z.state == ZoneState.Cleared || !z.Contains(p, -chaseMargin)) continue;
-                foreach (var s in z.spawns)
-                {
-                    if (s.enemy == null || s.enemy.Dead || !s.enemy.Dormant) continue;
-                    Vector3 d = s.enemy.transform.position - p;
-                    if (Mathf.Abs(d.y) > 12f) continue;
-                    d.y = 0f;
-                    if (d.magnitude > wakeNear) continue;
-                    if (z.state == ZoneState.Waiting) { z.state = ZoneState.Active; z.wakeAt = Time.time; }
-                    WakeUp(s);
-                }
-            }
+            SetCurrentSave(sp);
+            if (saveHeals) player.RestoreHP();
+            ShowBanner("セーブしました");
         }
 
-        /// <summary>区画に入った(今いる区画が変わった)。初めてなら敵を動かし始める。</summary>
-        void EnterZone(Zone z)
+        void SetCurrentSave(SavePoint sp)
         {
-            current = z;
-            // やり直す場所:通ってきた出入口のすぐ内側(近くに出入口がなければ前のまま。最初の区画は出撃地点)
-            Link entry = null;
-            float best = float.MaxValue;
-            foreach (var l in links)
-            {
-                if (l.a != z && l.b != z) continue;
-                float d = (GatePos(l) - player.transform.position).sqrMagnitude;
-                if (d < best) { best = d; entry = l; }
-            }
-            if (entry != null && best < 25f * 25f)
-            {
-                Vector3 inward = entry.b == z ? Inward(entry) : -Inward(entry);
-                z.respawnPos = GatePos(entry) + inward * (Band / 2f + 8f);
-                z.respawnRot = Quaternion.LookRotation(inward);
-            }
-            if (z.visited) return;
-            z.visited = true;
-            ShowBanner(z.name);
-            if (z.state != ZoneState.Waiting) return;   // 近づいて起こした区画は、もう動いている(倒し終えていることもある)
-            if (z.spawns.Count == 0) { ClearZone(z); return; }
-            z.state = ZoneState.Active;
-            z.wakeAt = Time.time + z.wakeDelay;
-            game.Log($"{z.name}:敵 {z.spawns.Count} 体");
-        }
-
-        /// <summary>区画の残りを数え、全滅ならクリア。canWake なら、条件を満たした待機中の敵を起こす。</summary>
-        void UpdateZone(Zone z, bool canWake)
-        {
-            int alive = 0, others = 0;
-            foreach (var s in z.spawns)
-            {
-                if (s.enemy == null || s.enemy.Dead) continue;
-                alive++;
-                if (!(s.enemy.Dormant && s.wakeWhenLeft >= 0)) others++;   // 残りを待っている敵どうしは数えない
-            }
-            if (alive == 0) { ClearZone(z); return; }
-            if (!canWake || Time.time < z.wakeAt) return;
-
-            Vector3 p = player.transform.position;
-            foreach (var s in z.spawns)
-            {
-                if (s.enemy == null || s.enemy.Dead || !s.enemy.Dormant) continue;
-                Vector3 d = s.pos - p;
-                d.y = 0f;
-                bool wake = s.WakeOnEntry
-                            || (s.wakeDistance > 0f && d.magnitude <= s.wakeDistance)
-                            || (s.wakeWhenLeft >= 0 && others <= s.wakeWhenLeft);
-                if (!wake) continue;
-                WakeUp(s);
-                if (s.wakeWhenLeft >= 0) others++;
-            }
-        }
-
-        void ClearZone(Zone z)
-        {
-            z.state = ZoneState.Cleared;
-            if (z.boss)
-            {
-                Cleared = true;
-                ClearTime = Time.time - beganAt;
-                ShowBanner("ステージクリア");
-                game.Log("ボスを倒した");
-                return;
-            }
-            if (z.spawns.Count > 0) game.Log($"{z.name}を制圧");
+            if (currentSave != null) Paint(currentSave, false);
+            currentSave = sp;
+            Paint(sp, true);
         }
 
         void ShowBanner(string text)
@@ -597,100 +655,87 @@ namespace MeleeDuel
         public void OnPlayerDied() => respawnAt = Time.unscaledTime + respawnDelay;
 
         /// <summary>
-        /// 今いる区画の入口からやり直す。区画の敵が残っていれば、その区画の敵を全部置き直す(倒した敵も戻る)。
-        /// ほかの区画の敵はそのまま(区画から離れれば持ち場へ戻っている)。
+        /// 最後に触れたセーブポイントから再開する。倒した敵はそのまま。生きている敵は HP を戻して持ち場へ帰し、発覚・警戒を切る
+        /// (ボス戦の途中でも、ボスは HP 満タンで持ち場へ戻る)。
         /// </summary>
-        void RespawnInZone()
+        void Respawn()
         {
-            var z = current;
+            foreach (var s in spawns)
+                if (s.enemy != null && !s.enemy.Dead) s.enemy.ResetToHome();
+            var sp = currentSave ?? saves[0];
+            player.Respawn(sp.RespawnPos, sp.RespawnRot);
+            foreach (var other in saves) other.inside = other == sp;   // 再開した所で、もう一度触れたことにしない
             var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;
-            if (z == null)
-            {
-                player.Respawn(StartPos, StartRot);
-                if (cam != null) cam.Snap();
-                return;
-            }
-            if (z.state == ZoneState.Active)
-            {
-                foreach (var s in z.spawns)
-                {
-                    if (s.enemy != null)
-                    {
-                        game.Enemies.Remove(s.enemy);
-                        Destroy(s.enemy.gameObject);
-                    }
-                    Place(s, z);
-                }
-                z.wakeAt = Time.time + respawnGrace;
-            }
-            player.Respawn(z.respawnPos, z.respawnRot);
             if (cam != null) cam.Snap();   // カメラを補間せずに合わせる(大きく流れて向きが急に回らないように)
-            ShowBanner(z.name);
-            game.Log($"{z.name}の入口からやり直し");
+            ShowBanner($"{sp.name}から再開");
+            game.Log("セーブポイントから再開");
         }
 
-        /// <summary>撃破数に数えてよいか(置き直した敵を倒しても、同じ配置の敵は1回だけ数える)。</summary>
-        public bool CountKill(DuelEnemy e)
+        /// <summary>敵が倒れた(DuelGame から)。ボスならステージクリア。</summary>
+        public void OnEnemyDied(DuelEnemy e)
         {
-            foreach (var z in zones)
-                foreach (var s in z.spawns)
-                {
-                    if (s.enemy != e) continue;
-                    if (s.counted) return false;
-                    s.counted = true;
-                    return true;
-                }
-            return true;
+            if (bossSpawn == null || e != bossSpawn.enemy || Cleared) return;
+            Cleared = true;
+            ClearTime = Time.time - beganAt;
+            ShowBanner("ステージクリア");
+            game.Log("ボスを倒した");
         }
 
         // ───────── 画面に出す情報 ─────────
 
-        public string ZoneName => current != null ? current.name : "";
+        public string PlaceName => currentPlace != null ? currentPlace.name : "";
 
-        /// <summary>区画の残りの敵の数と様子。</summary>
-        public string ZoneStatus
+        /// <summary>全体の残りの敵(ボスを除く)。</summary>
+        public string Status
         {
             get
             {
-                if (current == null) return "";
-                if (current.state == ZoneState.Cleared)
-                    return Cleared ? "ステージクリア" : current.spawns.Count > 0 ? "制圧" : "敵なし";
-                int n = 0;
-                foreach (var s in current.spawns) if (s.enemy != null && !s.enemy.Dead) n++;
-                return $"残りの敵 {n}";
+                if (Cleared) return "ステージクリア";
+                int alive = 0, total = 0;
+                foreach (var s in spawns)
+                {
+                    if (s.kind == Kind.Boss) continue;
+                    total++;
+                    if (s.enemy != null && !s.enemy.Dead) alive++;
+                }
+                return $"残りの敵 {alive} / {total}";
             }
         }
 
-        /// <summary>動いているボス(いなければ null)。</summary>
+        /// <summary>戦っているボス(いなければ null)。</summary>
         public DuelEnemy ActiveBoss =>
-            bossSpawn != null && bossSpawn.enemy != null && !bossSpawn.enemy.Dead && !bossSpawn.enemy.Dormant ? bossSpawn.enemy : null;
+            bossSpawn != null && bossSpawn.enemy != null && !bossSpawn.enemy.Dead && bossSpawn.enemy.Engaged ? bossSpawn.enemy : null;
 
         // ───────── シーンビューでの確認 ─────────
 
         void OnDrawGizmos()
         {
-            if (zones.Count == 0) Define();
-            foreach (var z in zones)
-            {
-                Gizmos.color = z.boss ? new Color(1f, 0.3f, 0.3f) : new Color(0.4f, 0.9f, 1f);
-                Gizmos.DrawWireCube(new Vector3((z.x0 + z.x1) / 2f, z.wallHeight / 2f, (z.z0 + z.z1) / 2f), new Vector3(z.x1 - z.x0, z.wallHeight, z.z1 - z.z0));
-                foreach (var s in z.spawns)
-                {
-                    Gizmos.color = s.kind switch { Kind.Boss => Color.red, Kind.Duelist => new Color(1f, 0.6f, 0.2f), _ => Color.yellow };
-                    float r = s.kind switch { Kind.Boss => 5f, Kind.Duelist => 3f, _ => 2f };
-                    Gizmos.DrawWireSphere(s.pos + Vector3.up * r, r);
-                    if (s.leash > 0f) Gizmos.DrawWireCube(s.pos, new Vector3(s.leash * 2f, 0.1f, s.leash * 2f));
-                }
-            }
-            Gizmos.color = new Color(1f, 0.5f, 0.2f);
-            foreach (var l in links) Gizmos.DrawCube(GatePos(l) + Vector3.up * 3f, new Vector3(3f, 6f, 3f));
+            if (blocks.Count == 0) Define();
             foreach (var b in blocks)
             {
-                Gizmos.color = b.color;
-                Gizmos.DrawWireCube((b.min + b.max) / 2f, b.max - b.min);
+                if (b.decal) continue;
+                Gizmos.color = b.invisible ? new Color(1f, 0.3f, 0.3f, 0.3f) : b.color;
+                Gizmos.matrix = Matrix4x4.TRS(b.center, b.rot, Vector3.one);
+                Gizmos.DrawWireCube(Vector3.zero, b.size);
             }
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(StartPos + Vector3.up * 2f, 2f);
+            Gizmos.matrix = Matrix4x4.identity;
+            foreach (var s in spawns)
+            {
+                Gizmos.color = s.kind switch { Kind.Boss => Color.red, Kind.Duelist => new Color(1f, 0.6f, 0.2f), _ => Color.yellow };
+                float r = s.kind switch { Kind.Boss => 5f, Kind.Duelist => 3f, _ => 2f };
+                Vector3 c = s.pos + Vector3.up * r;
+                Gizmos.DrawWireSphere(c, r);
+                Gizmos.DrawLine(c, c + Quaternion.Euler(0f, s.yaw, 0f) * Vector3.forward * r * 3f);   // 立ち番の向き
+                if (s.leash > 0f) Gizmos.DrawWireCube(s.pos, new Vector3(s.leash * 2f, 0.1f, s.leash * 2f));
+            }
+            Gizmos.color = new Color(0.4f, 1f, 0.85f);
+            foreach (var sp in saves)
+            {
+                Gizmos.DrawWireCube(sp.pos + Vector3.up * 5f, new Vector3(2f, 10f, 2f));
+                Gizmos.DrawWireSphere(sp.RespawnPos + Vector3.up * 2f, 2f);
+            }
+            Gizmos.color = new Color(0.4f, 0.9f, 1f, 0.5f);
+            foreach (var pl in places) Gizmos.DrawWireCube(pl.bounds.center, pl.bounds.size);
         }
     }
 }

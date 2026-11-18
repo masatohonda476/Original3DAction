@@ -89,6 +89,8 @@ namespace MeleeDuel
         public bool BoostOn { get; private set; }
         /// <summary>このフレームはブーストで移動している(見た目用)。</summary>
         public bool Dashing { get; private set; }
+        /// <summary>噴射炎:飛行中・ブースト移動中・回避中。</summary>
+        public override bool Thrusting => flying || Dashing || Current == State.Dodge;
 
         /// <summary>
         /// 攻撃1種類の中身。stagger は敵の怯みゲージへの量。

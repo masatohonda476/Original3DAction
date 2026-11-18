@@ -12,7 +12,8 @@ namespace MeleeDuel
     ///   跳び上がり斬り(対空):自機が頭上を飛んでいると、深く沈み込んで上を見上げるようにのけぞって溜め、自機へ跳び上がる
     /// 怯みゲージが攻撃でたまり、満タンになると怯む(技の途中でも止まる)。攻撃の後の隙に当てると多くたまる。
     /// 1発ごとには怯まない。
-    /// 種類(Spec)で性格を変える:剣士(中型・1.5倍の大きさ・技3つ)/ 兵卒(雑魚・技2つ・すぐ怯む・攻めがゆっくり)。
+    /// 種類(Spec)で性格を変える:剣士(中型・1.5倍の大きさ・技3つ・ブースト飛行)/ 兵卒(雑魚・技2つ・すぐ怯む・攻めがゆっくり)。
+    /// 剣士は自機が頭上を飛ぶと、噴射炎を出して同じ高さまで飛び上がり、空中で斬りかかる(続けて飛べるのは maxFlyTime 秒まで)。
     /// 同時に攻撃してくる数は DuelGame が絞る(順番待ちの間は回り込んで待つ)。
     /// </summary>
     public class DuelEnemy : DuelFighter
@@ -35,10 +36,13 @@ namespace MeleeDuel
             public float dashSpeed = 34f, sideDashRate = 0.25f;
             /// <summary>自機が頭上を飛んでいるとき、跳び上がり斬りを選ぶ確率と、跳べる高さ(m)。</summary>
             public float antiAirChance = 0.7f, antiAirHeight = 45f;
+            /// <summary>ブースト飛行できるか。上昇の速さ・続けて飛べる秒数・使い切った後に飛べない秒数。</summary>
+            public bool canFly;
+            public float flyRiseSpeed = 18f, maxFlyTime = 4f, flyCooldown = 3f;
         }
 
         /// <summary>剣士(中型):1対1で読み合う相手。</summary>
-        public static Spec Duelist(float hp) => new() { name = "剣士", size = 1.5f, hp = hp, keepDistance = 15f };
+        public static Spec Duelist(float hp) => new() { name = "剣士", size = 1.5f, hp = hp, keepDistance = 15f, canFly = true };
 
         /// <summary>兵卒(雑魚):複数で来る前提。技は横薙ぎと突きだけ、2発で怯み、攻めはゆっくり。</summary>
         public static Spec Grunt(float hp) => new()
@@ -49,6 +53,8 @@ namespace MeleeDuel
         };
 
         public Spec Kind { get; private set; }
+        /// <summary>噴射炎:飛行中・ダッシュ中。</summary>
+        public override bool Thrusting => flying || dashing;
         public string KindName => Kind != null ? Kind.name : "";
         [Header("動き")]
         public float approachSpeed = 15f;
@@ -96,6 +102,40 @@ namespace MeleeDuel
             Enter(State.Approach);
             thinkAt = Time.time + 1f;
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
+            if (spec.canFly) gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中の噴射炎
+        }
+
+        // ───────── ブースト飛行(剣士) ─────────
+
+        float flyTime, flyCooldownUntil = -10f;
+        bool CanFlyNow => Kind.canFly && Time.time >= flyCooldownUntil;
+
+        /// <summary>
+        /// 自機が頭上を飛んでいれば、同じ高さまで飛び上がって留まる。自機が降りたら飛ぶのをやめて落ちる。
+        /// 続けて飛べるのは maxFlyTime 秒まで(使い切ったら flyCooldown 秒は飛べない)。怯み・跳び上がり斬りの間は飛ばない。
+        /// </summary>
+        void UpdateFlight(float dt)
+        {
+            bool want = false;
+            if (CanFlyNow && player != null && !player.Dead && Current != State.Flinch && Current != State.Dead &&
+                !(Current == State.Active && skill == Skill.AntiAir))
+            {
+                float above = player.Altitude - Altitude;
+                // 自機が高く飛んだら飛び上がる。すでに飛んでいれば、自機が空中にいる間は高さを合わせ続ける
+                if (player.Airborne && (above > game.mechHeight * Size * 0.6f || (flying && Airborne)))
+                {
+                    want = true;
+                    riseSpeed = Mathf.Clamp(above * 1.5f, -12f, Kind.flyRiseSpeed);   // 近づくほどゆっくり、上なら下りる
+                    riseAccel = 60f;
+                }
+            }
+            if (want)
+            {
+                flyTime += dt;
+                if (flyTime >= Kind.maxFlyTime) { want = false; flyCooldownUntil = Time.time + Kind.flyCooldown; }
+            }
+            else if (!Airborne) flyTime = 0f;   // 着地したら燃料が戻る
+            flying = want;
         }
 
         void Enter(State s, float dur = 0f)
@@ -177,6 +217,7 @@ namespace MeleeDuel
                     break;
             }
 
+            UpdateFlight(dt);
             Move(vel, dt);
             Animate(dt, vel);
         }
@@ -192,6 +233,7 @@ namespace MeleeDuel
             float above = player.Altitude - Altitude;
             if (player.Airborne && above > game.mechHeight * Size * 0.8f)
             {
+                if (CanFlyNow) return;   // 飛べる剣士は、飛び上がって高さを合わせてから斬る
                 if (above <= Kind.antiAirHeight && gap <= 30f && Random.value < Kind.antiAirChance) StartSkill(Skill.AntiAir);
                 return;
             }
@@ -200,7 +242,7 @@ namespace MeleeDuel
             {
                 if (!Kind.canSlam) StartSkill(r < 0.7f ? Skill.Sweep : Skill.Thrust);
                 else if (r < 0.5f) StartSkill(Skill.Sweep);
-                else if (r < 0.8f) StartSkill(Skill.Slam);
+                else if (r < 0.8f) StartSkill(Airborne ? Skill.Sweep : Skill.Slam);   // 空中では叩きつけは使わない
                 else StartSkill(Skill.Thrust);
             }
             else if (gap <= 26f && r < (Kind.canSlam ? 0.6f : 0.5f)) StartSkill(Skill.Thrust);
@@ -350,6 +392,7 @@ namespace MeleeDuel
             Stagger = 0f;
             chain = 0;
             Knockback(knock * 1.5f);
+            StopRising();   // 空中で怯んだら上昇が止まり、怯んでいる間は落ちる
             Enter(State.Flinch, flinchTime);
         }
 
@@ -430,7 +473,7 @@ namespace MeleeDuel
                     break;
                 default:
                     float sp = new Vector3(vel.x, 0f, vel.z).magnitude;
-                    if (dashing) { Pose(MechRig.Dash, 0f, 12f); tLean = 8f; }
+                    if (dashing || Airborne) { Pose(MechRig.Dash, 0f, 12f); tLean = 8f; }   // ダッシュ中・空中
                     else if (sp > 0.5f)
                     {
                         stepPhase += sp * dt / 6f;

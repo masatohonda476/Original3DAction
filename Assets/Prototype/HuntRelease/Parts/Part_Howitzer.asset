@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_Howitzer
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 2
+  displayName: "\u91cd\u69b4\u5f3e\u7832"
+  slot: 3
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 1.3, y: 2, z: 1.3}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.45, g: 0.55, b: 0.25, a: 1}
+  partHP: 70
+  damage: 260
+  interval: 3.5
+  range: 80
+  radius: 20
+  multiplier: 2
+  uses: 14
+  weight: 20
+  recoil: 0.5
+  drain: 1
+  salvo: 1
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 0
+  rarity: 1
+  feel: "\u88c5\u586b\u306f\u9045\u3044\u304c\u3001\u5927\u304d\u306a\u7206\u767a\u3067\u7fa4\u308c\u3092\u307e\u3068\u3081\u3066\u5439\u304d\u98db\u3070\u3059"
+  variants: []

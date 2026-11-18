@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_MegaCannon
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 2
+  displayName: "\u8d85\u91cd\u7832"
+  slot: 3
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 1.9, y: 3.2, z: 1.9}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.45, g: 0.55, b: 0.25, a: 1}
+  partHP: 70
+  damage: 400
+  interval: 6
+  range: 90
+  radius: 40
+  multiplier: 2
+  uses: 10
+  weight: 25
+  recoil: 0.5
+  drain: 1
+  salvo: 1
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 1.2
+  rarity: 2
+  feel: "\u6483\u3064\u30681.2\u79d2\u305d\u306e\u5834\u3067\u69cb\u3048\u308b\u304c\u3001\u3068\u3066\u3064\u3082\u306a\u304f\u5927\u304d\u306a\u7206\u767a"
+  variants: []

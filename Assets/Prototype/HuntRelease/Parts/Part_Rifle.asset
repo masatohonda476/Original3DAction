@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_Rifle
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 0
+  displayName: "\u30e9\u30a4\u30d5\u30eb\u8155"
+  slot: 0
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 0.55, y: 2.8, z: 0.55}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.25, g: 0.25, b: 0.3, a: 1}
+  partHP: 70
+  damage: 55
+  interval: 0.3
+  range: 140
+  radius: 10
+  multiplier: 2
+  uses: 320
+  weight: 5
+  recoil: 0.02
+  drain: 1
+  salvo: 1
+  magazine: 20
+  reloadTime: 1.2
+  energyCost: 0
+  stance: 0
+  rarity: 2
+  feel: "\u9045\u3044\u304c\u4e00\u767a\u304c\u91cd\u3044\u3002\u9060\u304f\u307e\u3067\u5c4a\u304d\u3001\u3070\u3089\u3051\u306a\u3044"
+  variants: []

@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_RapidCannon
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 2
+  displayName: "\u901f\u5c04\u7832"
+  slot: 3
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 0.6, y: 1.4, z: 0.6}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.45, g: 0.55, b: 0.25, a: 1}
+  partHP: 70
+  damage: 30
+  interval: 0.8
+  range: 55
+  radius: 6
+  multiplier: 2
+  uses: 30
+  weight: 8
+  recoil: 0.5
+  drain: 1
+  salvo: 1
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 0
+  rarity: 0
+  feel: "\u7206\u767a\u306f\u5c0f\u3055\u3044\u304c\u3001\u3059\u3050\u6b21\u304c\u6483\u3066\u308b"
+  variants: []

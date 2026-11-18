@@ -16,9 +16,9 @@ namespace HuntProto
 
         [Header("移動(素体)")]
         [Tooltip("スティックを倒し切ったときの速さ(走り)。軽く倒すと遅くなり、walkToRun 未満は歩きの動きになる")]
-        public float runSpeed = 16.7f;
-        [Tooltip("ブースト中(○/Shiftで入切)の速さの倍率(走りに対して)。16.7×1.5 ≒ 25m/s")]
-        public float boostMul = 1.5f;
+        public float runSpeed = 25f;
+        [Tooltip("ブースト中(○/Shiftで入切)の速さの倍率(走りに対して)。25×1.6 = 40m/s(スラスターの推力はさらに掛かる)")]
+        public float boostMul = 1.6f;
         [Tooltip("この速さ(m/s)を超えると歩きから走りの動きに切り替わる")]
         public float walkToRun = 9f;
         [Tooltip("走りの1歩で進む距離(Blender側の R_STEP と同じ)")]
@@ -34,9 +34,9 @@ namespace HuntProto
         public float footShake = 0.3f;
 
         [Header("エネルギー(ブースト・飛行・回避で減り、使っていない間に回復する)")]
-        public float maxEnergy = 100f;
+        public float maxEnergy = 150f;
         [Tooltip("回復量(毎秒)。使い終わってから recoverDelay 秒後に回復が始まる")]
-        public float energyRegen = 40f;
+        public float energyRegen = 60f;
         public float recoverDelay = 0.6f;
         [Tooltip("空になったら、この割合まで回復するまでブースト・飛行できない")]
         [Range(0f, 1f)] public float overheatResume = 0.3f;
@@ -45,8 +45,10 @@ namespace HuntProto
         public float dodgeCost = 18f;
 
         [Header("飛行(×/Space長押しで上昇、離すと落ちる)")]
-        public float flyRiseSpeed = 14f;
-        public float flyAccel = 60f;
+        [Tooltip("上昇の最高速度(m/s)")]
+        public float flyRiseSpeed = 21f;
+        [Tooltip("上昇の加速(最高速度に届くまでの時間が変わらないよう、最高速度と同じ割合で上げている)")]
+        public float flyAccel = 90f;
         public float gravity = 30f;
 
         [Header("回避(一瞬で加速して、すっと止まる)")]
@@ -99,6 +101,8 @@ namespace HuntProto
         public int maxHealItems = 10;
         [Tooltip("最初から持っている数")]
         public int startHealItems = 3;
+        [Tooltip("撃墜から復帰したとき、回復アイテムがこの数より少なければこの数まで補充する")]
+        public int respawnHealItems = 3;
         [Tooltip("1個で回復する割合(最大HPに対して)")]
         [Range(0f, 1f)] public float healAmount = 0.4f;
 
@@ -200,7 +204,12 @@ namespace HuntProto
         readonly List<Mounted> parts = new();
 
         /// <summary>装備中の部位1つ分。uses が尽きると外れる(-1 は外れない)。</summary>
-        class Mounted { public PartDefinition def; public Transform visual; public Hardpoint at; public int uses; }
+        class Mounted
+        {
+            public PartDefinition def; public Transform visual; public Hardpoint at; public int uses;
+            /// <summary>弾倉の残り(-1=まだ数えていない=満タン)とリロードの残り秒数(手の実弾銃)。</summary>
+            public int mag = -1; public float reloadT;
+        }
 
         enum Atk { None, Windup, Strike, Recover }
 
@@ -214,6 +223,13 @@ namespace HuntProto
         ProtoEnemy target, aimEnemy;
         Vector3 planarVel, aimDir, dodgeDir, spawnPos;
         float vy, stepPhase, idleT, gunTR, gunTL, cannonCdR, cannonCdL, respawnT, hurtFlash, energyUsedAt = -10f;
+        /// <summary>構え硬直の残り時間(キャノンの stance)。この間は移動・回避・斬り・飛行ができない。</summary>
+        float stanceT;
+        /// <summary>単発の銃のボタンを押した時刻(撃てない間に押しても、semiBuffer 秒は覚えておく)。</summary>
+        float semiPressR = -10f, semiPressL = -10f;
+        const float semiBuffer = 0.2f;
+        bool IsSemi(Hardpoint at) => DefAt(at) is { semiAuto: true };
+        public bool Bracing => stanceT > 0f;
         float dodgeT = -1f, dodgeEndAt = -10f, dodgeDur;
         float attackPressedAt = -10f, dodgePressedAt = -10f, lastStrikeAt = -10f;
         int lastStep, gunCycle, comboIndex;
@@ -221,7 +237,9 @@ namespace HuntProto
         Atk atk;
         /// <summary>今振っている手と、次に振る手(先行入力)。</summary>
         Hardpoint atkHand = Hardpoint.RightHand, queuedHand = Hardpoint.RightHand;
-        float atkT, curWindup;
+        float atkT, curWindup, curRecover;
+        /// <summary>今の斬りの振り方(振り始めに、その手の剣で決める)。</summary>
+        SwingStyle curStyle;
 
         public void Init(ProtoGame g)
         {
@@ -377,18 +395,16 @@ namespace HuntProto
             rackCrates.Add(crate);
         }
 
-        /// <summary>入手の知らせに添える一言。今付けている同じ種類との差(付けていなければ A案は振れたパラメータ)。</summary>
+        /// <summary>入手の知らせに添える一言。今付けている同じ種類との差(付けていなければ空きの場所)。</summary>
         public string AcquireNote(PartDefinition def)
         {
             if (!def.HasStats) return "";
-            // 付けられる場所に空きがあればそれを知らせる。なければ同じ種類を付けている場所と比べる。A案で比べる相手がなければ振れたところ
+            // 付けられる場所に空きがあればそれを知らせる。なければ同じ種類を付けている場所と比べる
             var at = CompareSlot(def.type, out var cur);
             if (cur == null)
             {
                 string head = at.HasValue ? $"{HardpointName(at.Value)}が空き" : "未装備の種類";
-                if (ProtoGame.Arms != ArmsRule.StatsA) return $"({head})";
-                string t = PartDefinition.TagsText(def.SwingTags());
-                return t.Length > 0 ? $"({head} / {t})" : $"({head})";
+                return $"({head})";
             }
             string d = PartDefinition.TagsText(def.DiffTags(cur.def));
             return d.Length > 0 ? $"(今の{HardpointName(at.Value)}と比べて {d})" : "(今のものとほぼ同じ)";
@@ -753,6 +769,13 @@ namespace HuntProto
             Energy = maxEnergy;
             Overheated = Boosting = Flying = false;
             IsDead = false;
+            // 回復アイテムが少なければ補充(多く持っていればそのまま)
+            int refill = Mathf.Min(respawnHealItems, maxHealItems);
+            if (HealItems < refill)
+            {
+                HealItems = refill;
+                game.Log($"回復アイテムを{refill}つまで補充した");
+            }
         }
 
         // ───────── ロックオン(電脳斬禅の PlayerTargeting と同じ考え方) ─────────
@@ -888,8 +911,9 @@ namespace HuntProto
 
             // 回避:振りかぶりは85%まで、振り抜いた後はいつでも取り消せる。先行入力あり
             bool dodging = dodgeT >= 0f;
+            stanceT -= dt;
             if (ProtoInput.BoostToggle) Boosting = !Boosting && !Overheated;
-            bool canDodge = !dodging && now - dodgeEndAt >= dodgeCooldown && !Overheated &&
+            bool canDodge = !dodging && !Bracing && now - dodgeEndAt >= dodgeCooldown && !Overheated &&
                             (atk == Atk.None || atk == Atk.Recover || (atk == Atk.Windup && atkT < curWindup * 0.85f));
             if (now - dodgePressedAt <= dodgeBuffer && canDodge)
             {
@@ -906,16 +930,18 @@ namespace HuntProto
 
             // 攻撃:先行入力。振り抜いた直後から次の段を受け付ける。回避の後半なら回避斬り
             float spd = AttackSpeedMul(BladeCount(atk == Atk.None || atk == Atk.Recover ? queuedHand : atkHand), thr);
-            bool canAttack = (atk == Atk.None && (!dodging || dodgeT > dodgeDur * 0.4f)) ||
-                             (atk == Atk.Recover && atkT >= 0.12f);
+            bool canAttack = !Bracing && ((atk == Atk.None && (!dodging || dodgeT > dodgeDur * 0.4f)) ||
+                             (atk == Atk.Recover && atkT >= 0.12f));
             if (now - attackPressedAt <= attackBuffer && canAttack)
             {
                 attackPressedAt = -10f;
                 atkHand = queuedHand;
-                comboIndex = now - lastStrikeAt <= comboWindow && comboIndex < 3 ? comboIndex + 1 : 1;
+                curStyle = StyleOf(atkHand);
+                comboIndex = now - lastStrikeAt <= comboWindow && comboIndex < MaxCombo(curStyle) ? comboIndex + 1 : 1;
                 atk = Atk.Windup;
                 atkT = 0f;
-                curWindup = windup * spd * (comboIndex > 1 || dodging ? comboWindupMul : 1f);
+                curWindup = windup * spd * (comboIndex > 1 || dodging ? comboWindupMul : 1f) * WindupMul(curStyle);
+                curRecover = recovery * spd * RecoverMul(curStyle);
                 if (dodging) { dodgeT = -1f; dodgeEndAt = now; dodging = false; }
                 aimEnemy = Target != null ? Target : SoftAim(worldMove);
                 aimDir = aimEnemy != null ? Flat(aimEnemy.transform.position - transform.position)
@@ -927,7 +953,7 @@ namespace HuntProto
             // スラスターは歩きには効かない(ブースト・上昇・回避にだけ、性能の倍率がそのまま乗る)
             float speedMul = Boosting ? ThrusterMul() : 1f;
             // 攻撃中・回避中は動かない(回避は別に消費する)ので、スティックを倒していても減らさない
-            bool boostMoving = Boosting && worldMove.sqrMagnitude > 0.04f && atk == Atk.None && !dodging;
+            bool boostMoving = Boosting && worldMove.sqrMagnitude > 0.04f && atk == Atk.None && !dodging && !Bracing;
             float maxSpd = runSpeed * speedMul * (Boosting ? boostMul : 1f) * Mobility;
             if (boostMoving) UseEnergy(boostDrain * dt);
             if (ProtoGame.Mode == ProtoMode.Burst && rackAddsWeight)
@@ -961,6 +987,12 @@ namespace HuntProto
                 if (dodgeT >= dodgeDur) { dodgeT = -1f; dodgeEndAt = now; }
                 planarVel = Vector3.zero;
             }
+            else if (Bracing)
+            {
+                // 構え硬直:その場で止まる
+                planarVel = Vector3.zero;
+                vel = Vector3.zero;
+            }
             else if (atk != Atk.None)
             {
                 // 攻撃中は前へ進まない(踏み込みはモーションの中だけ)
@@ -977,8 +1009,9 @@ namespace HuntProto
             // 上昇の上限は「真下の足場から」の高さ(段差の上ならそこから測る)
             float groundY = ProtoStage.GroundHeight(transform.position);
             aboveGround = transform.position.y - groundY;
-            Flying = ProtoInput.FlyHeld && !Overheated && atk == Atk.None;
-            if (Flying)
+            Flying = ProtoInput.FlyHeld && !Overheated && atk == Atk.None && !Bracing;
+            if (Bracing && !cc.isGrounded) vy = 0f;   // 空中で構えたら、その高さに留まる
+            else if (Flying)
             {
                 UseEnergy(flyDrain * dt);
                 // スラスターがあれば速く上がる(品質が良いほど速い)
@@ -1025,8 +1058,22 @@ namespace HuntProto
             gunTL -= dt;
             spreadR = Mathf.MoveTowards(spreadR, 0f, recoilRecover * dt);
             spreadL = Mathf.MoveTowards(spreadL, 0f, recoilRecover * dt);
-            if (ProtoInput.RightHandHeld && HandIsGun(Hardpoint.RightHand)) FireGun(Hardpoint.RightHand, ref gunTR);
-            if (ProtoInput.LeftHandHeld && HandIsGun(Hardpoint.LeftHand)) FireGun(Hardpoint.LeftHand, ref gunTL);
+            // 単発の銃(ショットガン・ハンドガン)は押すたびに1発。撃てない間に押したら、少しの間だけ覚えておく
+            if (ProtoInput.Attack) semiPressR = Time.time;
+            if (ProtoInput.LeftHandPressed) semiPressL = Time.time;
+            if (HandIsGun(Hardpoint.RightHand))
+            {
+                if (!IsSemi(Hardpoint.RightHand)) { if (ProtoInput.RightHandHeld) FireGun(Hardpoint.RightHand, ref gunTR); }
+                else if (gunTR <= 0f && Time.time - semiPressR <= semiBuffer) { semiPressR = -10f; FireGun(Hardpoint.RightHand, ref gunTR); }
+            }
+            if (HandIsGun(Hardpoint.LeftHand))
+            {
+                if (!IsSemi(Hardpoint.LeftHand)) { if (ProtoInput.LeftHandHeld) FireGun(Hardpoint.LeftHand, ref gunTL); }
+                else if (gunTL <= 0f && Time.time - semiPressL <= semiBuffer) { semiPressL = -10f; FireGun(Hardpoint.LeftHand, ref gunTL); }
+            }
+            // 弾倉のリロード:時間が来たら満タンに戻す
+            foreach (var p in parts)
+                if (p.reloadT > 0f && (p.reloadT -= dt) <= 0f) { p.reloadT = 0f; p.mag = p.def.magazine; }
             cannonCdR -= dt;
             cannonCdL -= dt;
             if (ProtoInput.RightShoulderHeld && cannonCdR <= 0f) FireCannon(Hardpoint.RightShoulder, ref cannonCdR);
@@ -1048,10 +1095,11 @@ namespace HuntProto
             Consume(Hardpoint.Back, n);
         }
 
-        void UseEnergy(float amount)
+        /// <summary>ENを使う。weapon(エネルギー武器)はスラスターの燃費・消耗に関係しない。</summary>
+        void UseEnergy(float amount, bool weapon = false)
         {
-            if (Boosting) WearThruster(amount);   // スラスターはブースト中だけ働き、そのときだけ消耗する
-            if (Boosting)
+            if (Boosting && !weapon) WearThruster(amount);   // スラスターはブースト中だけ働き、そのときだけ消耗する
+            if (Boosting && !weapon)
             {
                 var thruster = First(PartType.Thruster);
                 if (thruster != null) amount *= thruster.drain;   // 燃費(パラメータ制。現行は1)
@@ -1166,8 +1214,7 @@ namespace HuntProto
                     rig.Pose(atkClip, Mathf.Lerp(MechRig.AttackRaised, MechRig.AttackStruck, Mathf.Clamp01(atkT / (strikeTime / attackSpeed))), 25f);
                     return;
                 case Atk.Recover:
-                    float rc = recovery * AttackSpeedMul(BladeCount(atkHand), thr);
-                    rig.Pose(atkClip, Mathf.Lerp(MechRig.AttackStruck, MechRig.AttackEnd, Mathf.Clamp01(atkT / rc)), 25f);
+                    rig.Pose(atkClip, Mathf.Lerp(MechRig.AttackStruck, MechRig.AttackEnd, Mathf.Clamp01(atkT / Mathf.Max(0.01f, curRecover))), 25f);
                     return;
             }
             bool gliding = (Boosting && planarVel.magnitude > runSpeed * 1.1f) || (!cc.isGrounded && aboveGround > 1.5f);
@@ -1186,6 +1233,13 @@ namespace HuntProto
         }
 
         // ───────── 剣 ─────────
+
+        /// <summary>その手の剣の振り方(素の剣は薙ぎ払い)。</summary>
+        SwingStyle StyleOf(Hardpoint hand) => DefAt(hand) is { type: PartType.Blade } d ? d.swing : SwingStyle.Slash;
+        /// <summary>振り方ごとの連撃の数・振りかぶりの長さ・戻りの長さ(薙ぎ払いが基準の1)。</summary>
+        static int MaxCombo(SwingStyle s) => s switch { SwingStyle.Slam => 2, SwingStyle.Flurry => 5, _ => 3 };
+        static float WindupMul(SwingStyle s) => s switch { SwingStyle.Slam => 1.9f, SwingStyle.Flurry => 0.45f, _ => 1f };
+        static float RecoverMul(SwingStyle s) => s switch { SwingStyle.Slam => 1.5f, SwingStyle.Flurry => 0.45f, _ => 1f };
 
         void UpdateAttack(float dt, float spd)
         {
@@ -1209,7 +1263,7 @@ namespace HuntProto
                     break;
                 case Atk.Recover:
                     atkT += dt;
-                    if (atkT >= recovery * spd) atk = Atk.None;
+                    if (atkT >= curRecover) atk = Atk.None;
                     break;
             }
         }
@@ -1241,11 +1295,18 @@ namespace HuntProto
         void SwordHit(PartDefinition bladeDef)
         {
             int blades = bladeDef != null ? 1 : 0;
+            var style = curStyle;
             float reach = swordReach * BladeReach(bladeDef);
             float dmg = swordDamage * (blades > 0 ? 1f + (bladeDef.multiplier - 1f) * blades : 1f);
-            if (comboIndex == 3) dmg *= 1.3f;   // 3段目は重い
+            if (comboIndex == MaxCombo(style)) dmg *= style == SwingStyle.Flurry ? 1.6f : 1.3f;   // 最後の段は重い
+            if (style == SwingStyle.Flurry) dmg *= 0.55f;   // 連撃は1撃が軽い
+            float arc = style switch { SwingStyle.Slam => swordArc * 0.6f, SwingStyle.Flurry => swordArc * 0.7f, _ => swordArc };
             Vector3 pos = transform.position;
             Vector3 fwd = transform.forward;
+            // 叩きつけ:正面の少し先の地面を中心に、まわりごと吹き飛ばす(扇の外の敵にも当たる)
+            Vector3 slamAt = pos + fwd * reach * 0.7f;
+            float slamR = 5f + reach * 0.35f;
+            if (style == SwingStyle.Slam) ProtoFx.Blast(slamAt + Vector3.up, slamR, new Color(1f, 0.9f, 0.6f), 0.35f);
 
             var targets = new List<(ProtoEnemy e, float d)>();
             foreach (var e in game.Alive)
@@ -1255,8 +1316,16 @@ namespace HuntProto
                 if (Mathf.Abs(to.y) > MechHeight * Mathf.Max(1f, e.Scale)) continue;   // 段の上下は斬れない
                 to.y = 0f;
                 float d = to.magnitude - e.Radius;
+                if (style == SwingStyle.Slam)
+                {
+                    Vector3 fromSlam = e.transform.position - slamAt;
+                    fromSlam.y = 0f;
+                    if (fromSlam.magnitude - e.Radius > slamR) continue;
+                    targets.Add((e, d));
+                    continue;
+                }
                 if (d > reach) continue;
-                if (d > 0.5f && Vector3.Angle(fwd, to) > swordArc) continue;
+                if (d > 0.5f && Vector3.Angle(fwd, to) > arc) continue;
                 targets.Add((e, d));
             }
             if (targets.Count == 0)
@@ -1283,7 +1352,7 @@ namespace HuntProto
                     pp.y = 0f;
                     float pd = pp.magnitude;
                     if (pd > reach + e.Radius) continue;
-                    if (Vector3.Angle(fwd, pp) > swordArc * 0.7f) continue;
+                    if (Vector3.Angle(fwd, pp) > arc * 0.7f) continue;
                     if (pd > centerDist + 0.8f * e.Scale) continue;
                     if (pd < bestD) { bestD = pd; bestPart = part; }
                 }
@@ -1302,11 +1371,14 @@ namespace HuntProto
                     hitPoint = BodyPoint(e);
                     ProtoDamageText.Show(hitPoint, dmg);
                 }
-                e.Knockback(to.normalized * (blades > 0 ? 14f : 6f));
+                float kb = style switch { SwingStyle.Slam => 26f, SwingStyle.Flurry => 5f, _ => blades > 0 ? 14f : 6f };
+                e.Knockback((to.sqrMagnitude > 0.01f ? to.normalized : fwd) * kb);
                 ProtoFx.Blast(hitPoint, 2.5f, Color.white, 0.15f);
             }
 
-            game.TimeWarp(0.05f, blades > 0 ? hitStop * 0.6f : hitStop);
+            float stop = blades > 0 ? hitStop * 0.6f : hitStop;
+            if (style == SwingStyle.Slam) stop *= 1.8f; else if (style == SwingStyle.Flurry) stop *= 0.4f;   // 叩きつけは重く、連撃は軽く止まる
+            game.TimeWarp(0.05f, stop);
             ProtoCamera.Shake(blades > 0 ? 0.5f : 0.9f);
         }
 
@@ -1381,12 +1453,19 @@ namespace HuntProto
             if (cd > 0f) return;
             var def = DefAt(at);
             if (def != null && def.type != PartType.Gatling) return;
+            var m = parts.Find(x => x.at == at);
+            // エネルギー武器:EN切れ(回復待ち)の間は撃てない / 実弾銃:リロード中は撃てない
+            if (def != null && def.IsEnergy && Overheated) return;
+            if (m != null && def.magazine > 0 && !def.IsEnergy)
+            {
+                if (m.mag < 0) m.mag = def.magazine;
+                if (m.reloadT > 0f) return;
+            }
             float range = def != null ? def.range : gunRange;
             cd = def != null ? def.interval : gunInterval;
 
-            var m = parts.Find(x => x.at == at);
             Transform muzzle = m != null ? m.visual : rifle != null ? rifle.transform : transform;
-            Color c = def != null ? new Color(1f, 0.85f, 0.3f) : new Color(0.6f, 0.9f, 1f);
+            Color c = def == null ? new Color(0.6f, 0.9f, 1f) : def.IsEnergy ? BeamColor : new Color(1f, 0.85f, 0.3f);
             float dmg = def != null ? def.damage : gunDamage;
             // 反動(パラメータ制のガトリングだけ):撃つたびにばらつきが広がり、外れやすくなる
             float spread = 0f;
@@ -1395,6 +1474,18 @@ namespace HuntProto
                 if (at == Hardpoint.LeftHand) spread = spreadL = Mathf.Min(maxSpread, spreadL + def.recoil);
                 else spread = spreadR = Mathf.Min(maxSpread, spreadR + def.recoil);
             }
+            // 散弾:1回で pellets 粒を、広がりの範囲にばらまく
+            int pellets = def != null ? Mathf.Max(1, def.pellets) : 1;
+            if (pellets > 1) spread = Mathf.Max(spread, def.pelletSpread);
+            for (int i = 0; i < pellets; i++) GunShot(muzzle, range, dmg, spread, c, pellets > 1);
+            if (def != null && def.IsEnergy) UseEnergy(def.energyCost, true);
+            else if (m != null && def.magazine > 0 && --m.mag <= 0) m.reloadT = def.reloadTime;   // 撃ち切ったらリロード
+            if (def != null) Consume(at);
+        }
+
+        /// <summary>手の銃の1発(散弾なら1粒)。scatter は散弾(近いほど当たる)。</summary>
+        void GunShot(Transform muzzle, float range, float dmg, float spread, Color c, bool scatter)
+        {
             var t = !Aiming && Target != null && Vector3.Distance(Target.transform.position, transform.position) <= range ? Target : null;
             if (t != null)
             {
@@ -1402,13 +1493,16 @@ namespace HuntProto
                 // ばらつきが大きいほど外れやすい(外れた弾はぶれた向きへ飛び、ほかの物に当たることはある)
                 Vector3 from = muzzle.position + AimForward() * 2f;
                 Vector3 center = t.transform.position + Vector3.up * MechHeight * 0.55f * t.Scale;
-                bool miss = spread > 0f && Random.value < spread / (spread + 6f);
+                // 散弾は近いほど多く当たる(射程の端では1割)。それ以外はばらつきが大きいほど外れやすい
+                bool miss = scatter
+                    ? Random.value < Mathf.Lerp(0.1f, 0.9f, Mathf.Clamp01(Vector3.Distance(from, center) / range))
+                    : spread > 0f && Random.value < spread / (spread + 6f);
                 Vector3 aim = miss
                     ? ShotRay(from, Jitter((center - from).normalized, spread), range, dmg)
                     : ProtoStage.Blocked(from, center)
                     ? ShotRay(from, (center - from).normalized, Vector3.Distance(from, center), dmg)
                     : RangedHit(t, dmg, from);
-                ProtoFx.Tracer(from, aim, c, 0.3f);
+                ProtoFx.Tracer(from, aim, c, scatter ? 0.15f : 0.3f);
             }
             else if (!Aiming && Target != null)
             {
@@ -1416,7 +1510,7 @@ namespace HuntProto
                 Vector3 from = muzzle.position + AimForward() * 2f;
                 Vector3 center = Target.transform.position + Vector3.up * MechHeight * 0.55f * Target.Scale;
                 Vector3 end = ShotRay(from, Jitter((center - from).normalized, spread), range, dmg);
-                ProtoFx.Tracer(from, end, c, 0.3f);
+                ProtoFx.Tracer(from, end, c, scatter ? 0.15f : 0.3f);
             }
             else
             {
@@ -1426,9 +1520,25 @@ namespace HuntProto
                 Vector3 goal = FreeAimPoint(range);
                 Vector3 dir = Jitter((goal - from).normalized, spread);
                 Vector3 end = ShotRay(from, dir, Vector3.Distance(from, goal) + 2f, dmg);
-                ProtoFx.Tracer(from, end, c, 0.3f);
+                ProtoFx.Tracer(from, end, c, scatter ? 0.15f : 0.3f);
             }
-            if (def != null) Consume(at);
+        }
+
+        static readonly Color BeamColor = new(1f, 0.45f, 0.95f);
+
+        /// <summary>HUD用:手の実弾銃のリロードの残り(0=撃てる、1=始まった直後)。弾倉がなければ 0。</summary>
+        public float GunReload01(Hardpoint at)
+        {
+            var m = parts.Find(x => x.at == at);
+            return m != null && m.reloadT > 0f && m.def.reloadTime > 0f ? Mathf.Clamp01(m.reloadT / m.def.reloadTime) : 0f;
+        }
+        public float GunReloadLeft(Hardpoint at) => Mathf.Max(0f, parts.Find(x => x.at == at)?.reloadT ?? 0f);
+        /// <summary>HUD用:弾倉の残り(弾倉のない武装は -1)。</summary>
+        public int MagLeft(Hardpoint at)
+        {
+            var m = parts.Find(x => x.at == at);
+            if (m == null || m.def.magazine <= 0 || m.def.IsEnergy) return -1;
+            return m.mag < 0 ? m.def.magazine : m.mag;
         }
 
         /// <summary>向きを最大 deg 度の範囲でランダムにぶらす(0ならそのまま)。</summary>
@@ -1447,7 +1557,16 @@ namespace HuntProto
             var list = parts.FindAll(x => x.at == at);
             if (list.Count == 0) return;
             var def = list[0].def;
+            if (def.IsEnergy && Overheated) return;   // エネルギー武器:EN切れの間は撃てない
             cd = def.interval;
+            if (def.IsEnergy) UseEnergy(def.energyCost * list.Count, true);
+            // 構え硬直:その場で止まり、構えの途中(長くても0.35秒)で弾が出る
+            float windup = 0f;
+            if (def.stance > 0f)
+            {
+                stanceT = Mathf.Max(stanceT, def.stance);
+                windup = Mathf.Min(0.35f, def.stance * 0.4f);
+            }
             if (at == Hardpoint.RightShoulder) cannonMaxR = cd; else cannonMaxL = cd;
             if (Target == null || Aiming)
             {
@@ -1456,7 +1575,8 @@ namespace HuntProto
                 {
                     Vector3 from = m.visual.position;
                     Vector3 point = FreeAimPoint(def.range);
-                    StartCoroutine(Shell(from, point, def));
+                    if (def.salvo > 1) FireSalvo(from, def, null, 0, point);
+                    else StartCoroutine(Shell(from, point, def, windup));
                 }
                 WearCannons(list);
                 return;
@@ -1478,13 +1598,15 @@ namespace HuntProto
 
             for (int i = 0; i < list.Count; i++)
             {
+                // ミサイル:狙える敵に順番に割り振って、何発も飛ばす
+                if (def.salvo > 1) { FireSalvo(list[i].visual.position, def, targets, i, transform.position + f * def.range * 0.6f); continue; }
                 Vector3 point = i < targets.Count ? targets[i].transform.position : transform.position + f * def.range * 0.6f;
                 Vector3 from = list[i].visual.position;
                 // 間を地形がさえぎっていれば、壁に当たった所で爆発する
                 Vector3 aimAt = point + Vector3.up * 2f;
                 if (ProtoStage.Blocked(from, aimAt))
                     point = AimRayPoint(from, (aimAt - from).normalized, Vector3.Distance(from, aimAt));
-                StartCoroutine(Shell(from, point, def));
+                StartCoroutine(Shell(from, point, def, windup));
             }
             WearCannons(list);
         }
@@ -1580,12 +1702,57 @@ namespace HuntProto
         /// <summary>照準の目安(HUD用)。</summary>
         public Vector3 AimPreview() => FreeAimPoint(gunRange);
 
-        IEnumerator Shell(Vector3 from, Vector3 point, PartDefinition def)
+        IEnumerator Shell(Vector3 from, Vector3 point, PartDefinition def, float delay = 0f)
         {
-            ProtoFx.Tracer(from, point + Vector3.up * 3f, new Color(0.7f, 1f, 0.4f), 0.8f, 0.12f);
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+            ProtoFx.Tracer(from, point + Vector3.up * 3f, def.IsEnergy ? BeamColor : new Color(0.7f, 1f, 0.4f), 0.8f, 0.12f);
             yield return new WaitForSeconds(0.25f);
-            ProtoFx.Blast(point + Vector3.up * 2f, def.radius, new Color(0.8f, 1f, 0.3f), 0.35f);
+            ProtoFx.Blast(point + Vector3.up * 2f, def.radius, def.IsEnergy ? BeamColor : new Color(0.8f, 1f, 0.3f), 0.35f);
             ProtoCamera.Shake(0.7f);
+            Explode(point, def);
+        }
+
+        static readonly Color MissileColor = new(1f, 0.6f, 0.25f);
+
+        /// <summary>
+        /// ミサイルを salvo 発、少しずつ間をあけて撃つ。targets があれば、発射台ごとにずらして順番に割り振る
+        /// (なければ point のまわりにばらまく)。
+        /// </summary>
+        void FireSalvo(Vector3 from, PartDefinition def, List<ProtoEnemy> targets, int launcher, Vector3 point)
+        {
+            for (int j = 0; j < def.salvo; j++)
+            {
+                ProtoEnemy t = targets != null && targets.Count > 0 ? targets[(launcher * def.salvo + j) % targets.Count] : null;
+                Vector2 scatter = Random.insideUnitCircle * def.radius;
+                StartCoroutine(Missile(from, t, point + new Vector3(scatter.x, 0f, scatter.y), def, j * 0.07f));
+            }
+        }
+
+        /// <summary>ミサイル1発:上へ打ち上げてから、狙った敵へ曲がって飛ぶ(敵が動いても追いかける)。当たると小さく爆発する。</summary>
+        IEnumerator Missile(Vector3 from, ProtoEnemy target, Vector3 point, PartDefinition def, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+            Vector3 lift = from + Vector3.up * 14f + Random.insideUnitSphere * 7f;
+            float dur = Random.Range(0.55f, 0.75f), t = 0f;
+            Vector3 prev = from, goal = point + Vector3.up * 2f;
+            while (t < dur)
+            {
+                t += Time.deltaTime;
+                if (target != null && !target.Dead) goal = BodyPoint(target);
+                float k = Mathf.Clamp01(t / dur);
+                Vector3 pos = Vector3.Lerp(Vector3.Lerp(from, lift, k), Vector3.Lerp(lift, goal, k), k);
+                ProtoFx.Tracer(prev, pos, MissileColor, 0.25f, 0.2f);
+                prev = pos;
+                yield return null;
+            }
+            Vector3 hit = target != null && !target.Dead ? target.transform.position : goal - Vector3.up * 2f;
+            ProtoFx.Blast(hit + Vector3.up * 2f, def.radius, MissileColor, 0.3f);
+            Explode(hit, def);
+        }
+
+        /// <summary>爆発:半径の中の敵と部位にダメージ(キャノンとミサイルで共通)。</summary>
+        void Explode(Vector3 point, PartDefinition def)
+        {
             foreach (var e in new List<ProtoEnemy>(game.Alive))
             {
                 if (e.Dead) continue;
@@ -1596,7 +1763,7 @@ namespace HuntProto
                 if (dy < -def.radius || dy > MechHeight * e.Scale + def.radius) continue;   // 上下に離れていれば当たらない
                 e.TakeDamage(def.damage);
                 ProtoDamageText.Show(BodyPoint(e), def.damage);
-                e.Knockback((d.sqrMagnitude > 0.01f ? d.normalized : Vector3.forward) * 20f);
+                e.Knockback((d.sqrMagnitude > 0.01f ? d.normalized : Vector3.forward) * (def.salvo > 1 ? 6f : 20f));   // ミサイルは何発も当たるので1発は弱く
                 // 爆風に入った部位も削れる(自分の側を向いていない部位にも当たる)
                 foreach (var part in e.Parts)
                 {

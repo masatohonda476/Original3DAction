@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_Shotgun
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 0
+  displayName: "\u6563\u5f3e\u9283\u8155"
+  slot: 0
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 1, y: 1.6, z: 1}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.25, g: 0.25, b: 0.3, a: 1}
+  partHP: 70
+  damage: 9
+  interval: 0.6
+  range: 35
+  radius: 10
+  multiplier: 2
+  uses: 140
+  weight: 6
+  recoil: 0
+  drain: 1
+  salvo: 1
+  pellets: 10
+  pelletSpread: 9
+  semiAuto: 1
+  magazine: 8
+  reloadTime: 1.8
+  energyCost: 0
+  stance: 0
+  rarity: 1
+  feel: "\u62bc\u3059\u305f\u3073\u306b10\u7c92\u306e\u6563\u5f3e\u3002\u8fd1\u3044\u307b\u3069\u591a\u304f\u5f53\u305f\u308b"
+  variants: []

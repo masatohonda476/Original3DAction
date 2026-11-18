@@ -26,7 +26,18 @@ MonoBehaviour:
   range: 60
   radius: 1.5
   multiplier: 1.8
-  uses: 23
-  weight: 6
+  uses: 46
+  weight: 3.84
   recoil: 0.5
   drain: 1
+  salvo: 1
+  swing: 0
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 0
+  rarity: 0
+  feel: "\u6a19\u6e96\u306e\u8599\u304e\u6255\u3044\u30023\u9023\u6483"
+  variants:
+  - {fileID: 11400000, guid: 486e7aac041c467baa54c7db76852e24, type: 2}
+  - {fileID: 11400000, guid: 72760dd04f974b969aa8aeb7769f504c, type: 2}

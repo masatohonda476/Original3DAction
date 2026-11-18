@@ -25,9 +25,20 @@ MonoBehaviour:
   interval: 0.1
   range: 60
   radius: 10
-  multiplier: 2.6
-  uses: 600
-  weight: 8
+  multiplier: 1.5
+  uses: 1200
+  weight: 5.12
   recoil: 0.5
   drain: 1
   grade: 1
+  salvo: 1
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 0
+  rarity: 0
+  feel: "\u901f\u3055\u3068\u71c3\u8cbb\u306e\u30d0\u30e9\u30f3\u30b9\u578b"
+  variants:
+  - {fileID: 11400000, guid: 31979153c61646f78a4482b5812311b3, type: 2}
+  - {fileID: 11400000, guid: 6e8941f46e9c4e4a9420f56dd1abc3a7, type: 2}
+  - {fileID: 11400000, guid: c760e22fe1ac4531b3bd6bd96810e1eb, type: 2}

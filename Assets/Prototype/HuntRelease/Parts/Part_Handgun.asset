@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_Handgun
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 0
+  displayName: "\u62f3\u9283\u8155"
+  slot: 0
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 0.5, y: 0.9, z: 0.5}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.25, g: 0.25, b: 0.3, a: 1}
+  partHP: 70
+  damage: 12
+  interval: 0.15
+  range: 45
+  radius: 10
+  multiplier: 2
+  uses: 220
+  weight: 2
+  recoil: 0.2
+  drain: 1
+  salvo: 1
+  pellets: 1
+  pelletSpread: 0
+  semiAuto: 1
+  magazine: 12
+  reloadTime: 1
+  energyCost: 0
+  stance: 0
+  rarity: 0
+  feel: "\u62bc\u3059\u305f\u3073\u306b1\u767a\u3002\u8efd\u304f\u3066\u6271\u3044\u3084\u3059\u3044\u304c\u3001\u5c04\u7a0b\u306f\u77ed\u3044"
+  variants: []

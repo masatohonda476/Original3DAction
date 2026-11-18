@@ -12,19 +12,19 @@ namespace HuntProto
     public enum Phase { Hunt, HordeIncoming, Horde, Monster, Clear }
     /// <summary>
     /// 武装の方式。Classic = 使い切り+品質4段階(評価時点の試作)/
-    /// StatsA = 耐久(使える回数)も含めて、振れ幅の大きいパラメータは数個だけ / StatsB = 全パラメータが大きく振れ、今の装備との差で比べる
+    /// StatsB = 耐久(使える回数)も含めて全パラメータが大きく振れ、今の装備との差で比べる(A案は廃止)
     /// </summary>
-    public enum ArmsRule { Classic, StatsA, StatsB }
+    public enum ArmsRule { Classic, StatsB }
 
     /// <summary>
     /// 「狩り → 群れ → バケモノ」の1弧を回し、区切りごとの時間を記録する。
-    /// F2(SHARE+□)で武装の方式を切替(現行 → A案 → B案、再スタート)、F1(SHARE+△)で再スタート。
+    /// F2(SHARE+□)で武装の方式を切替(現行 ↔ B案、再スタート)、F1(SHARE+△)で再スタート。
     /// </summary>
     public class ProtoGame : MonoBehaviour
     {
         public static ProtoGame I;
         public static ProtoMode Mode = ProtoMode.Gradual;
-        public static ArmsRule Arms = ArmsRule.StatsA;
+        public static ArmsRule Arms = ArmsRule.StatsB;
         static bool modeInitialized;
 
         [Header("機体アセット(ビルダーが設定)")]
@@ -38,28 +38,26 @@ namespace HuntProto
 
         [Header("部位")]
         public PartDefinition[] partPool;
-        [Tooltip("腕刃を敵の装備・ドロップ・宝箱に出すか(一旦オフ:少し強くなる程度で弱いため)")]
-        public bool bladeInPool = false;
+        [Tooltip("腕刃を敵の装備・ドロップ・宝箱に出すか")]
+        public bool bladeInPool = true;
         [Tooltip("装備メニュー中に時間を止める(切ると敵は動き続け、自機は操作できないまま)")]
         public bool pauseInMenu = false;
 
         [Header("モードの初期値(切り替え方式は評価の対象外。ここでだけ変えられる)")]
         public ProtoMode defaultMode = ProtoMode.Gradual;
 
-        [Header("武装の方式(F2 / SHARE+□で 現行 → A案 → B案 と切替)")]
-        public ArmsRule defaultArms = ArmsRule.StatsA;
-        [Tooltip("A案で大きく振れるパラメータの数")]
-        public int aSwingCount = 2;
-        [Tooltip("大きく振れるときの幅(倍率)。3なら元の 1/3〜3倍")]
-        public float statSwing = 3f;
-        [Tooltip("評価(C/B/A/S・総合値・評価の色)を見せるか。切ると名前と色に評価が出ず、パラメータだけで選ぶ")]
+        [Header("武装の方式(F2 / SHARE+□で 現行 ↔ B案 と切替)")]
+        public ArmsRule defaultArms = ArmsRule.StatsB;
+        [Tooltip("レーダーチャートの目盛りの幅(倍率)。3なら、標準の武装の 1/3倍が中心、3倍が外周")]
+        public float radarScale = 3f;
+        [Tooltip("装備メニューの候補に総合値(標準=50)を見せるか")]
         public bool showRating = false;
-        [Tooltip("重量1あたりの機動力の低下(走り・ブースト・回避・上昇の速さ)")]
+        [Tooltip("重量1あたりの機動力の低下(走り・ブースト・回避・上昇の速さ)。重量オーバーになる重さ = (1 - overweightMobility) / これ")]
         public float weightSlowPerUnit = 0.005f;
         [Tooltip("在庫(付けていない武装)の重さを、何倍で機動力に数えるか")]
         [Range(0f, 1f)] public float stockWeightRate = 0.5f;
-        [Tooltip("機動力がこの値以下だと重量オーバー。警告を出し、軽くするまで装備メニューを閉じられない")]
-        [Range(0f, 1f)] public float overweightMobility = 0.5f;
+        [Tooltip("機動力がこの値以下だと重量オーバー。警告を出し、軽くするまで装備メニューを閉じられない。0.4 で重量120が上限")]
+        [Range(0f, 1f)] public float overweightMobility = 0.4f;
 
         [Header("進行")]
         [Tooltip("ステージ攻略型(区画を順に制圧して進む)。切ると従来の平地の「狩り→群れ→バケモノ」")]
@@ -273,21 +271,19 @@ namespace HuntProto
         public static string ArmsName(ArmsRule r) => r switch
         {
             ArmsRule.Classic => "現行(使い切り・品質4段階)",
-            ArmsRule.StatsA => "A案(耐久あり・数個だけ大きく振れる)",
-            _ => "B案(耐久あり・全部が振れる・差で比べる)",
+            _ => "B案(性格の違う武装から選ぶ・差で比べる)",
         };
 
-        public static string ArmsShort(ArmsRule r) => r switch { ArmsRule.Classic => "現行", ArmsRule.StatsA => "A案", _ => "B案" };
+        public static string ArmsShort(ArmsRule r) => r switch { ArmsRule.Classic => "現行", _ => "B案" };
 
         /// <summary>
-        /// 敵・宝箱が持つ武装を作る。現行は品質(grade)を付け、A案・B案はパラメータを振る。
-        /// bestOf:パラメータ制で何回振って一番良いものを取るか(ボス・宝箱は良いものが出やすい)。
+        /// 敵・宝箱が持つ武装を作る。現行は品質(grade)を付け、B案は同じ種類の武装の一覧(variants)から1つ選ぶ。
+        /// bestOf は今は使っていない(B案では、敵の強さによらず同じ確率で選ぶ)。
         /// </summary>
         public PartDefinition MakeLoot(PartDefinition baseDef, int grade, int bestOf = 1) => Arms switch
         {
             ArmsRule.Classic => baseDef.WithGrade(grade),
-            ArmsRule.StatsA => baseDef.WithStats(aSwingCount, statSwing, bestOf, showRating),
-            _ => baseDef.WithStats(0, statSwing, bestOf, showRating),
+            _ => baseDef.PickVariant(radarScale),
         };
 
         // ───────── 進行 ─────────
@@ -297,7 +293,7 @@ namespace HuntProto
             ProtoInput.TrackDevice();
             if (ProtoInput.ToggleMode)
             {
-                Arms = (ArmsRule)(((int)Arms + 1) % 3);
+                Arms = Arms == ArmsRule.Classic ? ArmsRule.StatsB : ArmsRule.Classic;
                 Restart();
                 return;
             }
@@ -617,7 +613,10 @@ namespace HuntProto
                 GUI.Label(new Rect(x, y, 400f, 22f), WeightText(), small);
         }
 
-        /// <summary>画面下の中央:△で拾える武装の案内(名前・評価・重量と、A案は振れたところ/B案は今の装備との差)。</summary>
+        /// <summary>拾うときのレーダーチャートの大きさ(画面右端、武装表示の上に出す)。</summary>
+        const float PickRadarW = 300f, PickRadarH = 304f;
+
+        /// <summary>画面下の中央:△で拾える武装の案内(名前・評価・重量と、今の装備との差)。</summary>
         void DrawPickPrompt()
         {
             var loot = player.NearbyLoot;
@@ -634,6 +633,8 @@ namespace HuntProto
             var st = new GUIStyle(label) { alignment = TextAnchor.MiddleCenter };
             float w = st.CalcSize(new GUIContent(text)).x + 40f;
             var r = new Rect((SW - w) / 2f, SH * 0.72f, w, 34f);
+            // 長い案内文が右のレーダーチャートにかぶるときは、その分だけ左へ寄せる
+            if (d.HasStats) r.x = Mathf.Max(10f, Mathf.Min(r.x, SW - 20f - PickRadarW - 12f - w));
             if (over)
             {
                 // 拾おうとした直後は強く光らせる
@@ -644,20 +645,23 @@ namespace HuntProto
             Chip(new Rect(r.x, r.y, 4f, r.height), d.GradeColor);
             GUI.Label(r, text, st);
 
-            // 横に性能のレーダーチャート(拾うもの=塗り、同じ種類で今付けているもの=線)
+            // 性能のレーダーチャート(拾うもの=塗り、同じ種類で今付けているもの=線)。
+            // 画面の右端、右下の武装表示のすぐ上に出す(左側には出さない)
             if (!d.HasStats) return;
-            const float rw = 170f, rh = 150f;
-            float rx = r.xMax + 10f + rw <= SW - 10f ? r.xMax + 10f : r.x - 10f - rw;
-            var rr = new Rect(rx, r.yMax - rh, rw, rh);
+            const float rw = PickRadarW, rh = PickRadarH;
+            float weaponsTop = SH - 148f;   // DrawWeapons の一番上の行(肩)の上端
+            var rr = new Rect(SW - 20f - rw, weaponsTop - 10f - rh, rw, rh);
             Panel(rr, 0.6f);
+            // 一番上にレア度(色付き)と操作感の一言
+            DrawColored(new Rect(rr.x + 10f, rr.y + 4f, rw - 16f, 22f), FeelLine(d), small);
             // 比べる相手:付けられる場所に空きがあればそこ(線なし)、なければ同じ種類を付けている場所
             var slot = player.CompareSlot(d.type, out var cur);
-            ProtoRadar.Draw(new Rect(rr.x, rr.y + 2f, rw, rh - 22f), uiScale, d, cur?.def, statSwing, ProtoRadar.MainColor, tiny,
+            ProtoRadar.Draw(new Rect(rr.x, rr.y + 28f, rw, rh - 54f), uiScale, d, cur?.def, radarScale, ProtoRadar.MainColor, small,
                 loot.Uses, cur != null ? cur.uses : -1);
             var legend = new List<(string, Color)> { ("■ 拾うもの", ProtoRadar.MainColor) };
             if (cur != null && cur.def.HasStats) legend.Add(("― 今の装備", ProtoRadar.CompareColor));
             else if (slot.HasValue) legend.Add(($"{ProtoPlayer.HardpointName(slot.Value)}は空き", new Color(0.7f, 0.72f, 0.75f)));
-            DrawColored(new Rect(rr.x + 8f, rr.yMax - 20f, rw - 12f, 18f), legend, tiny);
+            DrawColored(new Rect(rr.x + 10f, rr.yMax - 26f, rw - 16f, 22f), legend, small);
         }
 
         /// <summary>
@@ -675,22 +679,31 @@ namespace HuntProto
             bool compare = it != null && cur != null && cur.HasStats && cur.type == main.type;
 
             GUI.Label(new Rect(x, y0 + 14f, w, 30f), "性能", head);
-            ProtoRadar.Draw(new Rect(x, top, w, 250f), uiScale, main, compare ? cur : null, statSwing,
+            ProtoRadar.Draw(new Rect(x, top, w, 320f), uiScale, main, compare ? cur : null, radarScale,
                 it != null ? ProtoRadar.MainColor : ProtoRadar.CompareColor, small,
                 it != null ? it.uses : curUses, curUses);
-            float ly = top + 256f;
+            float ly = top + 326f;
             var legend = new List<(string, Color)>();
             if (it != null) legend.Add(("■ 選んでいる候補", ProtoRadar.MainColor));
             if (compare || it == null) legend.Add(((it == null ? "■" : "―") + " 今の装備", ProtoRadar.CompareColor));
             DrawColored(new Rect(x, ly, w, 20f), legend, small);
-            GUI.Label(new Rect(x, ly + 22f, w, 20f), "外側ほど良い / 白い輪が元の性能", tiny);
+            DrawColored(new Rect(x, ly + 22f, w, 22f), FeelLine(main), small);
+            ly += 24f;
+            GUI.Label(new Rect(x, ly + 22f, w, 20f), "外側ほど良い / 白い輪が標準の武装", tiny);
             if (compare) GUI.Label(new Rect(x, ly + 40f, w, 20f), "軸の名前:緑=今より良い 赤=今より悪い", tiny);
             return true;
         }
 
+        /// <summary>レア度(その色)と操作感の一言。</summary>
+        static List<(string, Color)> FeelLine(PartDefinition d) => new()
+        {
+            ($"[{d.RarityName}] ", d.GradeColor),
+            (d.feel ?? "", new Color(0.85f, 0.87f, 0.9f)),
+        };
+
         string WeightText() => $"重量 {player.TotalWeight:0}(装備 {player.EquippedWeight:0} + 在庫 {player.StockWeight:0}×{stockWeightRate:0.##})   機動力 ×{player.Mobility:0.00}";
 
-        /// <summary>候補の2行目:現行は性能と残り回数、A案は全パラメータ(大きく振れたものだけ色付き)、B案は今付いているものとの差。</summary>
+        /// <summary>候補の2行目:現行は性能と残り回数、B案は今付いているものとの差(付いていなければ標準の武装との差)。</summary>
         List<(string text, Color color)> CandidateLine(PartDefinition d, int uses, Hardpoint at)
         {
             var white = new Color(0.85f, 0.87f, 0.9f);
@@ -719,13 +732,9 @@ namespace HuntProto
             }
             foreach (var st in PartDefinition.StatsOf(d.type))
             {
-                Color c = new Color(0.6f, 0.62f, 0.65f);
-                if (System.Array.IndexOf(d.swung, st) >= 0)
-                {
-                    // 大きく振れたパラメータ:元より良い向きなら緑、悪い向きなら赤(ほぼ変わらなければ白)
-                    float r = d.StatValue(st) / Mathf.Max(0.0001f, d.source.StatValue(st));
-                    c = Mathf.Abs(Mathf.Log(r)) < Mathf.Log(1.06f) ? white : (r > 1f) == PartDefinition.HigherIsBetter(st) ? good : bad;
-                }
+                // 標準の武装より良い向きなら緑、悪い向きなら赤(ほぼ変わらなければ白)
+                float r = d.StatValue(st) / Mathf.Max(0.0001f, d.source.StatValue(st));
+                Color c = Mathf.Abs(Mathf.Log(r)) < Mathf.Log(1.06f) ? white : (r > 1f) == PartDefinition.HigherIsBetter(st) ? good : bad;
                 line.Add((DurText(d, st, uses), c));
             }
             return line;
@@ -757,9 +766,21 @@ namespace HuntProto
             float yb = SH - 20f;
             // 一番下:背中と在庫
             float yBack = yb - 26f;
+            // 背中(バックパック):左の列に、手・肩と同じく耐久のゲージ付きで出す
             var back = player.SlotItem(Hardpoint.Back);
-            GUI.Label(new Rect(x0, yBack, w * 2f + gap, 24f),
-                $"背  {(back != null ? ProtoPlayer.ItemText(back) : "―")}", small);
+            var br = new Rect(x0, yBack, w, 24f);
+            Chip(br, new Color(0f, 0f, 0f, back != null ? 0.5f : 0.25f));
+            GUI.color = back != null ? Color.white : new Color(1f, 1f, 1f, 0.4f);
+            GUI.Label(new Rect(br.x + 8f, br.y + 2f, w - 56f, 20f), $"背  {(back != null ? back.def.displayName : "―")}", small);
+            GUI.color = Color.white;
+            if (back != null && back.uses >= 0 && back.def.uses > 0)
+            {
+                float k = Mathf.Clamp01(back.uses / (float)back.def.uses);
+                Chip(new Rect(br.x, br.yMax - 3f, br.width, 3f), new Color(1f, 1f, 1f, 0.12f));
+                Chip(new Rect(br.x, br.yMax - 3f, br.width * k, 3f), k < 0.25f ? new Color(1f, 0.4f, 0.3f) : new Color(0.9f, 0.9f, 0.9f));
+                var us = new GUIStyle(tiny) { alignment = TextAnchor.MiddleRight };
+                GUI.Label(new Rect(br.x, br.y + 2f, br.width - 8f, 18f), $"{back.uses}", us);
+            }
             string stock = Mode == ProtoMode.Burst
                 ? (player.Rack.Count > 0 ? $"ラック {player.Rack.Count}  [{K(ProtoInput.Btn.Menu)}]解放" : "")
                 : (player.Stock.Count > 0 ? $"在庫 {player.Stock.Count}  [{K(ProtoInput.Btn.Menu)}]" : "");
@@ -767,7 +788,7 @@ namespace HuntProto
             {
                 var st = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
                 st.normal.textColor = new Color(1f, 0.85f, 0.4f);
-                GUI.Label(new Rect(x0, yBack, w * 2f + gap, 24f), stock, st);
+                GUI.Label(new Rect(x1, yBack + 2f, w, 22f), stock, st);
             }
             float yRow1 = yBack - 6f - h, yRow2 = yRow1 - gap - h;
             WeaponCell(new Rect(x0, yRow2, w, h), Hardpoint.LeftShoulder, ProtoInput.Btn.L2);
@@ -789,6 +810,26 @@ namespace HuntProto
                 var rs = new GUIStyle(tiny) { alignment = TextAnchor.UpperCenter };
                 rs.normal.textColor = new Color(1f, 0.75f, 0.4f);
                 GUI.Label(new Rect(r.x, r.y + 3f, r.width, 16f), $"装填 {player.CannonReloadLeft(at):0.0}秒", rs);
+            }
+            // 手の実弾銃:リロード中はキャノンと同じゲージ、撃てる間は弾倉の残り。エネルギー武器は1発のEN
+            float gunReload = player.GunReload01(at);
+            var ms = new GUIStyle(tiny) { alignment = TextAnchor.UpperCenter };
+            if (gunReload > 0f)
+            {
+                Chip(new Rect(r.x, r.y, r.width * (1f - gunReload), r.height), new Color(1f, 0.6f, 0.15f, 0.35f));
+                ms.normal.textColor = new Color(1f, 0.75f, 0.4f);
+                GUI.Label(new Rect(r.x, r.y + 3f, r.width, 16f), $"リロード {player.GunReloadLeft(at):0.0}秒", ms);
+            }
+            else if (player.MagLeft(at) >= 0 && it != null)
+            {
+                int mag = player.MagLeft(at);
+                ms.normal.textColor = mag <= it.def.magazine / 4 ? new Color(1f, 0.5f, 0.4f) : new Color(0.85f, 0.87f, 0.9f);
+                GUI.Label(new Rect(r.x, r.y + 3f, r.width, 16f), $"弾 {mag}/{it.def.magazine}", ms);
+            }
+            else if (it != null && it.def.IsEnergy)
+            {
+                ms.normal.textColor = player.Overheated ? new Color(1f, 0.4f, 0.3f) : new Color(1f, 0.6f, 0.95f);
+                GUI.Label(new Rect(r.x, r.y + 3f, r.width, 16f), player.Overheated ? "EN切れ" : $"EN {it.def.energyCost:0.#}/発", ms);
             }
             GUI.Label(new Rect(r.x + 8f, r.y + 3f, 90f, 16f), K(btn), tiny);
             string name = it != null ? it.def.displayName : at == Hardpoint.RightHand ? "剣" : "―";
@@ -858,7 +899,7 @@ namespace HuntProto
         {
             var slots = ProtoPlayer.MenuSlots;
             bool picking = player.MenuPicking;
-            const float colW = 420f, rowH = 54f, gap = 16f, helpW = 270f;
+            const float colW = 420f, rowH = 54f, gap = 16f, helpW = 340f;
             float w = colW * 2f + helpW + gap * 4f, h = 90f + slots.Length * (rowH + 6f) + 120f;
             float x0 = (SW - w) / 2f, y0 = (SH - h) / 2f;
             Chip(new Rect(0f, 0f, SW, SH), new Color(0f, 0f, 0f, 0.45f));

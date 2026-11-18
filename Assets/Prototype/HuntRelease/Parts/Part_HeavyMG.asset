@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_HeavyMG
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 0
+  displayName: "\u91cd\u6a5f\u95a2\u9283\u8155"
+  slot: 0
+  visualPrefab: {fileID: 0}
+  placeholderShape: 2
+  placeholderScale: {x: 1.4, y: 2, z: 1.4}
+  placeholderEuler: {x: 90, y: 0, z: 0}
+  color: {r: 0.25, g: 0.25, b: 0.3, a: 1}
+  partHP: 70
+  damage: 16
+  interval: 0.09
+  range: 85
+  radius: 10
+  multiplier: 2
+  uses: 500
+  weight: 12
+  recoil: 0.4
+  drain: 1
+  salvo: 1
+  magazine: 100
+  reloadTime: 3
+  energyCost: 0
+  stance: 0
+  rarity: 1
+  feel: "\u91cd\u3044\u304c\u4e00\u767a\u304c\u5f37\u3044\u3002\u6483\u3061\u7d9a\u3051\u308b\u3068\u3070\u3089\u3051\u308b"
+  variants: []

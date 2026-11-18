@@ -4,6 +4,11 @@ namespace HuntProto
 {
     public enum PartType { Gatling, Thruster, Cannon, Blade }
     public enum MountSlot { RightArm, LeftArm, Back, Shoulder }
+    /// <summary>
+    /// 剣の振り方。Slash = 標準の薙ぎ払い(3連撃) / Slam = 大きく振りかぶって叩きつけ、当たった所のまわりごと吹き飛ばす(2連撃) /
+    /// Flurry = 素早い連撃(5連撃、1撃は軽い)
+    /// </summary>
+    public enum SwingStyle { Slash, Slam, Flurry }
     /// <summary>自機の武装の置き場所。R1=右手 / L1=左手 / R2=右肩 / L2=左肩。</summary>
     public enum Hardpoint { RightHand, LeftHand, RightShoulder, LeftShoulder, Back }
 
@@ -43,13 +48,38 @@ namespace HuntProto
         [Tooltip("使える回数(刃腕:振った回数 / ガトリング:弾数 / キャノン:発射回数)。使い切ると外れる。0なら外れない")]
         public int uses = 0;
 
-        [Header("パラメータ制(A案・B案)でだけ使う")]
+        [Header("パラメータ制(B案)でだけ使う")]
         [Tooltip("重さ。付けている武装の合計で自機の機動力(走り・ブースト・回避・上昇)が下がる")]
         public float weight = 10f;
         [Tooltip("ガトリング:1発ごとに広がるばらつき(度)。撃ち続けるほど外れやすくなる")]
         public float recoil = 0.5f;
         [Tooltip("スラスター:ブースト中のエネルギー消費の倍率(小さいほど燃費が良い)")]
         public float drain = 1f;
+        [Tooltip("キャノン:1回で撃つ発数。2以上ならミサイル(小さな爆発が、狙った敵を追いかけて何発も飛ぶ)")]
+        public int salvo = 1;
+        [Tooltip("剣:振り方(薙ぎ払い / 叩きつけ / 連撃)")]
+        public SwingStyle swing = SwingStyle.Slash;
+        [Tooltip("手の銃:1回で出る弾の数。2以上なら散弾(pelletSpread 度の範囲に広がる。近いほど多く当たる)")]
+        public int pellets = 1;
+        [Tooltip("手の銃:散弾の広がり(度)")]
+        public float pelletSpread = 0f;
+        [Tooltip("手の銃:押すたびに1発だけ撃つ(押しっぱなしでは連射しない)")]
+        public bool semiAuto = false;
+        [Tooltip("手の実弾銃:弾倉の弾数。撃ち切ると reloadTime 秒リロードして撃てない(0なら弾倉なし)")]
+        public int magazine = 0;
+        [Tooltip("手の実弾銃:弾倉を撃ち切ったときのリロード時間(秒)")]
+        public float reloadTime = 0f;
+        [Tooltip("エネルギー武器:1発ごとに使うEN(0なら実弾)。リロードはないが、EN切れの間は撃てない")]
+        public float energyCost = 0f;
+        public bool IsEnergy => energyCost > 0f;
+        [Tooltip("キャノン:撃つとき、この秒数その場で構えて動けない(構え硬直。0ならなし)。弾は構えの途中で出る")]
+        public float stance = 0f;
+        [Tooltip("レア度(0=コモン / 1=レア / 2=エピック)。レアなほど出にくく、強い。色でも分かる")]
+        [Range(0, 2)] public int rarity = 0;
+        [Tooltip("操作感の一言(拾うとき・装備メニューで見せる)")]
+        public string feel = "";
+        [Tooltip("同じ種類のほかの武装(標準の武装にだけ書く)。パラメータ制では、自分とこの中から同じ確率で1つ落とす")]
+        public PartDefinition[] variants;
 
         // ───────── 品質(同じ武装でも強さに差をつける) ─────────
 
@@ -59,10 +89,8 @@ namespace HuntProto
         {
             new(0.42f, 0.36f, 0.3f), new(0.75f, 0.77f, 0.8f), new(0.25f, 0.55f, 1f), new(1f, 0.75f, 0.15f),
         };
-        /// <summary>武装そのものの色(品質で決まる。形で種類、色で品質を見分ける)。</summary>
-        public Color GradeColor => GradeColors[hideRank ? 1 : Mathf.Clamp(grade, 0, GradeColors.Length - 1)];
-        /// <summary>評価を見せない個体(色も標準にそろえ、名前に評価を付けない)。</summary>
-        [System.NonSerialized] public bool hideRank;
+        /// <summary>武装そのものの色(現行は品質、B案はレア度で決まる。形で種類、色で品質・レア度を見分ける)。</summary>
+        public Color GradeColor => GradeColors[Mathf.Clamp(grade, 0, GradeColors.Length - 1)];
         static readonly float[] Power = { 0.7f, 1f, 1.35f, 1.8f };
         static readonly float[] Life = { 0.6f, 1f, 1.3f, 1.6f };
 
@@ -94,23 +122,22 @@ namespace HuntProto
             return 1;
         }
 
-        // ───────── パラメータ制(A案・B案) ─────────
-        // 1個ごとにパラメータ(耐久=使える回数も含む)が大きく振れる。総合値から評価(C/B/A/S)を付ける。
-        // A案:大きく振れるのは数個だけ(どこが振れたかがその個体の個性)/ B案:全部が大きく振れる(今の装備との差で比べる)
+        // ───────── パラメータ制(B案) ─────────
+        // 種類ごとに性格の違う武装を一覧(variants)で用意し、そこから選んで落とす。今の装備との差で比べる
 
-        public enum Stat { Damage, FireRate, Recoil, Range, Weight, Radius, Reload, Thrust, Drain, BladePower, Durability }
+        public enum Stat { Damage, FireRate, Recoil, Range, Weight, Radius, Reload, Thrust, Drain, BladePower, Durability, Magazine, MagReload }
 
         /// <summary>種類ごとのパラメータ。</summary>
         public static Stat[] StatsOf(PartType t) => t switch
         {
-            PartType.Gatling => new[] { Stat.Damage, Stat.FireRate, Stat.Recoil, Stat.Range, Stat.Weight, Stat.Durability },
+            PartType.Gatling => new[] { Stat.Damage, Stat.FireRate, Stat.Recoil, Stat.Range, Stat.Magazine, Stat.MagReload, Stat.Weight, Stat.Durability },
             PartType.Cannon => new[] { Stat.Damage, Stat.Radius, Stat.Reload, Stat.Range, Stat.Weight, Stat.Durability },
             PartType.Thruster => new[] { Stat.Thrust, Stat.Drain, Stat.Weight, Stat.Durability },
             _ => new[] { Stat.BladePower, Stat.Weight, Stat.Durability },
         };
 
         /// <summary>値が大きいほど良いパラメータか(反動・重量・装填時間・燃費は小さいほど良い)。</summary>
-        public static bool HigherIsBetter(Stat s) => s is not (Stat.Recoil or Stat.Weight or Stat.Reload or Stat.Drain);
+        public static bool HigherIsBetter(Stat s) => s is not (Stat.Recoil or Stat.Weight or Stat.Reload or Stat.Drain or Stat.MagReload);
 
         public static string StatName(Stat s) => s switch
         {
@@ -123,6 +150,8 @@ namespace HuntProto
             Stat.Reload => "装填",
             Stat.Thrust => "推力",
             Stat.Drain => "燃費",
+            Stat.Magazine => "弾倉",
+            Stat.MagReload => "リロード",
             Stat.Durability => "耐久",
             _ => "剣威力",
         };
@@ -137,7 +166,7 @@ namespace HuntProto
         };
 
         /// <summary>
-        /// レーダーチャート用:元の定義と比べた良さ(0〜1。0.5が元のまま、1が良い向きに swing 倍、0が悪い向きに swing 倍)。
+        /// レーダーチャート用:標準の武装と比べた良さ(0〜1。0.5が標準と同じ、1が良い向きに swing 倍、0が悪い向きに swing 倍)。
         /// </summary>
         /// <param name="curUses">耐久を今の残り回数で測るとき、その回数(負なら最大値で測る)。</param>
         public float Rating(Stat s, float swing, int curUses = -1)
@@ -151,13 +180,16 @@ namespace HuntProto
             return Mathf.Clamp01(0.5f + 0.5f * t);
         }
 
+        /// <summary>自機のENの上限(エネルギー武器の「弾倉」を数えるため)。</summary>
+        static float EnergyMax => ProtoPlayer.I != null ? ProtoPlayer.I.maxEnergy : 150f;
+
         /// <summary>比べるための値。耐久は curUses(今の残り)が 0 以上ならそれを使う。</summary>
         public float StatValue(Stat s, int curUses) => s == Stat.Durability && curUses >= 0 ? curUses : StatValue(s);
 
         /// <summary>比べるための値(大きい・小さいの向きは StatName のとおり)。</summary>
         public float StatValue(Stat s) => s switch
         {
-            Stat.Damage => damage,
+            Stat.Damage => damage * Mathf.Max(1, salvo) * Mathf.Max(1, pellets),   // ミサイル・散弾は1回に撃つ全部の合計
             Stat.FireRate => 1f / Mathf.Max(0.01f, interval),
             Stat.Recoil => recoil,
             Stat.Range => range,
@@ -167,12 +199,15 @@ namespace HuntProto
             Stat.Thrust => multiplier,
             Stat.Drain => drain,
             Stat.Durability => uses,
+            // エネルギー武器の弾倉は「満タンのENで撃てる数」、リロードは0(なし)
+            Stat.Magazine => IsEnergy ? EnergyMax / energyCost : magazine,
+            Stat.MagReload => IsEnergy ? 0f : reloadTime,
             _ => multiplier,
         };
 
         public string StatText(Stat s) => s switch
         {
-            Stat.FireRate => $"連射 {StatValue(s):0.#}発/秒",
+            Stat.FireRate => semiAuto ? $"単発 最速{StatValue(s):0.#}発/秒" : $"連射 {StatValue(s):0.#}発/秒",
             Stat.Range => $"射程 {range:0}m",
             Stat.Radius => $"爆風 {radius:0.#}m",
             Stat.Reload => $"装填 {interval:0.0}秒",
@@ -182,108 +217,51 @@ namespace HuntProto
             Stat.Weight => $"重量 {weight:0}",
             Stat.Recoil => $"反動 {recoil:0.00}",
             Stat.Durability => $"耐久 {uses}",
-            _ => $"威力 {damage:0.#}",
+            Stat.Magazine => IsEnergy ? $"EN {energyCost:0.#}/発" : $"弾倉 {magazine}",
+            Stat.MagReload => IsEnergy ? "リロードなし" : $"リロード {reloadTime:0.0}秒",
+            _ => salvo > 1 ? $"威力 {damage:0.#}×{salvo}発" : pellets > 1 ? $"威力 {damage:0.#}×{pellets}粒" : $"威力 {damage:0.#}",
         };
 
-        /// <summary>パラメータ制で作った個体か。</summary>
+        /// <summary>パラメータ制(B案)で作った個体か。</summary>
         public bool HasStats => swung != null;
-        /// <summary>大きく振れたパラメータ(A案では数個、B案では全部)。</summary>
+        /// <summary>比べるパラメータ(種類ごとの全部)。</summary>
         [System.NonSerialized] public Stat[] swung;
-        /// <summary>振る前の元の定義(A案で、どれだけ振れたかを見せるため)。</summary>
+        /// <summary>比べる基準(その種類の標準の武装。レーダーチャートの真ん中の輪)。</summary>
         [System.NonSerialized] public PartDefinition source;
-        /// <summary>総合値(0〜100、50が平均)。</summary>
+        /// <summary>総合値(0〜100、50が標準と同じ)。比べる相手を決めるのに使う。</summary>
         [HideInInspector] public int score = 50;
-        public static readonly string[] RankNames = { "C", "B", "A", "S" };
-        public string RankName => RankNames[Mathf.Clamp(grade, 0, RankNames.Length - 1)];
-        string baseName;
-        public string BaseName => baseName ?? displayName;
+
+        public static readonly string[] RarityNames = { "コモン", "レア", "エピック" };
+        /// <summary>レア度ごとの出やすさ(1つあたり)。コモン1つはエピック1つの6倍出る。</summary>
+        public static readonly float[] RarityWeights = { 6f, 3f, 1f };
+        public string RarityName => RarityNames[Mathf.Clamp(rarity, 0, RarityNames.Length - 1)];
 
         /// <summary>
-        /// パラメータを振った複製を作る。swingCount 個(0以下なら全部)を倍率 1/swing〜swing で大きく振り、残りは ±5% だけ揺らす。
-        /// bestOf 回振って総合値の一番良いものを返す(ボス・宝箱は良いものが出やすい)。
+        /// パラメータ制(B案):自分(標準)と variants の中から、レア度に応じた確率で1つ選び、比べる基準(自分)を付けた複製を返す。
+        /// 性能は一覧に書いたとおり(ランダムには振らない)。ratingScale はレーダーチャートの目盛りの幅。
         /// </summary>
-        public PartDefinition WithStats(int swingCount, float swing, int bestOf, bool showRank = true)
+        public PartDefinition PickVariant(float ratingScale)
         {
-            PartDefinition best = null;
-            for (int i = 0; i < Mathf.Max(1, bestOf); i++)
-            {
-                var c = RollStats(swingCount, swing);
-                if (best == null || c.score > best.score) { if (best != null) Destroy(best); best = c; }
-                else Destroy(c);
-            }
-            if (!showRank)
-            {
-                best.hideRank = true;
-                best.displayName = displayName;
-            }
-            return best;
-        }
-
-        PartDefinition RollStats(int swingCount, float swing)
-        {
-            var c = Instantiate(this);
-            c.name = name;
-            c.baseName = displayName;
-            c.source = this;
-            var stats = StatsOf(type);
-            var pick = new System.Collections.Generic.List<Stat>(stats);
-            for (int i = pick.Count - 1; i > 0; i--) { int j = Random.Range(0, i + 1); (pick[i], pick[j]) = (pick[j], pick[i]); }
-            int n = swingCount <= 0 ? stats.Length : Mathf.Min(swingCount, stats.Length);
-            pick.RemoveRange(n, pick.Count - n);
-            // 表示の順番は種類ごとの並びにそろえる
-            c.swung = System.Array.FindAll(stats, s => pick.Contains(s));
-
-            float lnSwing = Mathf.Log(Mathf.Max(1.01f, swing));
+            var list = new System.Collections.Generic.List<PartDefinition> { this };
+            if (variants != null) foreach (var v in variants) if (v != null) list.Add(v);
             float sum = 0f;
-            foreach (var s in stats)
+            foreach (var v in list) sum += RarityWeights[Mathf.Clamp(v.rarity, 0, 2)];
+            float r = Random.value * sum;
+            var pick = list[list.Count - 1];
+            foreach (var v in list)
             {
-                bool big = pick.Contains(s);
-                float ln = big ? Random.Range(-lnSwing, lnSwing) : Random.Range(-0.05f, 0.05f);
-                c.Apply(s, Mathf.Exp(ln));
-                if (big) sum += (HigherIsBetter(s) ? ln : -ln) / lnSwing;   // -1〜1(良い向きが+)
+                r -= RarityWeights[Mathf.Clamp(v.rarity, 0, 2)];
+                if (r < 0f) { pick = v; break; }
             }
-            // 振れた数によらず散らばりが同じになるよう √n で割る(標準偏差 ≈ 0.58)
-            float z = sum / Mathf.Sqrt(n);
-            c.score = Mathf.Clamp(Mathf.RoundToInt(50f + z * 35f), 0, 100);
-            c.grade = z < -0.45f ? 0 : z < 0.2f ? 1 : z < 0.7f ? 2 : 3;   // C 約22% / B 約41% / A 約26% / S 約11%
-            c.displayName = $"[{c.RankName}] {displayName}";
+            var c = Instantiate(pick);
+            c.name = pick.name;
+            c.source = this;
+            c.swung = StatsOf(type);
+            c.grade = Mathf.Clamp(pick.rarity, 0, 2) + 1;   // 色:コモン=灰 / レア=青 / エピック=金(品質の色を流用)
+            float good = 0f;
+            foreach (var st in c.swung) good += c.Rating(st, ratingScale) - 0.5f;
+            c.score = Mathf.Clamp(Mathf.RoundToInt(50f + 100f * good / c.swung.Length), 0, 100);
             return c;
-        }
-
-        /// <summary>パラメータに倍率を掛ける(f が大きいほど、そのパラメータの値が大きくなる)。</summary>
-        void Apply(Stat s, float f)
-        {
-            switch (s)
-            {
-                case Stat.Damage: damage *= f; break;
-                case Stat.FireRate: interval /= f; break;
-                case Stat.Recoil: recoil *= f; break;
-                case Stat.Range: range *= f; break;
-                case Stat.Weight: weight *= f; break;
-                case Stat.Radius: radius *= f; break;
-                case Stat.Reload: interval *= f; break;
-                case Stat.Drain: drain *= f; break;
-                case Stat.Durability: if (uses > 0) uses = Mathf.Max(1, Mathf.RoundToInt(uses * f)); break;
-                default: multiplier = 1f + (multiplier - 1f) * f; break;   // 推力・剣威力:上乗せ分に掛ける
-            }
-        }
-
-        /// <summary>
-        /// A案用:大きく振れたパラメータを「連射↑ 反動↓」のように(値の向き。良い向きか悪い向きかは色で見せる)。
-        /// </summary>
-        public System.Collections.Generic.List<(string text, bool good)> SwingTags()
-        {
-            var list = new System.Collections.Generic.List<(string, bool)>();
-            var basis = source;
-            if (swung == null || basis == null) return list;
-            foreach (var s in swung)
-            {
-                float r = StatValue(s) / Mathf.Max(0.0001f, basis.StatValue(s));
-                string arrow = Arrow(r);
-                if (arrow.Length == 0) continue;
-                list.Add(($"{StatName(s)}{arrow}", (r > 1f) == HigherIsBetter(s)));
-            }
-            return list;
         }
 
         /// <summary>B案用:other(今付けているもの)と比べた差。ほぼ同じパラメータは出さない。</summary>

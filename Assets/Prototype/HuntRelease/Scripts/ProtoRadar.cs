@@ -6,7 +6,7 @@ namespace HuntProto
     /// <summary>
     /// 武装の性能をレーダーチャートで描く(OnGUI の中から呼ぶ)。
     /// 軸は種類ごとのパラメータ。外側ほど良い向き(反動・重量・装填・燃費は小さいほど外側)で、
-    /// 真ん中の輪が元の性能(振れていない状態)。軸が3本未満の種類は横棒で描く。
+    /// 真ん中の輪がその種類の標準の武装。軸が3本未満の種類は横棒で描く。
     /// </summary>
     public static class ProtoRadar
     {
@@ -19,7 +19,7 @@ namespace HuntProto
 
         /// <summary>
         /// main を塗りつぶしで、compare(同じ種類のときだけ)を線で重ねる。
-        /// r は GUI の座標(GUI.matrix で uiScale 倍される前の値)。swing は振れ幅の倍率(statSwing)。
+        /// r は GUI の座標(GUI.matrix で uiScale 倍される前の値)。swing は目盛りの幅の倍率(ProtoGame.radarScale)。
         /// mainUses / compareUses は今の残り回数(耐久の軸に使う。負なら最大値)。
         /// </summary>
         public static void Draw(Rect r, float uiScale, PartDefinition main, PartDefinition compare, float swing, Color mainColor, GUIStyle labelStyle,

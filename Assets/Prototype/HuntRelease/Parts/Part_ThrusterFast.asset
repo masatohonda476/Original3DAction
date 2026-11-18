@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_ThrusterFast
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 1
+  displayName: "\u9ad8\u901f\u30b9\u30e9\u30b9\u30bf\u30fc"
+  slot: 2
+  visualPrefab: {fileID: 0}
+  placeholderShape: 3
+  placeholderScale: {x: 2.8, y: 3.2, z: 1.6}
+  placeholderEuler: {x: 0, y: 0, z: 0}
+  color: {r: 0.95, g: 0.5, b: 0.15, a: 1}
+  partHP: 80
+  damage: 10
+  interval: 0.1
+  range: 60
+  radius: 10
+  multiplier: 2.6
+  uses: 1400
+  weight: 4.5
+  recoil: 0.5
+  drain: 1
+  salvo: 1
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 0
+  rarity: 2
+  feel: "\u3068\u3066\u3082\u901f\u3044\u304c\u3001EN\u3092\u3059\u3050\u4f7f\u3044\u5207\u308b"
+  variants: []

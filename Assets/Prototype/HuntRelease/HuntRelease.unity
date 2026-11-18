@@ -6367,7 +6367,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a4f4478bebbfb44f499ea022e8995bfa, type: 2}
   - {fileID: 11400000, guid: 53232d16c16bb4149a608d6e7e4342f4, type: 2}
   - {fileID: 11400000, guid: f120b4be0aa7b4d97a8c8eaef417a9a4, type: 2}
-  bladeInPool: 0
+  bladeInPool: 1
   pauseInMenu: 0
   defaultMode: 1
   useStage: 1

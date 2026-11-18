@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 12a67d1db9ea14d7e82727b5926e4874, type: 3}
+  m_Name: Part_ShortBlade
+  m_EditorClassIdentifier: Assembly-CSharp::HuntProto.PartDefinition
+  type: 3
+  displayName: "\u77ed\u5200\u8155"
+  slot: 1
+  visualPrefab: {fileID: 0}
+  placeholderShape: 3
+  placeholderScale: {x: 0.25, y: 0.6, z: 3.2}
+  placeholderEuler: {x: 0, y: 0, z: 0}
+  color: {r: 0.6, g: 0.9, b: 1, a: 1}
+  partHP: 60
+  damage: 10
+  interval: 0.1
+  range: 60
+  radius: 1.5
+  multiplier: 1.4
+  uses: 60
+  weight: 1.5
+  recoil: 0.5
+  drain: 1
+  salvo: 1
+  swing: 2
+  magazine: 0
+  reloadTime: 0
+  energyCost: 0
+  stance: 0
+  rarity: 1
+  feel: "\u7d20\u65e9\u30445\u9023\u6483\u30021\u6483\u306f\u8efd\u3044\u304c\u624b\u6570\u3067\u62bc\u3059"
+  variants: []

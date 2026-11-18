@@ -77,6 +77,11 @@ namespace MeleeDuel
         public float keepSightRange = 80f;
         [Tooltip("自機が持ち場からこの距離(m)より離れたら、発覚を切って帰る(0 で無し)。電脳斬禅 24m × 4.3")]
         public float leashRange = 100f;
+        [Tooltip("発覚した後、自機と上下にこの距離(m)以上離れた状態が heightLoseTime 秒続いたら、届かないので発覚を切る(機体の高さの2倍)")]
+        public float heightLoseGap = 18f;
+        public float heightLoseTime = 3f;
+        [Tooltip("斬られて発覚してから、この秒数は(持ち場から遠くても)発覚を切らない")]
+        public float holdAfterHit = 4f;
 
         public float ViewEdgeCos => Mathf.Cos(viewAngle * 0.5f * Mathf.Deg2Rad);
         public float ViewCenterCos => Mathf.Cos(centerAngle * 0.5f * Mathf.Deg2Rad);

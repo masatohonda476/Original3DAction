@@ -196,7 +196,7 @@ namespace MeleeDuel
         public float Awareness { get; private set; }
         /// <summary>不審(気づいてはいないが、何かを見聞きした)。</summary>
         public bool Suspicious => !Engaged && Awareness >= 0.12f;
-        float quietFor, attentionFor, unseenFor, sightCheckAt, stuckFor;
+        float quietFor, attentionFor, unseenFor, sightCheckAt, stuckFor, highFor, holdEngagedUntil, keptAt = -10f;
         int heardStep;
         bool seesPlayer;
         Vector3 lastKnown, stuckFrom;
@@ -208,6 +208,22 @@ namespace MeleeDuel
             Engaged = false;
             ResetAwareness();
             heardStep = player != null ? player.FootstepSequence : 0;   // 置く前の足音は聞かない
+        }
+
+        /// <summary>自機が持ち場から leashRange より離れていても、発覚を切らない・気づく(ボス。部屋が見えない壁で囲まれている)。</summary>
+        [HideInInspector] public bool ignoreLeashRange;
+
+        /// <summary>
+        /// 自機に気づける状態か(生きていて、持ち場から leashRange の内側にいる)。外にいる間は見る・聞く・伝達を受けない
+        /// (持ち場から離れすぎで発覚を切った次のフレームに、また気づいてしまう往復を防ぐ)。
+        /// </summary>
+        bool CanSense()
+        {
+            if (player == null || player.Dead) return false;
+            if (ignoreLeashRange || senses == null || senses.leashRange <= 0f) return true;
+            Vector3 ph = player.transform.position - home;
+            ph.y = 0f;
+            return ph.magnitude <= senses.leashRange;
         }
 
         /// <summary>目の高さ(機体の高さの85%)。</summary>
@@ -244,6 +260,7 @@ namespace MeleeDuel
         /// <summary>仲間から伝えられた:自機が見えていれば発覚、見えていなければ不審から(その場所のほうを向く)。</summary>
         void ReceiveAlert(Vector3 knownPos)
         {
+            if (!CanSense()) return;
             if (SightRate(out _) > 0f) { Engage(false); return; }
             Awareness = Mathf.Max(Awareness, senses.alertAwareness);
             lastKnown = knownPos;
@@ -256,6 +273,7 @@ namespace MeleeDuel
         {
             Engaged = false;
             ResetAwareness();
+            highFor = 0f;
             chain = 0;
             Enter(State.Approach);
         }
@@ -274,7 +292,8 @@ namespace MeleeDuel
             Teleport(home, homeRotation);
             Enter(State.Approach);
             ResetAwareness();
-            stuckFor = 0f;
+            stuckFor = highFor = 0f;
+            holdEngagedUntil = 0f;
             if (senses != null)
             {
                 Engaged = false;
@@ -289,7 +308,7 @@ namespace MeleeDuel
         float SightRate(out bool inFront)
         {
             inFront = false;
-            if (player == null || player.Dead) return 0f;
+            if (!CanSense()) return 0f;
             var s = senses;
             Vector3 to = player.transform.position - transform.position;
             float distance = to.magnitude;
@@ -318,7 +337,7 @@ namespace MeleeDuel
         /// <summary>自機の最新の足音が届いた強さ(0〜1)。壁・床ごしは届く範囲が縮む。</summary>
         float HearingStrength()
         {
-            if (player == null || player.Dead || player.FootstepRadius <= 0f || Time.time - player.FootstepTime > 0.8f) return 0f;
+            if (!CanSense() || player.FootstepRadius <= 0f || Time.time - player.FootstepTime > 0.8f) return 0f;
             Vector3 sound = player.FootstepPosition + Vector3.up;
             Vector3 ear = Eye;
             float distance = Vector3.Distance(ear, sound);
@@ -331,7 +350,13 @@ namespace MeleeDuel
         /// <summary>まだ気づいていない間の、見る・聞くで警戒度を上げ下げする。1 になったら発覚。</summary>
         void TickAwareness(float dt)
         {
-            if (player == null || player.Dead) { ResetAwareness(); return; }
+            if (!CanSense())
+            {
+                // 気づけない間(持ち場から離れすぎ)は、足音を聞いたことにもしない
+                ResetAwareness();
+                if (player != null) heardStep = player.FootstepSequence;
+                return;
+            }
             var s = senses;
             // 見えも聞こえもしない遠さなら、レイを撃たずに減らすだけ
             float far = Mathf.Max(s.sightRange, s.boostStep, s.flyStep);
@@ -418,11 +443,12 @@ namespace MeleeDuel
 
         /// <summary>
         /// 発覚している間:自機が見えているかを数フレームおきに確かめ、見えない状態が loseSightTime 秒続いたら発覚を切る。
-        /// 自機が持ち場から leashRange より離れても切る。技の途中では切らない。
+        /// 自機が持ち場から leashRange より離れても、上下に heightLoseGap 以上離れた状態が heightLoseTime 秒続いても(届かない)切る。
+        /// 技の途中・斬られた直後(holdAfterHit 秒)・ボスの部屋にいる間は切らない。切ったら true。
         /// </summary>
-        void UpdateEngaged(float dt)
+        bool UpdateEngaged(float dt)
         {
-            if (senses == null || player == null || player.Dead) return;
+            if (senses == null || player == null || player.Dead) return false;
             if (Time.time >= sightCheckAt)
             {
                 sightCheckAt = Time.time + 0.15f;
@@ -433,10 +459,14 @@ namespace MeleeDuel
             }
             if (seesPlayer) { unseenFor = 0f; lastKnown = player.transform.position; }
             else unseenFor += dt;
-            Vector3 ph = player.transform.position - home;
-            ph.y = 0f;
-            bool leashed = senses.leashRange > 0f && ph.magnitude > senses.leashRange;
-            if ((unseenFor >= senses.loseSightTime || leashed) && Current is State.Approach or State.Strafe) Disengage();
+            if (Mathf.Abs(player.transform.position.y - transform.position.y) > senses.heightLoseGap) highFor += dt;
+            else highFor = 0f;
+            bool leashed = !CanSense();
+            bool lost = unseenFor >= senses.loseSightTime || leashed || highFor >= senses.heightLoseTime;
+            bool held = Time.time < holdEngagedUntil || Time.time - keptAt < 0.5f;
+            if (!lost || held || !(Current is State.Approach or State.Strafe)) return false;
+            Disengage();
+            return true;
         }
 
         /// <summary>自機がいる間ずっと発覚させておく(ボスの部屋に入った)。見失いの時計も戻す。</summary>
@@ -444,6 +474,7 @@ namespace MeleeDuel
         {
             if (!Engaged) Engage(false);
             unseenFor = 0f;
+            keptAt = Time.time;
         }
 
         // ───────── ブースト飛行(剣士) ─────────
@@ -497,6 +528,15 @@ namespace MeleeDuel
             if (now - lastStaggerHitAt >= staggerDecayDelay && Current != State.Flinch)
                 Stagger = Mathf.Max(0f, Stagger - staggerDecay * dt);
 
+            if (Engaged && UpdateEngaged(dt))
+            {
+                // 発覚を切ったフレームは、技を考えずにここで終える(次のフレームから持ち場へ帰る)
+                flying = false;
+                dashing = false;
+                Move(Vector3.zero, dt);
+                Animate(dt, Vector3.zero);
+                return;
+            }
             if (!Engaged && Current is State.Approach or State.Strafe)
             {
                 // まだ気づいていない:立ち番・不審・持ち場へ帰る
@@ -506,13 +546,13 @@ namespace MeleeDuel
                     flying = false;
                     dashing = false;
                     calm = LimitToLeash(calm);
-                    // 持ち場で落ち着いて立っている間は、移動の計算を止める(姿勢だけ)
-                    if (calm != Vector3.zero || !cc.isGrounded || Airborne) Move(calm, dt);
-                    Animate(dt, calm);
+                    bool settled = calm == Vector3.zero && cc.isGrounded && !Airborne;
+                    // 持ち場で落ち着いて立っている間は、移動の計算を止める。自機から十分遠ければ姿勢の計算も止める(重さ)
+                    if (!settled) Move(calm, dt);
+                    if (!settled || Awareness > 0f || !PlayerFar()) Animate(dt, calm);
                     return;
                 }
             }
-            if (Engaged) UpdateEngaged(dt);
 
             Vector3 toP = player != null ? player.transform.position - transform.position : transform.forward;
             Vector3 dir = Flat(toP);
@@ -594,6 +634,14 @@ namespace MeleeDuel
             Animate(dt, vel);
         }
 
+        /// <summary>自機が、姿勢の計算を止めてよいほど遠い(見える距離の2倍より遠い)。</summary>
+        bool PlayerFar()
+        {
+            if (player == null || senses == null) return false;
+            float r = senses.sightRange * 2f;
+            return (player.transform.position - transform.position).sqrMagnitude > r * r;
+        }
+
         /// <summary>持ち場の半径(leashRadius)の外へ向かう分の速さを消す。</summary>
         Vector3 LimitToLeash(Vector3 vel)
         {
@@ -617,6 +665,8 @@ namespace MeleeDuel
                 ph.y = 0f;
                 if (ph.magnitude > leashRadius + 6f) { thinkAt = Time.time + 0.3f; return; }
             }
+            // 自機が段差の上・下にいて斬り合いが届かない(飛んでいない)ときは、技を出さない(届かない横薙ぎを振り続けて、同時に攻撃する枠をふさがない)
+            if (!player.Airborne && TooFarVertically(player)) { thinkAt = Time.time + 0.3f; return; }
             thinkAt = Time.time + Random.Range(Kind.thinkMin, Kind.thinkMax);
             // 自機が頭上を飛んでいる:跳び上がり斬りで落とす(届かない高さ・選ばなかったときは見上げて待つ)
             float above = player.transform.position.y - transform.position.y;
@@ -925,6 +975,7 @@ namespace MeleeDuel
         {
             if (Dead) return;
             Engage();   // 斬られたら発覚(見通せる近くの仲間にも伝わる)
+            if (senses != null) holdEngagedUntil = Time.time + senses.holdAfterHit;   // 斬られた直後は、持ち場から遠くても発覚を切らない
             HP -= dmg;
             ProtoDamageText.Show(Chest, dmg);
             Flash(Color.white, 0.08f);

@@ -41,8 +41,10 @@ namespace MeleeDuel
         public float bossSize = 2.5f;
         [Tooltip("怯みゲージの最大(剣士は25)。大きいほど怯みにくい")]
         public float bossMaxStagger = 70f;
-        [Tooltip("ボスが歩いて出ない、持ち場からの半径(m。大ホールの外へ出ないように)")]
-        public float bossLeash = 70f;
+        [Tooltip("ボスが歩いて出ない、持ち場からの半径(m)。0 なら制限なし(大ホールは見えない壁で囲まれ、入口はボスの背より低いので出られない)")]
+        public float bossLeash;
+        [Tooltip("自機・敵がこの高さ(m)より下へ落ちたら、自機は最後のセーブポイントから再開、敵は持ち場へ戻す(地形のすき間から落ちたときの保険)")]
+        public float fallLimitY = -30f;
         public DuelEnemy.BossMoves bossMoves = new();
 
         public enum Kind { Grunt, Duelist, Boss }
@@ -176,7 +178,7 @@ namespace MeleeDuel
             G(12, 14, 146, 270);
             // 部屋2(床37m):剣士が1体。奥の扉の穴へ瓦礫の坂
             WallX(138.5f, -27, 27, 37, 63, WallColor);
-            WallX(197.5f, -27, 27, 34, 63, WallColor, -10, 10, 45, 58);
+            WallX(197.5f, -27, 27, 34, 81, WallColor, -10, 10, 45, 58);   // 部屋3の天井(78〜81m)まで閉じる(部屋2の屋根へ出られないように)
             Slab(-27, 27, 137, 199, 63f, WallColor);
             Solid(14, 24, 37, 43, 150, 186, FurnitureColor);      // 横倒しのロッカーの列
             Solid(-24, -20, 37, 52, 168, 184, WallColor);         // 倒れかかった仕切り
@@ -214,11 +216,12 @@ namespace MeleeDuel
             Solid(-20, 15, 94, 97, 293, 299, DebrisColor);  // 折れた梁(足場2 → 足場3 の中継)
             Slab(15, 45, 280, 302, 106f, FloorColor);       // 足場3(東)
             Slab(-45, 45, 306, 324, 124f, FloorColor);      // 竪穴の上の踊り場(分岐)
-            G(30, 70, 268, 270, leash: 9f);
+            // 足場の敵の持ち場の円は、足場の縁から機体の半径+2m(4m)以上内側に収める(回り込みで落ちないように)。壁側・折れた床側は落ちない
+            G(33, 70, 270, 270, leash: 7f);    // 足場1:x 22〜45・z 258〜290(z 290 の先は折れた床の坂)
             G(40, 70, 282, 200, leash: 9f);
-            G(-33, 88, 290, 90, leash: 9f);
-            G(25, 106, 292, 180, leash: 8f);
-            G(38, 106, 286, 270, leash: 8f);
+            G(-33, 88, 290, 90, leash: 8f);    // 足場2:x -45〜-20・z 272〜306
+            G(28, 106, 291, 180, leash: 7f);   // 足場3:x 15〜45・z 280〜302
+            G(39, 106, 289, 270, leash: 5f);
             Save("竪穴の上", 30, 124, 316, 270f);   // 足場3から上がったところ(東へも西へも、この脇を通る)
 
             // ── 4a. 外殻を伝う外の道(開けている):横倒しの船の側面(いまは上面)の外板の上を、斜面(20°)で上る ──
@@ -235,7 +238,7 @@ namespace MeleeDuel
             Barrier(48, 153, 287, 290, 100f);
             Solid(43, 153, 154, 176, 462, 465, HullColor, barrier: true);
             Solid(43, 48, 100, 200, 326, 432, HullColor, barrier: true);   // 船体の張り出し(内側の壁)
-            // めくれた外板・アンテナの柱・砲塔の残骸(物陰)
+            // めくれた外板・アンテナの柱・突き出た残骸(物陰)
             Solid(70, 80, 124, 130, 300, 308, DebrisColor);
             Solid(66, 82, Outer(356) - 3f, Outer(360) + 6f, 356, 360, HullColor);
             Solid(100, 104, Outer(372) - 3f, Outer(388) + 5f, 372, 388, HullColor);
@@ -462,6 +465,7 @@ namespace MeleeDuel
             foreach (var s in spawns) PlaceEnemy(s);
             foreach (var sp in saves) BuildSaveMarker(sp);
             SetCurrentSave(saves[0]);
+            saves[0].inside = true;   // 出撃地点で「セーブしました」を出さない
             beganAt = Time.time;
         }
 
@@ -586,6 +590,7 @@ namespace MeleeDuel
             e.home = pos + Vector3.up * 0.2f;
             e.homeRotation = rot;
             e.leashRadius = s.kind == Kind.Boss ? bossLeash : s.leash;
+            e.ignoreLeashRange = s.kind == Kind.Boss;   // ボスは持ち場から離れすぎで発覚を切らない(見失いだけで切る)
             e.UseSenses(senses);
             s.enemy = e;
             game.Enemies.Add(e);
@@ -603,8 +608,17 @@ namespace MeleeDuel
                 respawnAt = -1f;
                 Respawn();
             }
+            // 地形のすき間から落ちた:敵は持ち場へ、自機は最後のセーブポイントから再開
+            foreach (var sp0 in spawns)
+                if (sp0.enemy != null && !sp0.enemy.Dead && sp0.enemy.transform.position.y < fallLimitY) sp0.enemy.ResetToHome();
             if (player.Dead) return;
             Vector3 p = player.transform.position;
+            if (p.y < fallLimitY && respawnAt < 0f)
+            {
+                game.Log("落下した");
+                Respawn();
+                return;
+            }
 
             // 今いる場所(初めて入ったら名前を出す)
             Area now = null;

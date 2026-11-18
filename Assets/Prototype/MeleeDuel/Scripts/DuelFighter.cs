@@ -58,8 +58,12 @@ namespace MeleeDuel
         public const float Gravity = 40f;
         /// <summary>空中にいる(地面から少しでも浮いている)。</summary>
         public bool Airborne => cc != null && !cc.isGrounded && Altitude > 0.5f;
-        /// <summary>地面(床は高さ0)からの高さ。</summary>
-        public float Altitude => transform.position.y;
+        /// <summary>足もとの地面(床・段差・坂の上面)からの高さ。上下の位置の差を比べるときは transform.position.y を使う。</summary>
+        public float Altitude => transform.position.y - groundY;
+        /// <summary>足もとの地面の高さ(移動のたびに真下へのレイで測る。何もなければ0)。</summary>
+        float groundY;
+        /// <summary>機体の層。レイ(地面の高さ・カメラの壁よけ)が機体に当たらないよう「Ignore Raycast」に置く。</summary>
+        public const int FighterLayer = 2;
         float flashT;
         Color flashColor;
         Color? holdTint;
@@ -76,6 +80,8 @@ namespace MeleeDuel
             cc.center = new Vector3(0f, g.mechHeight * size * 0.5f + 0.1f, 0f);
             cc.skinWidth = 0.2f;
             cc.stepOffset = 0.6f;
+            gameObject.layer = FighterLayer;
+            UpdateGround();
             if (g.mechPrefab != null)
             {
                 var go = Instantiate(g.mechPrefab, transform, false);
@@ -85,7 +91,14 @@ namespace MeleeDuel
             }
         }
 
-        /// <summary>平面の速度で動かす(ノックバック・重力を足し、部屋の外へは出さない)。</summary>
+        /// <summary>真下の地面の高さを測り直す(機体自身・見えない壁は Ignore Raycast なので当たらない)。</summary>
+        protected void UpdateGround()
+        {
+            groundY = Physics.Raycast(transform.position + Vector3.up, Vector3.down, out var hit, 500f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? hit.point.y : 0f;
+        }
+
+        /// <summary>平面の速度で動かす(ノックバック・重力を足す。部屋のモードでは部屋の外へは出さない)。</summary>
         protected void Move(Vector3 planar, float dt)
         {
             push = Vector3.MoveTowards(push, Vector3.zero, 70f * dt);
@@ -101,6 +114,8 @@ namespace MeleeDuel
             }
             planar.y = 0f;
             cc.Move((planar + push + Vector3.up * vy) * dt);
+            UpdateGround();
+            if (game.arenaHalf <= 0f) return;   // ステージ:外へ出ないのは壁で止める
             Vector3 p = transform.position;
             float h = game.arenaHalf - Radius;
             if (Mathf.Abs(p.x) > h || Mathf.Abs(p.z) > h)
@@ -111,6 +126,29 @@ namespace MeleeDuel
                 transform.position = p;
                 cc.enabled = true;
             }
+        }
+
+        /// <summary>その場所へ瞬間移動する(やり直しの出し直しなど)。</summary>
+        public void Teleport(Vector3 pos, Quaternion rot)
+        {
+            cc.enabled = false;
+            transform.SetPositionAndRotation(pos, rot);
+            cc.enabled = true;
+            UpdateGround();
+        }
+
+        /// <summary>撃墜から立ち直らせる:HPを満タンにし、撃墜の演出・色・勢い・姿勢を消す。</summary>
+        protected void Revive()
+        {
+            StopAllCoroutines();   // 撃墜の演出を止める
+            HP = MaxHP;
+            flashT = 0f;
+            holdTint = null;
+            push = Vector3.zero;
+            vy = 0f;
+            flying = false;
+            bodyLean = bodyTwist = bodyLift = bodyRoll = jolt = 0f;
+            if (rig != null) rig.SetTint(null);
         }
 
         public void Knockback(Vector3 v)

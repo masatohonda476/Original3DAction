@@ -164,6 +164,21 @@ namespace MeleeDuel
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
         }
 
+        /// <summary>撃墜からのやり直し:その場所に、HP・EN・ガードを満タンにして出し直す(ロックオンは外す)。</summary>
+        public void Respawn(Vector3 pos, Quaternion rot)
+        {
+            Revive();
+            Teleport(pos, rot);
+            Guard = maxGuard;
+            Energy = maxEnergy;
+            Stagger = 0f;
+            BoostOn = false;
+            combo = 0;
+            airVel = Vector3.zero;
+            Target = null;
+            Enter(State.Free);
+        }
+
         void Update()
         {
             float dt = Time.deltaTime;

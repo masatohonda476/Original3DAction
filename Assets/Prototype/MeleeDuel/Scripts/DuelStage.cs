@@ -25,6 +25,8 @@ namespace MeleeDuel
         public float enterMargin = 5f;
         [Tooltip("自機が区画の縁からこの距離(m)より外へ離れたら、その区画の敵は追うのをやめて持ち場へ戻る(区画の外へはもともと出ない)")]
         public float chaseMargin = 6f;
+        [Tooltip("待機中の敵は、自機がこの距離(m)まで近づいたら区画に入る前でも起きる(出入口ごしに目の前にいるのに斬れない置物にならないように)")]
+        public float wakeNear = 20f;
         [Tooltip("撃墜されてから、区画の入口でやり直すまでの秒数")]
         public float respawnDelay = 2.5f;
         [Tooltip("やり直した後、敵が動き出すまでの秒数")]
@@ -64,6 +66,8 @@ namespace MeleeDuel
             /// <summary>持ち場の半径(0 なら制限なし)。</summary>
             public float leash;
             public DuelEnemy enemy;
+            /// <summary>撃破数に数えた(やり直しで置き直した敵を倒しても二重に数えない)。</summary>
+            public bool counted;
             /// <summary>どちらの条件もなければ、区画に入った時点で動き出す。</summary>
             public bool WakeOnEntry => wakeDistance <= 0f && wakeWhenLeft < 0;
         }
@@ -480,15 +484,37 @@ namespace MeleeDuel
                 respawnAt = -1f;
                 RespawnInZone();
             }
-            if (player.Dead) return;
+            // 区画の残りの数え直しとクリアの判定は、自機がやられていても行う(撃墜と同じフレームの撃破を取り消さない)
+            bool alive = !player.Dead;
+            foreach (var z in zones)
+                if (z.state == ZoneState.Active) UpdateZone(z, alive);
+            if (!alive) return;
 
             // 今いる区画:区画の縁から enterMargin より内側にいる区画(帯・出入口にいる間は前の区画のまま)
             Vector3 p = player.transform.position;
             foreach (var z in zones)
                 if (z != current && z.Contains(p, enterMargin)) { EnterZone(z); break; }
-            // 動いている区画は全部見る(走り抜けた区画の敵も、残りが減れば後詰めが動き出す)
+            WakeNearby(p);
+        }
+
+        /// <summary>待機中の敵に自機が wakeNear まで近づいたら、区画に入る前でも起こす(その区画も動き出す)。区画の外から近づいた場合も含む。</summary>
+        void WakeNearby(Vector3 p)
+        {
             foreach (var z in zones)
-                if (z.state == ZoneState.Active) UpdateZone(z);
+            {
+                // 自機がその区画の中か、縁から chaseMargin 以内(出入口のあたり)にいるときだけ。壁ごしには起こさない
+                if (z.state == ZoneState.Cleared || !z.Contains(p, -chaseMargin)) continue;
+                foreach (var s in z.spawns)
+                {
+                    if (s.enemy == null || s.enemy.Dead || !s.enemy.Dormant) continue;
+                    Vector3 d = s.enemy.transform.position - p;
+                    if (Mathf.Abs(d.y) > 12f) continue;
+                    d.y = 0f;
+                    if (d.magnitude > wakeNear) continue;
+                    if (z.state == ZoneState.Waiting) { z.state = ZoneState.Active; z.wakeAt = Time.time; }
+                    WakeUp(s);
+                }
+            }
         }
 
         /// <summary>区画に入った(今いる区画が変わった)。初めてなら敵を動かし始める。</summary>
@@ -513,15 +539,16 @@ namespace MeleeDuel
             if (z.visited) return;
             z.visited = true;
             ShowBanner(z.name);
+            if (z.state != ZoneState.Waiting) return;   // 近づいて起こした区画は、もう動いている(倒し終えていることもある)
             if (z.spawns.Count == 0) { ClearZone(z); return; }
             z.state = ZoneState.Active;
             z.wakeAt = Time.time + z.wakeDelay;
             game.Log($"{z.name}:敵 {z.spawns.Count} 体");
         }
 
-        void UpdateZone(Zone z)
+        /// <summary>区画の残りを数え、全滅ならクリア。canWake なら、条件を満たした待機中の敵を起こす。</summary>
+        void UpdateZone(Zone z, bool canWake)
         {
-            if (Time.time < z.wakeAt) return;
             int alive = 0, others = 0;
             foreach (var s in z.spawns)
             {
@@ -530,6 +557,7 @@ namespace MeleeDuel
                 if (!(s.enemy.Dormant && s.wakeWhenLeft >= 0)) others++;   // 残りを待っている敵どうしは数えない
             }
             if (alive == 0) { ClearZone(z); return; }
+            if (!canWake || Time.time < z.wakeAt) return;
 
             Vector3 p = player.transform.position;
             foreach (var s in z.spawns)
@@ -575,7 +603,13 @@ namespace MeleeDuel
         void RespawnInZone()
         {
             var z = current;
-            if (z == null) return;
+            var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;
+            if (z == null)
+            {
+                player.Respawn(StartPos, StartRot);
+                if (cam != null) cam.Snap();
+                return;
+            }
             if (z.state == ZoneState.Active)
             {
                 foreach (var s in z.spawns)
@@ -590,8 +624,23 @@ namespace MeleeDuel
                 z.wakeAt = Time.time + respawnGrace;
             }
             player.Respawn(z.respawnPos, z.respawnRot);
+            if (cam != null) cam.Snap();   // カメラを補間せずに合わせる(大きく流れて向きが急に回らないように)
             ShowBanner(z.name);
             game.Log($"{z.name}の入口からやり直し");
+        }
+
+        /// <summary>撃破数に数えてよいか(置き直した敵を倒しても、同じ配置の敵は1回だけ数える)。</summary>
+        public bool CountKill(DuelEnemy e)
+        {
+            foreach (var z in zones)
+                foreach (var s in z.spawns)
+                {
+                    if (s.enemy != e) continue;
+                    if (s.counted) return false;
+                    s.counted = true;
+                    return true;
+                }
+            return true;
         }
 
         // ───────── 画面に出す情報 ─────────

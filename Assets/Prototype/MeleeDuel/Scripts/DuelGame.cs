@@ -165,8 +165,13 @@ namespace MeleeDuel
 
         public void OnEnemyDied(DuelEnemy e)
         {
+            if (stage != null)
+            {
+                // ステージ:区画の残りは DuelStage が数える。やり直しで置き直した敵は二重に数えない
+                if (stage.CountKill(e)) kills++;
+                return;
+            }
             kills++;
-            if (stage != null) return;   // ステージ:区画の残りは DuelStage が数える
             // 組を全滅させたら、少しして次の組
             bool anyAlive = Enemies.Exists(x => x != null && !x.Dead);
             if (!anyAlive && nextSpawnAt < 0f) nextSpawnAt = Time.time + respawnDelay;

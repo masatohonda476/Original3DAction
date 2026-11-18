@@ -14,7 +14,9 @@ namespace MeleeDuel
         public float scale = 4.3f;
         [Tooltip("壁よけ:自機とカメラの間に壁があれば、壁の手前まで寄る(ステージで使う。部屋ではオフ)")]
         public bool avoidWalls;
-        [Tooltip("壁が無くなって、元の距離へ戻るときの速さ(大きいほど速い)。寄るときは壁の手前まですぐ寄る")]
+        [Tooltip("壁よけで寄るときの速さ(大きいほど速い。1フレームで飛ばないよう、短い補間で寄る)")]
+        public float wallPullIn = 25f;
+        [Tooltip("壁が無くなって、元の距離へ戻るときの速さ(大きいほど速い)")]
         public float wallRelease = 3f;
 
         float wallDist = -1f;
@@ -26,6 +28,23 @@ namespace MeleeDuel
         float yaw, pitch = DefaultPitch;
         Vector3 fwd = Vector3.forward, pos, lookPoint;
         bool initialized;
+
+        /// <summary>
+        /// 補間せずに、次のフレームで自機の後ろへ即座に合わせる(やり直しで自機が瞬間移動したとき。カメラが大きく流れないように)。
+        /// 自由に回すときの向きは自機の向きにそろえる。
+        /// </summary>
+        public void Snap()
+        {
+            initialized = false;
+            wallDist = -1f;
+            var p = DuelPlayer.I;
+            if (p == null) return;
+            Vector3 f = p.transform.forward;
+            f.y = 0f;
+            if (f.sqrMagnitude > 0.001f) fwd = f.normalized;
+            yaw = Quaternion.LookRotation(fwd).eulerAngles.y;
+            pitch = DefaultPitch;
+        }
 
         void LateUpdate()
         {
@@ -88,7 +107,7 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// 自機の注視点からカメラまでの間に壁があれば、壁の手前まで寄せる。寄るのは速く、離れるのはゆっくり(急に飛ばないように)。
+        /// 自機の注視点からカメラまでの間に壁があれば、壁の手前まで寄せる。寄るのは短い補間で速く、離れるのはゆっくり(急に飛ばないように)。
         /// 機体と見えない壁は Ignore Raycast の層なので当たらない(見えている壁・柱・床だけをよける)。
         /// </summary>
         Vector3 AvoidWalls(Vector3 from, Vector3 to, float dt)
@@ -100,9 +119,9 @@ namespace MeleeDuel
             float allowed = full;
             if (Physics.SphereCast(from, 0.35f * scale, dir, out var hit, full, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 allowed = Mathf.Max(1f, hit.distance);
-            // 壁より奥へは出さない(すぐ寄る)。壁が無くなったら、ゆっくり元の距離へ戻す
-            if (wallDist < 0f || allowed < wallDist) wallDist = allowed;
-            else wallDist = Mathf.Lerp(wallDist, allowed, 1f - Mathf.Exp(-wallRelease * dt));
+            // 壁が入ったら短い補間で寄る(数フレームだけ壁の向こうが見えることがある)。壁が無くなったら、ゆっくり元の距離へ戻す
+            if (wallDist < 0f) wallDist = allowed;
+            else wallDist = Mathf.Lerp(wallDist, allowed, 1f - Mathf.Exp(-(allowed < wallDist ? wallPullIn : wallRelease) * dt));
             return from + dir * Mathf.Min(wallDist, full);
         }
     }

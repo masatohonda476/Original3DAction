@@ -186,6 +186,7 @@ namespace MeleeDuel
         bool chargeWall;      // 突進が壁で止まった
         Quaternion spinFrom;  // 大薙ぎ:回り始めの向き
         int flurryIndex;      // 三段斬りの何段目か(0〜2)
+        bool impactInRange;   // 跳躍叩きつけの直撃の範囲に自機がいた(衝撃波を重ねて当てない)
 
         public void Init(DuelGame g, DuelPlayer p, Spec spec)
         {
@@ -258,7 +259,12 @@ namespace MeleeDuel
             stateT += dt;
             UpdateTint(dt);
             if (Current == State.Dead) { Move(Vector3.zero, dt); return; }
-            if (Dormant) { Move(Vector3.zero, dt); Animate(dt, Vector3.zero); return; }   // 区画に入られるまで、その場で待つ
+            if (Dormant)
+            {
+                // 区画に入られるまで、その場で待つ。着地して待機の姿勢になったら(置いてから1秒)、毎フレームの移動・姿勢の計算を止める
+                if (stateT < 1f || !cc.isGrounded) { Move(Vector3.zero, dt); Animate(dt, Vector3.zero); }
+                return;
+            }
 
             if (now - lastStaggerHitAt >= staggerDecayDelay && Current != State.Flinch)
                 Stagger = Mathf.Max(0f, Stagger - staggerDecay * dt);
@@ -385,14 +391,16 @@ namespace MeleeDuel
             }
             float r = Random.value;
             if (IsBoss) { ThinkBoss(gap, r); return; }
+            // 自機と高さが大きく違う(段差の上と下)ときは突きを選ばない(台の上から突きで飛び降りない)
+            bool thrustOk = Mathf.Abs(above) < ThrustMaxHeightGap;
             if (gap <= SweepReach)
             {
-                if (!Kind.canSlam) StartSkill(r < 0.7f ? Skill.Sweep : Skill.Thrust);
+                if (!Kind.canSlam) StartSkill(r < 0.7f || !thrustOk ? Skill.Sweep : Skill.Thrust);
                 else if (r < 0.5f) StartSkill(Skill.Sweep);
                 else if (r < 0.8f) StartSkill(Airborne ? Skill.Sweep : Skill.Slam);   // 空中では叩きつけは使わない
-                else StartSkill(Skill.Thrust);
+                else StartSkill(thrustOk ? Skill.Thrust : Skill.Sweep);
             }
-            else if (gap <= 26f && r < (Kind.canSlam ? 0.6f : 0.5f)) StartSkill(Skill.Thrust);
+            else if (thrustOk && gap <= 26f && r < (Kind.canSlam ? 0.6f : 0.5f)) StartSkill(Skill.Thrust);
         }
 
         /// <summary>
@@ -402,20 +410,30 @@ namespace MeleeDuel
         /// </summary>
         void ThinkBoss(float gap, float r)
         {
+            bool enraged = HP < MaxHP * B.flurryFromHP;
+            bool flurryOk = enraged && gap <= B.flurryReach * Size;   // 三段斬りは1段目が届く間合いだけ
             Skill s;
             if (gap > SweepReach)
             {
-                if (gap <= 26f && r < 0.2f) s = Skill.Thrust;
-                else if (gap <= B.chargeDistance - 10f && r < 0.6f) s = Skill.Charge;
-                else if (gap <= B.leapMaxDistance) s = Skill.LeapSlam;
-                else return;   // 遠すぎる:歩いて詰める
+                // 遠い:詰める技だけから選ぶ(前回と同じ固有の技・空中で使えない技は除く)。どれも使えなければ歩いて詰める
+                bool thrustOk = gap <= 26f && Mathf.Abs(player.transform.position.y - transform.position.y) < ThrustMaxHeightGap;
+                bool chargeOk = gap <= B.chargeDistance - 10f && lastSkill != Skill.Charge;
+                bool leapOk = gap <= B.leapMaxDistance && lastSkill != Skill.LeapSlam && !Airborne;
+                if (thrustOk && r < 0.2f) s = Skill.Thrust;
+                else if (chargeOk && (!leapOk || r < 0.6f)) s = Skill.Charge;
+                else if (leapOk) s = Skill.LeapSlam;
+                else if (thrustOk) s = Skill.Thrust;
+                else return;
+                StartSkill(s);
+                return;
             }
-            else if (HP < MaxHP * B.flurryFromHP && Random.value < B.flurryChance) s = Skill.Flurry;
+            if (flurryOk && Random.value < B.flurryChance) s = Skill.Flurry;
             else if (r < 0.25f) s = Skill.WideSweep;
             else if (r < 0.55f) s = Skill.Sweep;
             else if (r < 0.75f) s = Skill.Slam;
             else if (r < 0.87f) s = Skill.LeapSlam;
             else s = Skill.Thrust;
+            // 近い間合いでの置き換えは横薙ぎ(届く)
             if (s == lastSkill && s is Skill.WideSweep or Skill.Charge or Skill.LeapSlam or Skill.Flurry) s = Skill.Sweep;
             if (Airborne && s is Skill.Slam or Skill.LeapSlam) s = Skill.Sweep;   // 空中では叩きつけ・跳躍は使わない
             StartSkill(s);
@@ -435,6 +453,9 @@ namespace MeleeDuel
                 _ => 0.6f,
             },
         };
+
+        /// <summary>突きを選んでよい、自機との高さの差(m)。これより大きいと突きで段差を飛び降りてしまう。</summary>
+        const float ThrustMaxHeightGap = 2.5f;
 
         /// <summary>予備動作の最後に向きを固める時間(そこからは向きを変えない=横へ避ければ外れる)。</summary>
         float CommitTime => skill == Skill.Charge ? B.chargeCommit : 0.15f;
@@ -505,7 +526,7 @@ namespace MeleeDuel
         /// <summary>跳躍叩きつけの着地:落ちた所を叩き(直撃)、衝撃波を広げる。</summary>
         void Land()
         {
-            DoHit();
+            DoHit();   // 直撃の範囲にいれば impactInRange が立つ
             Vector3 at = transform.position;
             ProtoFx.Blast(at + Vector3.up, B.leapImpactRadius * Size, new Color(1f, 0.6f, 0.3f), 0.35f);
             DuelSpark.Burst(at + Vector3.up, Vector3.up, new Color(1f, 0.75f, 0.45f), 40, 1.6f * Size);
@@ -514,7 +535,7 @@ namespace MeleeDuel
                 damage = B.waveDamage * Kind.damageMul, guardable = true, guardCost = B.waveGuardCost,
                 stagger = B.waveStagger * Kind.playerStaggerMul, hurtTime = 0.3f, knock = B.waveKnock, from = at,
             };
-            DuelShockwave.Spawn(at, B.leapImpactRadius * Size, B.waveMaxRadius, B.waveSpeed, B.waveWidth, wave);
+            DuelShockwave.Spawn(at, B.leapImpactRadius * Size, B.waveMaxRadius, B.waveSpeed, B.waveWidth, wave, impactInRange);   // 直撃の範囲にいた相手には衝撃波は当てない
             Enter(State.Recover, B.leapRecover);
         }
 
@@ -630,6 +651,7 @@ namespace MeleeDuel
                     Vector3 dl = player.transform.position - transform.position;
                     dl.y = 0f;
                     inRange = dl.magnitude - player.Radius <= B.leapImpactRadius * Size;
+                    impactInRange = inRange && !TooFarVertically(player);
                     h.damage = B.leapDamage; h.guardable = false; h.stagger = B.leapStagger; h.hurtTime = 0.55f; h.knock = B.leapKnock;
                     break;
                 case Skill.AntiAir:

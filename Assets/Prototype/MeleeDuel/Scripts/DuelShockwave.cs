@@ -6,6 +6,7 @@ namespace MeleeDuel
     /// <summary>
     /// ボスの跳躍叩きつけの衝撃波:地面を這って広がる輪。輪が自機の所を通るときに当たる(1回だけ)。
     /// 空中にいれば当たらない(跳べば越えられる)。回避の無敵でも抜けられる。予告の印ではなく、攻撃そのものの見た目。
+    /// 落ちた所の直撃の範囲にいた相手には当てない(直撃と衝撃波が続けて当たらないように)。
     /// </summary>
     public class DuelShockwave : MonoBehaviour
     {
@@ -16,8 +17,9 @@ namespace MeleeDuel
         DuelHit hit;
         bool done;
         LineRenderer line;
+        readonly Vector3[] points = new Vector3[Segments];
 
-        public static void Spawn(Vector3 center, float startRadius, float maxRadius, float speed, float width, DuelHit hit)
+        public static void Spawn(Vector3 center, float startRadius, float maxRadius, float speed, float width, DuelHit hit, bool skipPlayer = false)
         {
             if (maxRadius <= startRadius) return;
             var go = new GameObject("Shockwave");
@@ -28,6 +30,7 @@ namespace MeleeDuel
             w.speed = speed;
             w.width = width;
             w.hit = hit;
+            w.done = skipPlayer;
             w.line = go.AddComponent<LineRenderer>();
             w.line.loop = true;
             w.line.positionCount = Segments;
@@ -63,8 +66,9 @@ namespace MeleeDuel
             for (int i = 0; i < Segments; i++)
             {
                 float a = i * Mathf.PI * 2f / Segments;
-                line.SetPosition(i, center + new Vector3(Mathf.Cos(a) * radius, 0.4f, Mathf.Sin(a) * radius));
+                points[i] = center + new Vector3(Mathf.Cos(a) * radius, 0.4f, Mathf.Sin(a) * radius);
             }
+            line.SetPositions(points);
         }
     }
 }

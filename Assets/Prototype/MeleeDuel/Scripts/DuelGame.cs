@@ -28,7 +28,7 @@ namespace MeleeDuel
 
         [Header("敵")]
         [Tooltip("剣士(中型)のHP")]
-        public float enemyHP = 93f;
+        public float enemyHP = 47f;
         [Tooltip("兵卒(雑魚)のHP")]
         public float gruntHP = 28f;
         [Tooltip("同時に攻撃してくる敵の数の上限(ほかは回り込んで順番を待つ)")]

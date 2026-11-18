@@ -151,7 +151,7 @@ MonoBehaviour:
   mechPrefab: {fileID: 6484897121832250757, guid: c88ed14237dd44503b80e5ca4cd9ef64, type: 3}
   mechHeight: 9.06
   arenaHalf: 60
-  enemyHP: 93
+  enemyHP: 47
   enemyCount: 1
   respawnDelay: 2
 --- !u!4 &49393974

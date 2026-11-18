@@ -50,7 +50,7 @@ namespace MeleeDuel
         int kills, wave;
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
-        GUIStyle small, label, big, center;
+        GUIStyle small, label, big, center, richCenter;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
@@ -85,7 +85,7 @@ namespace MeleeDuel
             if (stage != null)
             {
                 stage.Begin(player);
-                Log("ステージの試作:船の中を上へ登り、頭頂部のボスを倒せばクリア。F1で最初から");
+                Log("ステージの試作:敵が落とす武装を拾って強くなりながら船の中を登り、頭頂部のボスを倒せばクリア。F1で最初から");
             }
             else
             {
@@ -211,6 +211,7 @@ namespace MeleeDuel
                 label = new GUIStyle(GUI.skin.label) { fontSize = 20 };
                 big = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 center = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter };
+                richCenter = new GUIStyle(small) { richText = true, alignment = TextAnchor.MiddleCenter };
             }
             var cam = Camera.main;
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
@@ -240,6 +241,11 @@ namespace MeleeDuel
             GUI.Label(new Rect(x + 308f, y - 7f, 200f, 24f), broken ? "ガード崩れ" : player.Guarding ? "ガード中" : "ガード", small);
             y += 22f;
             GUI.Label(new Rect(x, y, SW - x * 2f, 24f), Help(), small);
+            if (player.Arms != null)
+            {
+                DrawArms(player.Arms, x, SH - 118f - 4f * 21f - 10f);
+                DrawPickup(player.Arms);
+            }
 
             // ロックオンの印:敵の胸の上のほうに、目立ちすぎない細い白の十字
             var e = player.Target;
@@ -376,6 +382,7 @@ namespace MeleeDuel
                 bool pad = ProtoInput.Current != ProtoInput.Device.Keyboard;
                 GUI.Label(new Rect(0f, SH * 0.36f + 48f, SW, 26f),
                     $"クリアタイム {Mathf.FloorToInt(stage.ClearTime / 60f)}:{Mathf.FloorToInt(stage.ClearTime % 60f):00}  ―  {(pad ? "SHARE+△" : "F1")} で最初から", center);
+                if (!string.IsNullOrEmpty(stage.ClearNote)) GUI.Label(new Rect(0f, SH * 0.36f + 76f, SW, 26f), stage.ClearNote, center);
                 return;
             }
             float age = Time.unscaledTime - stage.BannerAt;
@@ -387,9 +394,64 @@ namespace MeleeDuel
             }
         }
 
-        static string Help()
+        /// <summary>
+        /// 左下(HP の上):付けている武装。剣・背中・右肩・左肩の4行。空きは灰色。右肩は弾倉・リロード、左肩は装填の残りも出す。
+        /// </summary>
+        void DrawArms(DuelArms arms, float x, float y)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                var slot = (DuelSlot)i;
+                var w = arms.Get(slot);
+                string head = slot switch
+                {
+                    DuelSlot.RightShoulder => "右肩 " + ProtoInput.L(ProtoInput.Btn.R2),
+                    DuelSlot.LeftShoulder => "左肩 " + ProtoInput.L(ProtoInput.Btn.L2),
+                    _ => DuelWeapon.SlotName(slot),
+                };
+                string body = w == null ? (slot == DuelSlot.Sword ? "素の剣" : "なし") : w.name + "〈" + w.RarityName + "〉";
+                if (w != null && slot == DuelSlot.RightShoulder)
+                    body += arms.ReloadLeft > 0f ? $"  リロード {arms.ReloadLeft:0.0}秒" : arms.MagLeft >= 0 ? $"  {arms.MagLeft}/{w.magazine}" : "  弾数∞";
+                GUI.color = new Color(1f, 1f, 1f, 0.75f);
+                GUI.Label(new Rect(x, y + i * 21f, 90f, 22f), head, small);
+                GUI.color = w == null ? new Color(0.6f, 0.6f, 0.6f) : w.Color;
+                GUI.Label(new Rect(x + 90f, y + i * 21f, 330f, 22f), body, small);
+                GUI.color = Color.white;
+                if (w != null && slot == DuelSlot.LeftShoulder)
+                {
+                    // 装填:撃てるまでの残りを短いバーで
+                    float k = arms.HeavyCooldown01;
+                    Bar(new Rect(x + 340f, y + i * 21f + 8f, 60f, 6f), 1f - k, k > 0f ? new Color(0.6f, 0.6f, 0.6f) : w.Color);
+                }
+            }
+        }
+
+        /// <summary>画面の下の中央:拾える武装があれば、今の装備と比べた内容と、付けるボタン。無視すればそのまま残る。</summary>
+        void DrawPickup(DuelArms arms)
+        {
+            var loot = arms.Nearby;
+            if (loot == null || player.Dead) return;
+            var w = loot.Weapon;
+            var cur = arms.Get(w.slot);
+            float h = 58f, wd = 960f, bx = (SW - wd) / 2f, by = SH * 0.66f;
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(new Rect(bx, by, wd, h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            string col = ColorUtility.ToHtmlStringRGB(w.Color);
+            string curName = cur != null ? cur.name : w.slot == DuelSlot.Sword ? "素の剣" : "なし";
+            string line1 = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "] " + DuelWeapon.SlotName(w.slot) + "に付ける:<color=#" + col + ">"
+                           + w.name + "〈" + w.RarityName + "〉</color>  ― " + w.feel + "(今:" + curName + ")";
+            GUI.Label(new Rect(bx, by + 4f, wd, 24f), line1, richCenter);
+            GUI.Label(new Rect(bx, by + 30f, wd, 24f), DuelWeapon.CompareText(w, cur, w.slot), richCenter);
+        }
+
+        string Help()
         {
             bool pad = ProtoInput.Current != ProtoInput.Device.Keyboard;
+            if (player != null && player.Arms != null)
+                return pad
+                    ? "R1 攻撃  △+R1 強攻撃  □ 回避  ✗長押し 飛行  ○ ブースト  L1 ガード  R2 右肩  L2 左肩  十字右 拾って付ける  十字左 ロックオン"
+                    : "左クリック 攻撃  C+左クリック 強攻撃  左Ctrl 回避  Space 飛行  Shift ブースト  右クリック ガード  R 右肩  E 左肩  V 拾って付ける  Q ロックオン";
             return pad
                 ? "R1 通常攻撃(回避の後で回避斬り)  △+R1 強攻撃  □ 回避  ✗長押し 飛行  ○ ブースト切替  L1 ガード  十字左 ロックオン  右スティック左右 切替"
                 : "左クリック 通常攻撃(回避の後で回避斬り)  C+左クリック 強攻撃  左Ctrl 回避  Space長押し 飛行  左Shift ブースト切替  右クリック ガード  Q ロックオン  マウス左右 / Tab 切替";

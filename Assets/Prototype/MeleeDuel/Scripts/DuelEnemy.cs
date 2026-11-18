@@ -971,6 +971,13 @@ namespace MeleeDuel
         /// 自機の攻撃が当たった。怯みゲージをため、満タンになったら怯む(技の予備動作・出ている途中でも止まる)。
         /// 怯む時間は、いっぱいにした攻撃で決まる(flinchTime)。怯んでいる間はゲージはたまらない。
         /// </summary>
+        /// <summary>射撃(自機の肩の武装)で受けるダメージと怯みの倍率(ボスの厚い装甲。1 なら減らない)。ステージが置くときに決める。</summary>
+        [HideInInspector] public float rangedTakenMul = 1f;
+
+        /// <summary>射撃が当たった(rangedTakenMul を掛けてから TakeHit)。</summary>
+        public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
+            TakeHit(dmg * rangedTakenMul, stagger * rangedTakenMul, knock, flinchTime);
+
         public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime)
         {
             if (Dead) return;

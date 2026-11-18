@@ -91,6 +91,17 @@ namespace MeleeDuel
         public bool Dashing { get; private set; }
         /// <summary>噴射炎:飛行中・ブースト移動中・回避中。</summary>
         public override bool Thrusting => flying || Dashing || Current == State.Dodge;
+        /// <summary>武装(ステージだけ。部屋のモードでは null)。強くなるのは武装だけで、素の性能(HP・EN・怯み)は変えない。</summary>
+        public DuelArms Arms { get; private set; }
+        /// <summary>肩の武装を撃てる状態か(怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
+        public bool CanShoot => Current is State.Free or State.Guard or State.Attack or State.Dodge;
+
+        // 背中の武装(スラスター)を掛けた値。素の値はインスペクターの値のまま
+        float RunMul => Arms != null ? Arms.RunMul : 1f;
+        float DashMul => Arms != null ? Arms.DashMul : 1f;
+        float EnCostMul => Arms != null ? Arms.EnCostMul : 1f;
+        float DodgeDistance => dodgeDistance * (Arms != null ? Arms.DodgeMul : 1f);
+        float DashSpeed => dashSpeed * DashMul;
 
         /// <summary>
         /// 攻撃1種類の中身。stagger は敵の怯みゲージへの量。
@@ -162,6 +173,12 @@ namespace MeleeDuel
             Energy = maxEnergy;
             gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中の噴射炎
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
+            if (g.stage != null)
+            {
+                // ステージだけ:敵が落とす武装を拾って付けられる
+                Arms = gameObject.AddComponent<DuelArms>();
+                Arms.Init(this, g, rig);
+            }
         }
 
         /// <summary>撃墜からのやり直し:その場所に、HP・EN・ガードを満タンにして出し直す(ロックオンは外す)。</summary>
@@ -243,11 +260,11 @@ namespace MeleeDuel
             if (flyHeld && !flyHeldPrev && Energy > 0f) BoostOn = true;
             flyHeldPrev = flyHeld;
             flying = flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;
-            riseSpeed = flyRiseSpeed;
+            riseSpeed = flyRiseSpeed * DashMul;
             riseAccel = flyRiseAccel;
             if (flying)
             {
-                Energy -= flyCost * dt;
+                Energy -= flyCost * EnCostMul * dt;
                 energyUsedAt = now;
             }
             if (BoostOn && Energy <= 0f) BoostOn = false;   // ENが0以下になったら自動でオフ
@@ -281,11 +298,11 @@ namespace MeleeDuel
                     if (wantGuard != (Current == State.Guard)) Enter(wantGuard ? State.Guard : State.Free);
                     // ブースト:オンの間に移動すると速く走り、ENを使い続ける(ガード中は効かない)
                     Dashing = BoostOn && Current == State.Free && worldMove.sqrMagnitude > 0.04f && Energy > 0f;
-                    float spd = Dashing ? dashSpeed : (Target != null ? lockedSpeed : runSpeed) * (Current == State.Guard ? guardMoveMul : 1f);
+                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed) * RunMul * (Current == State.Guard ? guardMoveMul : 1f);
                     vel = worldMove * spd;
                     if (Dashing)
                     {
-                        Energy -= dashCost * dt;
+                        Energy -= dashCost * EnCostMul * dt;
                         energyUsedAt = now;
                     }
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
@@ -301,7 +318,7 @@ namespace MeleeDuel
                 case State.Dodge:
                 {
                     float t = Mathf.Clamp01(stateT / dodgeDuration);
-                    vel = dodgeDir * (3f * dodgeDistance / dodgeDuration) * (1f - t) * (1f - t);
+                    vel = dodgeDir * (3f * DodgeDistance / dodgeDuration) * (1f - t) * (1f - t);
                     // 回避の後半に攻撃を押したら、回避斬りへ
                     if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !pressHeavy && !Overheated)
                     {
@@ -430,7 +447,7 @@ namespace MeleeDuel
             if (now - dodgePressedAt > attackBuffer || now - dodgeEndAt < dodgeCooldown) return false;
             if (Overheated) return false;   // ENが0以下の間は避けられない(押したことは少しの間覚えておく)
             dodgePressedAt = -10f;
-            Energy -= dodgeCost;   // 足りなければマイナスになり、その分だけ回復を待つ
+            Energy -= dodgeCost * EnCostMul;   // 足りなければマイナスになり、その分だけ回復を待つ
             energyUsedAt = now;
             dodgeDir = worldMove.sqrMagnitude > 0.01f ? worldMove.normalized : -transform.forward;
             Enter(State.Dodge);
@@ -484,9 +501,9 @@ namespace MeleeDuel
         {
             if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
             float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
-            Energy -= Heavy[0].cost - cur.cost;
+            var h = Armed(Heavy[0]);
+            Energy -= h.cost - cur.cost;
             energyUsedAt = Time.time;
-            var h = Heavy[0];
             h.pose0 = Mathf.Min(poseNow, h.pose1);
             cur = h;
             heavyStep = 0;
@@ -495,8 +512,29 @@ namespace MeleeDuel
             return true;
         }
 
+        /// <summary>
+        /// 剣の武装の倍率を掛けた技:威力・怯ませ・届く範囲・吹き飛ばし・扇の広さ(片側180°まで)、振りの速さ(振りかぶり・振り抜き・戻りが短くなる)。
+        /// 踏み込み・ENの量・姿勢は変えない。
+        /// </summary>
+        AttackMove Armed(AttackMove m)
+        {
+            var w = Arms != null ? Arms.SwordW : null;
+            if (w == null) return m;
+            m.damage *= w.damageMul;
+            m.stagger *= w.staggerMul;
+            m.reach *= w.reachMul;
+            m.knock *= w.knockMul;
+            m.arc = Mathf.Min(180f, m.arc + w.arcAdd);
+            float sp = Mathf.Max(0.3f, w.speedMul);
+            m.windup /= sp;
+            m.active /= sp;
+            m.recover /= sp;
+            return m;
+        }
+
         void StartAttack(AttackMove m)
         {
+            m = Armed(m);
             Energy -= m.cost;   // 足りなければマイナスになり、その分だけ回復を待つ
             energyUsedAt = Time.time;
             cur = m;
@@ -663,7 +701,7 @@ namespace MeleeDuel
             if (Airborne)
             {
                 // 空中:流れている方向へ傾く(速いほど大きく、最大15°)
-                Vector3 local = transform.InverseTransformDirection(new Vector3(vel.x, 0f, vel.z)) / Mathf.Max(1f, dashSpeed);
+                Vector3 local = transform.InverseTransformDirection(new Vector3(vel.x, 0f, vel.z)) / Mathf.Max(1f, DashSpeed);
                 tLean = Mathf.Clamp(local.z, -1f, 1f) * 15f;
                 tRoll = Mathf.Clamp(local.x, -1f, 1f) * 15f;
                 rate = 6f;

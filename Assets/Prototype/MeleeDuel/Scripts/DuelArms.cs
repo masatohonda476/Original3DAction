@@ -14,7 +14,8 @@ namespace MeleeDuel
     /// 近接攻撃の間(振りかぶり〜戻り)と回避の間は撃てない(DuelPlayer.CanShoot)。
     /// 狙い:ロックオン中はその敵(射程の外・壁ごしなら、画面の中央に近い敵 → いなければ画面の中央の先)。
     /// 拾う:落ちている武装の近くで十字右(V)。背中はそのまま付ける。手・肩は付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)で決める
-    ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない)。もう一度十字右・離れる・怯むと取り消し。
+    ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
+    ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
     ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。在庫・メニューはない。
     /// 撃墜されても武装は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。右手は素の剣、左手は空に戻る)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
     /// 毎フレームの処理は DuelPlayer.Update の始めに Tick() で呼ぶ(ボタンの横取りを、自機が読むより先に決めるため)。
@@ -79,7 +80,11 @@ namespace MeleeDuel
         public float DodgeMul => BackW != null ? BackW.dodgeMul : 1f;
         public float EnCostMul => BackW != null ? BackW.enCostMul : 1f;
 
-        /// <summary>ガードのゲージの最大(持っている盾のうち大きいほう。盾がなければ0=ガードできない)。</summary>
+        /// <summary>
+        /// ガードのゲージの最大(持っている盾のうち大きいほう。盾がなければ0=ガードできない)。
+        /// 盾が2枚でもゲージは1本を共有する(作者に未確認の仮)。最大はこの値で、削れ方・通す傷・構え歩き・固まる長さは構えている盾の値
+        /// (DuelPlayer.guardShield。両手で構えたら大きい盾)。
+        /// </summary>
         public float GuardMax
         {
             get
@@ -183,7 +188,7 @@ namespace MeleeDuel
             if (player == null || player.Dead)
             {
                 Nearby = null;
-                Choosing = null;
+                if (Choosing != null) EndChoice();
                 return;
             }
             // ボスを倒した後(武装が消し飛んだ後)は拾えない
@@ -213,33 +218,45 @@ namespace MeleeDuel
 
         /// <summary>
         /// 十字右:背中の武装はそのまま付ける。手・肩の武装は付け先を選ぶ表示にする。
-        /// 選んでいる間は R1/L1(手)・R2/L2(肩)で決める。もう一度十字右・武装から離れる・怯む・ガードを崩されると取り消し。
+        /// 選んでいる間は R1/L1(手)・R2/L2(肩)で決める。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
+        /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
         /// </summary>
         void UpdateChoice()
         {
+            bool ready = player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
             if (Choosing != null)
             {
-                if (Choosing != Nearby || ProtoInput.EquipNow || player.Current is DuelPlayer.State.Hurt or DuelPlayer.State.GuardBroken)
+                if (Choosing != Nearby || ProtoInput.EquipNow || !ready)
                 {
-                    Choosing = null;
+                    EndChoice();
                     return;
                 }
                 foreach (var s in DuelWeapon.SlotsFor(Choosing.Weapon.kind))
                 {
                     int b = Btn(s);
                     if (b < 0 || !RawPressed(b)) continue;
-                    suppress[b] = true;   // 決めたボタンは離すまで攻撃・射撃・ガードにしない
                     var loot = Choosing;
-                    Choosing = null;
+                    EndChoice();
                     Equip(loot, s);
                     return;
                 }
                 return;
             }
-            if (Nearby == null || !ProtoInput.EquipNow) return;
+            if (!ready || Nearby == null || !ProtoInput.EquipNow) return;
             var to = DuelWeapon.SlotsFor(Nearby.Weapon.kind);
             if (to.Length == 1) Equip(Nearby, to[0]);
             else Choosing = Nearby;
+        }
+
+        /// <summary>
+        /// 付け先を選ぶ表示を終える(決めた・取り消した)。その時に押している R1/L1/R2/L2 は全部、離すまで攻撃・射撃・ガードにしない
+        /// (決めたボタンと同時に押したボタンや、選んでいる間に押し続けていたボタンが、終わった瞬間に効かないように)。
+        /// </summary>
+        void EndChoice()
+        {
+            Choosing = null;
+            for (int b = 0; b < suppress.Length; b++)
+                if (RawHeld(b) || RawPressed(b)) suppress[b] = true;
         }
 
         /// <summary>落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。</summary>
@@ -262,7 +279,8 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// 全部の武装を失う(ボスの爆発)。付けていた武装は火花を散らして吹き飛び、右手は素の剣、左手は空に戻る。失った数を返す(素の剣は数えない)。
+        /// 全部の武装を失う(ボスの爆発)。付けていた武装は火花を散らして吹き飛び、全部の所を空にしてから右手に素の剣を入れ直す
+        /// (左手に拾い直した素の剣も吹き飛ぶ)。失った数を返す(素の剣は数えない)。
         /// </summary>
         public int LoseAll()
         {
@@ -270,8 +288,10 @@ namespace MeleeDuel
             for (int i = 0; i < SlotCount; i++)
             {
                 var w = slots[i];
-                if (w == null || w == DuelWeapon.BaseSword) continue;
-                n++;
+                if (w == null) continue;
+                bool baseSword = w == DuelWeapon.BaseSword;
+                if (baseSword && i == (int)DuelSlot.RightHand) continue;   // 右手の素の剣はそのまま(下で入れ直す)
+                if (!baseSword) n++;
                 slots[i] = null;
                 var blade = rig == null || w.kind != DuelKind.Sword ? null : i == (int)DuelSlot.RightHand ? rig.sword : rig.swordL;
                 if (blade != null)
@@ -298,7 +318,7 @@ namespace MeleeDuel
                 reload[i] = cd[i] = 0f;
                 pressedAt[i] = -10f;
             }
-            Choosing = null;
+            if (Choosing != null) EndChoice();
             player.OnShieldsChanged(false);
             return n;
         }

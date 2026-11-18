@@ -15,7 +15,7 @@ namespace MeleeDuel
     /// <summary>
     /// ステージで敵が落とす武装1つの中身(弧ひとつ分の試作)。耐久・重量・品質はない。強さはレア度(0=コモン / 1=レア / 2=エピック)で分ける。
     /// 使う項目は種類で違う(剣:技の表と倍率 / 盾:ガード / 背中:倍率 / 銃:射撃 / 砲・ミサイル:爆発)。数値・名前は仮置き。
-    /// 一覧はステージ(DuelStage.arsenal)のインスペクターで触れる。初期値は Defaults()。
+    /// 一覧は Defaults() で、ステージ(DuelStage.arsenal)が実行時に作る(シリアライズしないので、インスペクターでは触れない。数値はここで直す)。
     /// </summary>
     [System.Serializable]
     public class DuelWeapon

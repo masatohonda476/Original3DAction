@@ -50,7 +50,7 @@ namespace MeleeDuel
         int kills, wave;
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
-        GUIStyle small, label, big, center, richCenter;
+        GUIStyle small, label, big, center, richCenter, rightSmall;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
@@ -212,6 +212,7 @@ namespace MeleeDuel
                 big = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 center = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter };
                 richCenter = new GUIStyle(small) { richText = true, alignment = TextAnchor.MiddleCenter };
+                rightSmall = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
             }
             var cam = Camera.main;
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
@@ -281,7 +282,7 @@ namespace MeleeDuel
             }
 
             // 右上:知らせと撃破数
-            var rs = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
+            var rs = rightSmall;
             string head = stage != null ? $"撃破 {kills}" : $"第{wave}組  撃破 {kills}";
             float elapsed = stage != null && stage.Cleared ? stage.ClearTime : Time.time - startTime;
             GUI.Label(new Rect(SW - 320f, 16f, 300f, 22f), $"{head}  {elapsed:0}秒", rs);

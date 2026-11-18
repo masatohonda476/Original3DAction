@@ -99,7 +99,10 @@ namespace MeleeDuel
         public DuelArms Arms { get; private set; }
         /// <summary>手の銃・肩の武装を撃てる状態か(近接攻撃の振りかぶり〜戻り・回避・怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
         public bool CanShoot => Current is State.Free or State.Guard;
-        /// <summary>ガードのゲージの最大(部屋のモードは maxGuard、ステージは持っている盾。盾がなければ0)。</summary>
+        /// <summary>
+        /// ガードのゲージの最大(部屋のモードは maxGuard、ステージは持っている盾のうち大きいほう。盾がなければ0)。
+        /// 盾が2枚でもゲージは1本(作者に未確認の仮)。削れ方・通す傷などは構えている盾(guardShield)の値。
+        /// </summary>
         public float MaxGuard => Arms != null ? Arms.GuardMax : maxGuard;
 
         // 背中の武装(スラスター)を掛けた値。素の値はインスペクターの値のまま
@@ -150,12 +153,23 @@ namespace MeleeDuel
             }
         }
 
-        /// <summary>盾を付けた・外した(DuelArms から)。新しい盾を付けたらゲージを満タンに、外したら最大までに切る。</summary>
+        /// <summary>
+        /// 盾を付けた・外した(DuelArms から)。新しい盾を付けたらゲージを満タンに、外したら最大までに切る。
+        /// 構えている盾はその場で引き直す(構えていた手にまだ盾があればそれ、なければもう片方の手の盾)。
+        /// 盾がなくなったらガード(受けて固まっている間も)を解く。
+        /// </summary>
         public void OnShieldsChanged(bool refill)
         {
             Guard = refill ? MaxGuard : Mathf.Min(Guard, MaxGuard);
+            if (Arms == null) return;
             guardShield = null;
-            if (Guarding && MaxGuard <= 0f) Enter(State.Free);
+            if (Arms.Hand(guardHand) is { kind: DuelKind.Shield } same) guardShield = same;
+            else if (Arms.Hand(1 - guardHand) is { kind: DuelKind.Shield } other)
+            {
+                guardShield = other;
+                guardHand = 1 - guardHand;
+            }
+            if (Guarding && guardShield == null) Enter(State.Free);
         }
 
         /// <summary>撃墜からのやり直し:その場所に、HP・EN・ガードを満タンにして出し直す(ロックオンは外す)。</summary>
@@ -536,6 +550,7 @@ namespace MeleeDuel
         bool TryChord()
         {
             if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
+            if (SwordIn(atkHand) == null) return false;   // 振っている手に剣がない(素の剣の強攻撃に化けないように)
             float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
             var h = Armed(HeavyOf(atkHand)[0], atkHand);
             Energy -= h.cost - cur.cost;
@@ -626,8 +641,9 @@ namespace MeleeDuel
                         atkHand = pressHand;
                         // △+攻撃:強攻撃。同じ手の強攻撃の後なら次の段、それ以外は1段目
                         if (pressHeavy) { StartHeavy(cur.heavy && sameHand ? heavyStep + 1 : 0); return Vector3.zero; }
-                        // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後は1段目から
+                        // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後・手が替わったら、その剣の1段目から
                         var light = LightOf(atkHand);
+                        if (!sameHand) combo = 0;
                         combo = combo % light.Length + 1;
                         StartLight(light[combo - 1]);
                         return Vector3.zero;

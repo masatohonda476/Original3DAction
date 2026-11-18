@@ -4,7 +4,7 @@ using UnityEngine;
 namespace MeleeDuel
 {
     /// <summary>
-    /// 噴射口の炎(背中に2か所・左右の脇腹に2か所)。飛んでいる間だけ出し、長さが細かく揺らぐ。
+    /// 噴射口の炎(背中に2か所・左右の脇腹に2か所)。飛行・ブースト移動・回避(敵はダッシュ)の間だけ出し、長さが細かく揺らぐ。
     /// 噴射口はモデルの穴の位置(胸部の骨格の、穴の空いた箱)。背中の取付点(骨)からの位置と向きで持ち、体の傾き・動きについていく。
     /// 根元は白っぽい黄色、その先はオレンジ。飛び始めにふっと伸び、止めるとすっと消える。
     /// </summary>
@@ -67,9 +67,9 @@ namespace MeleeDuel
         void LateUpdate()
         {
             if (owner == null || outer == null) return;
-            // 飛んでいる間は出す。飛び始めは速く伸び、止めるとすっと消える
-            float target = owner.IsFlying ? 1f : 0f;
-            power = Mathf.MoveTowards(power, target, (target > power ? 6f : 4f) * Time.deltaTime);
+            // 飛行・ブースト移動・回避の間は出す。回避の一瞬でも見えるよう素早く伸び、止めるとすっと消える
+            float target = owner.Thrusting ? 1f : 0f;
+            power = Mathf.MoveTowards(power, target, (target > power ? 12f : 4f) * Time.deltaTime);
             bool show = power > 0.02f;
             float scale = body.lossyScale.y;   // 機体の大きさ
             for (int i = 0; i < nozzles.Length; i++)

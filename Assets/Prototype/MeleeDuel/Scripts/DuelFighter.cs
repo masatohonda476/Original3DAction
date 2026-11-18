@@ -45,8 +45,10 @@ namespace MeleeDuel
         float vy;
         /// <summary>飛んでいる(上昇し続ける)。false なら重力で落ちる。</summary>
         protected bool flying;
-        /// <summary>飛んでいる(噴射炎を出す)。</summary>
+        /// <summary>飛んでいる。</summary>
         public bool IsFlying => flying;
+        /// <summary>噴射炎を出す(飛行中。自機はブースト移動・回避中も、敵はダッシュ中も)。</summary>
+        public virtual bool Thrusting => flying;
         protected float riseSpeed = 20f, riseAccel = 80f;
         /// <summary>上下の速さを直接決める(跳び上がる)。</summary>
         protected void SetVerticalSpeed(float v) => vy = v;

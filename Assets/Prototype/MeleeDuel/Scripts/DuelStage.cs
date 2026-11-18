@@ -50,6 +50,10 @@ namespace MeleeDuel
         [Range(0f, 1f)] public float duelistDropChance = 1f;
         [Tooltip("この数だけ続けて落ちなかったら、次に倒した敵は必ず落とす")]
         public int pityKills = 2;
+        [Tooltip("空いている所(最初は左手・背中・両肩)に付けられる武装の出やすさ(倍)。最初は左手が空なので、盾・手の銃・剣が出やすい")]
+        public float emptySlotWeight = 2f;
+        [Tooltip("今付けているのと同じ武装の出やすさ(倍)")]
+        public float sameWeaponWeight = 0.3f;
         [Tooltip("高さごとのレア度の重み(倒した所の高さで選ぶ。上ほど強い武装)")]
         public DuelDropBand[] dropBands =
         {
@@ -797,8 +801,8 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// そのレア度の武装から1つ選ぶ(なければ近いレア度から)。付けていない所の武装を出やすく(2倍)、
-        /// 今付けているのと同じ武装は出にくく(0.3倍)する。
+        /// そのレア度の武装から1つ選ぶ(なければ近いレア度から)。空いている所に付けられる武装を出やすく(emptySlotWeight 倍)、
+        /// 今付けているのと同じ武装は出にくく(sameWeaponWeight 倍)する。
         /// </summary>
         DuelWeapon PickWeapon(int rarity)
         {
@@ -822,11 +826,17 @@ namespace MeleeDuel
             return null;
         }
 
-        static float Weight(DuelWeapon w, DuelArms arms)
+        float Weight(DuelWeapon w, DuelArms arms)
         {
             if (arms == null) return 1f;
-            var cur = arms.Get(w.slot);
-            return cur == null ? 2f : cur == w ? 0.3f : 1f;
+            bool empty = false, same = false;
+            foreach (var s in DuelWeapon.SlotsFor(w.kind))
+            {
+                var cur = arms.Get(s);
+                if (cur == null) empty = true;
+                else if (cur == w) same = true;
+            }
+            return empty ? emptySlotWeight : same ? sameWeaponWeight : 1f;
         }
 
         // ───────── 画面に出す情報 ─────────

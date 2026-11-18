@@ -10,6 +10,10 @@ namespace MeleeDuel
     /// ガードは押している間ダメージを大きく減らすが、受けるたびに押し戻されて少し固まり、ゲージが尽きると崩れる。
     /// 赤く光る攻撃はガードできない。回避と攻撃はENを使う。ENが少しでもあれば出せ、足りない分はマイナスになり、
     /// 0を超えるまで回復を待つ(その間は回避も攻撃もできない)。
+    /// 部屋のモード:R1 で剣(素の剣の技)、L1 でガード(下の値)。
+    /// ステージ(武装あり、DuelArms):R1 / L1 はその手の武装を使う(剣なら攻撃、盾なら押している間ガード、手の銃なら撃つ)。
+    ///   技は剣ごとの表(DuelWeapon.moves → DuelMoveSet)。強攻撃(△+R1/L1)・回避斬りは押したボタンの手の剣で出す。
+    ///   ガードの値は構えている盾のもの。盾がなければガードできない。近接攻撃の間と回避の間は撃てない(CanShoot)。
     /// </summary>
     public class DuelPlayer : DuelFighter
     {
@@ -48,7 +52,7 @@ namespace MeleeDuel
         [Tooltip("最後にENを使ってから、回復が始まるまでの秒数")]
         public float energyRegenDelay = 0.6f;
 
-        [Header("ガード")]
+        [Header("ガード(部屋のモードの値。ステージでは盾の値を使う)")]
         public float maxGuard = 100f;
         [Tooltip("ガードで受けたダメージの何割をHPに受けるか")]
         public float guardChip = 0.1f;
@@ -93,8 +97,10 @@ namespace MeleeDuel
         public override bool Thrusting => flying || Dashing || Current == State.Dodge;
         /// <summary>武装(ステージだけ。部屋のモードでは null)。強くなるのは武装だけで、素の性能(HP・EN・怯み)は変えない。</summary>
         public DuelArms Arms { get; private set; }
-        /// <summary>肩の武装を撃てる状態か(怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
-        public bool CanShoot => Current is State.Free or State.Guard or State.Attack or State.Dodge;
+        /// <summary>手の銃・肩の武装を撃てる状態か(近接攻撃の振りかぶり〜戻り・回避・怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
+        public bool CanShoot => Current is State.Free or State.Guard;
+        /// <summary>ガードのゲージの最大(部屋のモードは maxGuard、ステージは持っている盾。盾がなければ0)。</summary>
+        public float MaxGuard => Arms != null ? Arms.GuardMax : maxGuard;
 
         // 背中の武装(スラスター)を掛けた値。素の値はインスペクターの値のまま
         float RunMul => Arms != null ? Arms.RunMul : 1f;
@@ -103,54 +109,16 @@ namespace MeleeDuel
         float DodgeDistance => dodgeDistance * (Arms != null ? Arms.DodgeMul : 1f);
         float DashSpeed => dashSpeed * DashMul;
 
-        /// <summary>
-        /// 攻撃1種類の中身。stagger は敵の怯みゲージへの量。
-        /// pose0〜3 は斬撃クリップの再生位置(振りかぶりの始め / 振り抜きの始め / 振り抜きの終わり / 戻りの終わり)。
-        /// </summary>
-        struct AttackMove
-        {
-            public float windup, active, recover, damage, stagger, flinch, reach, arc, lunge, knock, cost;
-            public bool heavy;
-            /// <summary>振りかぶりの出だしに△が押されたら強攻撃に切り替わる(通常攻撃だけ。同時押しのずれを許すため)。</summary>
-            public bool chargeable;
-            public float pose0, pose1, pose2, pose3;
-            /// <summary>機体全体の横のひねり(右が正):振りかぶりの始め / 振り抜きの始め / 振り抜きの終わり。戻りで0へ戻る。</summary>
-            public float twist0, twist1, twist2;
-        }
-
         /// <summary>踏み込むのは振りかぶりのうち、この割合(前半)だけ。</summary>
         const float LungePart = 0.5f;
 
-        const float R = MechRig.AttackRaised, S = MechRig.AttackStruck, E = MechRig.AttackEnd;
-
-        /// <summary>
-        /// 通常攻撃:斬り下ろし(A)と、返す刀の切り返し(B)を交互にくり返す。
-        /// B は斬撃クリップを振り抜いた後ろから逆に再生し、A の振りかぶりへそのままつながる。
-        /// </summary>
-        static readonly AttackMove[] Light =
-        {
-            new() { windup = 0.32f, active = 0.16f, recover = 0.6f, damage = 9f, stagger = 7f, flinch = 0.5f, reach = 9f, arc = 75f, lunge = 3f, knock = 3f, cost = 10f, chargeable = true,
-                    pose0 = R * 0.5f, pose1 = R, pose2 = S, pose3 = S + (E - S) * 0.6f },
-            new() { windup = 0.24f, active = 0.18f, recover = 0.6f, damage = 9f, stagger = 7f, flinch = 0.5f, reach = 9f, arc = 75f, lunge = 2.5f, knock = 3f, cost = 10f, chargeable = true,
-                    pose0 = S + (E - S) * 0.6f, pose1 = E, pose2 = R * 0.9f, pose3 = R * 0.5f },
-        };
-        /// <summary>回避斬り:回避の勢いのまま大きく踏み込み、広く薙ぐ。出が速い。この後は通常攻撃の切り返しへつながる。</summary>
-        static readonly AttackMove DodgeSlash = new() { windup = 0.14f, active = 0.14f, recover = 0.5f, damage = 12f, stagger = 9f, flinch = 0.5f, reach = 9.5f, arc = 100f,
-                                                        lunge = 6f, knock = 6f, cost = 10f, pose0 = R * 0.7f, pose1 = R, pose2 = S, pose3 = S + (E - S) * 0.6f };
-        /// <summary>
-        /// 強攻撃(△+R1):1段目は右から左、2段目は左から右への薙ぎ払い。続けて出すと交互にくり返す。
-        /// 斬撃クリップに機体全体の横のひねりを重ねて、横に払う形にする。横に払うので扇は広い。
-        /// </summary>
-        static readonly AttackMove[] Heavy =
-        {
-            new() { windup = 0.4f, active = 0.14f, recover = 0.6f, damage = 24f, stagger = 8.4f, flinch = 0.7f, reach = 10f, arc = 110f, lunge = 5f, knock = 16f, cost = 25f, heavy = true,
-                    pose0 = R * 0.3f, pose1 = R, pose2 = S, pose3 = S + (E - S) * 0.6f, twist0 = 10f, twist1 = 55f, twist2 = -55f },
-            new() { windup = 0.32f, active = 0.14f, recover = 0.6f, damage = 24f, stagger = 8.4f, flinch = 0.7f, reach = 10f, arc = 110f, lunge = 4f, knock = 16f, cost = 25f, heavy = true,
-                    pose0 = S + (E - S) * 0.6f, pose1 = E, pose2 = R * 0.9f, pose3 = R * 0.5f, twist0 = -55f, twist1 = -60f, twist2 = 50f },
-        };
-
         float stateT, stateDur;
-        AttackMove cur;
+        DuelSwing cur;
+        /// <summary>今の攻撃を振っている手(0=右 / 1=左)と、攻撃ボタンを押した手。</summary>
+        int atkHand, pressHand;
+        /// <summary>構えている盾(部屋のモードは null で、素のガードの値)と、その手(0=右 / 1=左)。</summary>
+        DuelWeapon guardShield;
+        int guardHand = 1;
         int phase;   // 攻撃:0=振りかぶり 1=振り抜き 2=戻り
         int combo;
         float energyUsedAt = -10f, lastStaggerHitAt = -10f;
@@ -159,7 +127,7 @@ namespace MeleeDuel
         bool flyHeldPrev;
         /// <summary>R1を押したときに△も押されていたか(強攻撃)。</summary>
         bool pressHeavy;
-        /// <summary>今の強攻撃が何段目か(0=右→左 / 1=左→右)。</summary>
+        /// <summary>今の強攻撃が何段目か(素の剣は 0=右→左 / 1=左→右)。</summary>
         int heavyStep;
         float lightPressedAt = -10f, dodgePressedAt = -10f, dodgeEndAt = -10f, lastGuardHitAt = -10f;
         Vector3 dodgeDir, attackDir;
@@ -175,10 +143,19 @@ namespace MeleeDuel
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
             if (g.stage != null)
             {
-                // ステージだけ:敵が落とす武装を拾って付けられる
+                // ステージだけ:敵が落とす武装を拾って付けられる(最初は右手に素の剣、左手は空)
                 Arms = gameObject.AddComponent<DuelArms>();
                 Arms.Init(this, g, rig);
+                Guard = MaxGuard;
             }
+        }
+
+        /// <summary>盾を付けた・外した(DuelArms から)。新しい盾を付けたらゲージを満タンに、外したら最大までに切る。</summary>
+        public void OnShieldsChanged(bool refill)
+        {
+            Guard = refill ? MaxGuard : Mathf.Min(Guard, MaxGuard);
+            guardShield = null;
+            if (Guarding && MaxGuard <= 0f) Enter(State.Free);
         }
 
         /// <summary>撃墜からのやり直し:その場所に、HP・EN・ガードを満タンにして出し直す(ロックオンは外す)。</summary>
@@ -186,7 +163,7 @@ namespace MeleeDuel
         {
             Revive();
             Teleport(pos, rot);
-            Guard = maxGuard;
+            Guard = MaxGuard;
             Energy = maxEnergy;
             Stagger = 0f;
             BoostOn = false;
@@ -203,7 +180,7 @@ namespace MeleeDuel
         {
             if (Dead) return;
             HP = MaxHP;
-            Guard = maxGuard;
+            Guard = MaxGuard;
         }
 
         // ───────── 足音(敵が聞く。音の大きさの設定には関係なく、動いた距離から出す) ─────────
@@ -250,6 +227,7 @@ namespace MeleeDuel
             float now = Time.time;
             stateT += dt;
             UpdateTint(dt);
+            if (Arms != null) Arms.Tick();   // 武装(拾う・付け先を選ぶ・撃つ)。ボタンの横取りを自機が読むより先に決める
             if (Current == State.Dead) { flying = false; Move(Vector3.zero, dt); return; }
 
             UpdateLock();
@@ -276,8 +254,9 @@ namespace MeleeDuel
             Vector3 worldMove = Vector3.ClampMagnitude(camFwd * mv.y + camRight * mv.x, 1f);
 
             // ガードのゲージ:最後に受けてから少しして戻る(構えている間は半分の速さ)
+            Guard = Mathf.Min(Guard, MaxGuard);
             if (Current != State.GuardBroken && now - lastGuardHitAt >= guardRegenDelay)
-                Guard = Mathf.Min(maxGuard, Guard + guardRegen * (Guarding ? 0.5f : 1f) * dt);
+                Guard = Mathf.Min(MaxGuard, Guard + guardRegen * (Guarding ? 0.5f : 1f) * dt);
 
             if (now - lastStaggerHitAt >= staggerDecayDelay && Current != State.Hurt)
                 Stagger = Mathf.Max(0f, Stagger - staggerDecay * dt);
@@ -294,11 +273,11 @@ namespace MeleeDuel
                     // 回避 → 攻撃 → ガード の順に受け付ける
                     if (TryDodge(now, worldMove)) break;
                     if (TryAttack(now)) break;
-                    bool wantGuard = ProtoInput.LeftHandHeld;
+                    bool wantGuard = WantGuard();
                     if (wantGuard != (Current == State.Guard)) Enter(wantGuard ? State.Guard : State.Free);
                     // ブースト:オンの間に移動すると速く走り、ENを使い続ける(ガード中は効かない)
                     Dashing = BoostOn && Current == State.Free && worldMove.sqrMagnitude > 0.04f && Energy > 0f;
-                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed) * RunMul * (Current == State.Guard ? guardMoveMul : 1f);
+                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed) * RunMul * (Current == State.Guard ? GuardMoveMul : 1f);
                     vel = worldMove * spd;
                     if (Dashing)
                     {
@@ -320,9 +299,10 @@ namespace MeleeDuel
                     float t = Mathf.Clamp01(stateT / dodgeDuration);
                     vel = dodgeDir * (3f * DodgeDistance / dodgeDuration) * (1f - t) * (1f - t);
                     // 回避の後半に攻撃を押したら、回避斬りへ
-                    if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !pressHeavy && !Overheated)
+                    if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !pressHeavy && !Overheated && SwordIn(pressHand) != null)
                     {
                         dodgeEndAt = now;
+                        atkHand = pressHand;   // 押したボタンの手の剣で斬る
                         StartDodgeSlash();
                         break;
                     }
@@ -331,7 +311,7 @@ namespace MeleeDuel
                 }
 
                 case State.GuardStun:
-                    if (stateT >= stateDur) Enter(ProtoInput.LeftHandHeld ? State.Guard : State.Free);
+                    if (stateT >= stateDur) Enter(WantGuard() ? State.Guard : State.Free);
                     break;
 
                 case State.Hurt:
@@ -358,9 +338,49 @@ namespace MeleeDuel
 
         void ReadButtons(float now)
         {
-            if (ProtoInput.Attack) { lightPressedAt = now; pressHeavy = ProtoInput.AimHeld; }
+            // 攻撃:部屋のモードは R1(素の剣)。ステージは剣を持つ手のボタン(R1=右手 / L1=左手。付け先を選んでいる間は数えない)
+            if (Arms == null)
+            {
+                if (ProtoInput.Attack) PressSword(0, now);
+            }
+            else
+            {
+                if (Arms.IsSword(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
+                if (Arms.IsSword(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
+            }
             if (ProtoInput.Dodge) dodgePressedAt = now;
         }
+
+        void PressSword(int hand, float now)
+        {
+            lightPressedAt = now;
+            pressHeavy = ProtoInput.AimHeld;
+            pressHand = hand;
+        }
+
+        // ───────── ガード ─────────
+
+        /// <summary>
+        /// ガードしたいか:部屋のモードは L1(素のガード)。ステージは盾を持つ手のボタンを押している間(構えている盾を覚える)。
+        /// </summary>
+        bool WantGuard()
+        {
+            if (Arms == null)
+            {
+                guardShield = null;
+                guardHand = 1;
+                return ProtoInput.LeftHandHeld;
+            }
+            if (!Arms.GuardHeld(out var shield, out int hand)) return false;
+            guardShield = shield;
+            guardHand = hand;
+            return true;
+        }
+
+        float GuardChip => guardShield != null ? guardShield.guardChip : guardChip;
+        float GuardCostMul => guardShield != null ? guardShield.guardCostMul : 1f;
+        float GuardMoveMul => guardShield != null ? guardShield.guardMoveMul : guardMoveMul;
+        float GuardStunMul => guardShield != null ? guardShield.guardStunMul : 1f;
 
         void Enter(State s, float dur = 0f)
         {
@@ -458,39 +478,55 @@ namespace MeleeDuel
 
         // ───────── 攻撃 ─────────
 
+        /// <summary>その手(0=右 / 1=左)の剣(部屋のモードは右手が素の剣。剣でなければ null)。</summary>
+        DuelWeapon SwordIn(int hand)
+        {
+            if (Arms == null) return hand == 0 ? DuelWeapon.BaseSword : null;
+            var w = Arms.Hand(hand);
+            return w != null && w.kind == DuelKind.Sword ? w : null;
+        }
+
+        /// <summary>その手の剣の技の表(剣がなければ素の剣の表)。</summary>
+        DuelSwing[] LightOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).LightMoves;
+        DuelSwing[] HeavyOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).HeavyMoves;
+        DuelSwing DodgeOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).DodgeMove;
+
         bool TryAttack(float now)
         {
             if (now - lightPressedAt > attackBuffer) return false;
             if (Overheated) return false;   // ENが0以下の間は攻撃できない(押したことは少しの間覚えておく)
-            if (pressHeavy) { StartHeavy(0); return true; }   // △+R1は回避の直後でも強攻撃
+            if (SwordIn(pressHand) == null) { lightPressedAt = -10f; return false; }   // 押した後に剣を持ち替えた
+            atkHand = pressHand;
+            if (pressHeavy) { StartHeavy(0); return true; }   // △+攻撃は回避の直後でも強攻撃
             // 回避が終わってすぐなら回避斬り
             if (now - dodgeEndAt <= dodgeSlashWindow) { StartDodgeSlash(); return true; }
             combo = 1;
-            StartLight(Light[0]);
+            StartLight(LightOf(atkHand)[0]);
             return true;
         }
 
-        void StartLight(AttackMove m)
+        void StartLight(DuelSwing m)
         {
             lightPressedAt = -10f;
             StartAttack(m);
         }
 
-        /// <summary>強攻撃の step 段目を始める(0=右→左 / 1=左→右)。この後の通常攻撃は斬り下ろしから。</summary>
+        /// <summary>強攻撃の step 段目を始める(表の長さで回す)。この後の通常攻撃は連撃の1段目から。</summary>
         void StartHeavy(int step)
         {
             lightPressedAt = -10f;
             pressHeavy = false;
-            heavyStep = step;
+            var h = HeavyOf(atkHand);
+            heavyStep = step % h.Length;
             combo = 0;
-            StartAttack(Heavy[step]);
+            StartAttack(h[heavyStep]);
         }
 
         void StartDodgeSlash()
         {
             lightPressedAt = -10f;
-            combo = 1;   // 次は切り返し(B)へつながる
-            StartAttack(DodgeSlash);
+            combo = 1;   // 次は連撃の2段目へつながる
+            StartAttack(DodgeOf(atkHand));
         }
 
         /// <summary>
@@ -501,7 +537,7 @@ namespace MeleeDuel
         {
             if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
             float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
-            var h = Armed(Heavy[0]);
+            var h = Armed(HeavyOf(atkHand)[0], atkHand);
             Energy -= h.cost - cur.cost;
             energyUsedAt = Time.time;
             h.pose0 = Mathf.Min(poseNow, h.pose1);
@@ -513,12 +549,12 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// 剣の武装の倍率を掛けた技:威力・怯ませ・届く範囲・吹き飛ばし・扇の広さ(片側180°まで)、振りの速さ(振りかぶり・振り抜き・戻りが短くなる)。
-        /// 踏み込み・ENの量・姿勢は変えない。
+        /// その手の剣の倍率を掛けた技:威力・怯ませ・届く範囲・吹き飛ばし・扇の広さ(片側180°まで)、振りの速さ(振りかぶり・振り抜き・戻りが短くなる)。
+        /// 踏み込み・ENの量・姿勢は変えない(振り方の違いは技の表で出す)。
         /// </summary>
-        AttackMove Armed(AttackMove m)
+        DuelSwing Armed(DuelSwing m, int hand)
         {
-            var w = Arms != null ? Arms.SwordW : null;
+            var w = SwordIn(hand);
             if (w == null) return m;
             m.damage *= w.damageMul;
             m.stagger *= w.staggerMul;
@@ -532,9 +568,9 @@ namespace MeleeDuel
             return m;
         }
 
-        void StartAttack(AttackMove m)
+        void StartAttack(DuelSwing m)
         {
-            m = Armed(m);
+            m = Armed(m, atkHand);
             Energy -= m.cost;   // 足りなければマイナスになり、その分だけ回復を待つ
             energyUsedAt = Time.time;
             cur = m;
@@ -571,7 +607,7 @@ namespace MeleeDuel
                     var near = Target != null ? Target : SoftAim();
                     float lungeTime = cur.windup * LungePart;
                     if (stateT < lungeTime && (near == null || GapTo(near) > 1.5f)) vel = attackDir * (cur.lunge / Mathf.Max(0.05f, lungeTime));
-                    // R1とほぼ同時に△を押していたら強攻撃へ
+                    // 攻撃とほぼ同時に△を押していたら強攻撃へ
                     TryChord();
                     // 振りかぶりの間は回避で取り消せる(当たり判定が出ている振り抜きの間だけは取り消せない)
                     if (TryDodge(now, worldMove)) return Vector3.zero;
@@ -583,13 +619,17 @@ namespace MeleeDuel
                 case 2:
                     // 戻り:振り抜いてから dodgeLockAfterSwing 秒たったら回避で取り消せる。少し戻ったら次の段・強攻撃へつなげる
                     if (stateT >= dodgeLockAfterSwing && TryDodge(now, worldMove)) return Vector3.zero;
-                    if (stateT >= 0.08f && !Overheated && now - lightPressedAt <= attackBuffer)
+                    if (stateT >= DuelSwing.ChainAfter && !Overheated && now - lightPressedAt <= attackBuffer && SwordIn(pressHand) != null)
                     {
-                        // △+R1:強攻撃。強攻撃の後なら次の段(右→左と左→右を交互に)、それ以外は1段目
-                        if (pressHeavy) { StartHeavy(cur.heavy ? 1 - heavyStep : 0); return Vector3.zero; }
-                        // R1:通常攻撃の2つの振りを交互に(何回でも続く)。強攻撃の後は斬り下ろしから
-                        combo = combo == 1 ? 2 : 1;
-                        StartLight(Light[combo - 1]);
+                        // 押した手で次を振る(両手に剣なら、R1/L1 を交互に押すと左右の剣で交互に振る)
+                        bool sameHand = pressHand == atkHand;
+                        atkHand = pressHand;
+                        // △+攻撃:強攻撃。同じ手の強攻撃の後なら次の段、それ以外は1段目
+                        if (pressHeavy) { StartHeavy(cur.heavy && sameHand ? heavyStep + 1 : 0); return Vector3.zero; }
+                        // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後は1段目から
+                        var light = LightOf(atkHand);
+                        combo = combo % light.Length + 1;
+                        StartLight(light[combo - 1]);
                         return Vector3.zero;
                     }
                     if (stateT >= cur.recover) { combo = 0; Enter(State.Free); }
@@ -629,17 +669,18 @@ namespace MeleeDuel
             Vector3 away = Flat(transform.position - h.from);
             if (away == Vector3.zero) away = -transform.forward;
             bool front = Vector3.Angle(transform.forward, -away) < 110f;
-            if (Guarding && h.guardable && front)
+            if (Guarding && h.guardable && front && MaxGuard > 0f)
             {
+                // 受け方は構えている盾の値(部屋のモードは素のガードの値)
                 lastGuardHitAt = Time.time;
-                Guard -= h.guardCost;
-                HP -= h.damage * guardChip;
-                ProtoDamageText.Show(Chest, h.damage * guardChip);
-                Knockback(away * guardPush);
+                Guard -= h.guardCost * GuardCostMul;
+                HP -= h.damage * GuardChip;
+                ProtoDamageText.Show(Chest, h.damage * GuardChip);
+                Knockback(away * guardPush * GuardStunMul);
                 if (Guard <= 0f)
                 {
                     // ガードが崩れた:しばらく無防備。ゲージは半分まで戻してから再開
-                    Guard = maxGuard * 0.5f;
+                    Guard = MaxGuard * 0.5f;
                     StopRising();   // 空中で崩れたら上昇が止まり、そのまま落ちる
                     Flash(new Color(1f, 0.4f, 0.2f), 0.4f);
                     game.Log("ガードが崩れた");
@@ -648,7 +689,7 @@ namespace MeleeDuel
                 else
                 {
                     Flash(new Color(0.4f, 0.7f, 1f), 0.12f);
-                    Enter(State.GuardStun, guardStun);
+                    Enter(State.GuardStun, guardStun * GuardStunMul);
                 }
                 // ガード:受けた所から青白い火花
                 Vector3 guardAt = Chest - away * Radius;
@@ -717,12 +758,16 @@ namespace MeleeDuel
             switch (Current)
             {
                 case State.Attack:
-                    // 攻撃ごとの横のひねり(強攻撃の薙ぎ払い)。戻りで0へ
-                    tTwist = phase == 0 ? Mathf.Lerp(cur.twist0, cur.twist1, Mathf.Clamp01(stateT / cur.windup))
-                           : phase == 1 ? Mathf.Lerp(cur.twist1, cur.twist2, Mathf.Clamp01(stateT / cur.active))
-                           : Mathf.Lerp(cur.twist2, 0f, Mathf.Clamp01(stateT / cur.recover));
+                {
+                    // 技ごとの横のひねり・前傾・沈み(武器ごとの振り方の違い)。戻りで0へ。左手で振るときはひねりを左右反転
+                    float a = phase == 0 ? Mathf.Clamp01(stateT / cur.windup) : phase == 1 ? Mathf.Clamp01(stateT / cur.active) : Mathf.Clamp01(stateT / cur.recover);
+                    float side = atkHand == 1 ? -1f : 1f;
+                    tTwist = side * (phase == 0 ? Mathf.Lerp(cur.twist0, cur.twist1, a) : phase == 1 ? Mathf.Lerp(cur.twist1, cur.twist2, a) : Mathf.Lerp(cur.twist2, 0f, a));
+                    tLean += phase == 0 ? Mathf.Lerp(cur.lean0, cur.lean1, a) : phase == 1 ? Mathf.Lerp(cur.lean1, cur.lean2, a) : Mathf.Lerp(cur.lean2, 0f, a);
+                    tLift = phase == 0 ? 0f : phase == 1 ? -cur.drop * a : -cur.drop * (1f - a);
                     rate = 40f;
                     break;
+                }
                 case State.Hurt:
                     FlinchPose(k, out tLean, out tTwist, out tLift);
                     rate = 30f;
@@ -744,7 +789,8 @@ namespace MeleeDuel
             }
             BodyOffset(tLean, tTwist, tLift, rate, dt, tRoll);
 
-            const string clip = MechRig.Attack;
+            // 斬撃クリップ:左手で振るときは左右反転のクリップ(あれば)
+            string clip = atkHand == 1 && rig != null && rig.Has(MechRig.AttackL) ? MechRig.AttackL : MechRig.Attack;
             switch (Current)
             {
                 case State.Attack:
@@ -755,8 +801,9 @@ namespace MeleeDuel
                     return;
                 case State.Guard:
                 case State.GuardStun:
-                    // 仮:剣を振りかぶった途中の姿勢を、構えに見立てる
-                    Pose(clip, MechRig.AttackRaised * 0.55f, 18f);
+                    // 仮:振りかぶった途中の姿勢を、構えに見立てる(部屋のモードは右手の剣で。ステージは盾を持つ手を上げる)
+                    bool leftGuard = Arms != null && guardHand == 1 && rig != null && rig.Has(MechRig.AttackL);
+                    Pose(leftGuard ? MechRig.AttackL : MechRig.Attack, MechRig.AttackRaised * 0.55f, 18f);
                     return;
                 case State.Dodge:
                     Pose(MechRig.Dash, 0f, 15f);
@@ -769,6 +816,12 @@ namespace MeleeDuel
             }
             float sp = new Vector3(vel.x, 0f, vel.z).magnitude;
             if (Dashing || Altitude > 1.5f) { Pose(MechRig.Dash, 0f, 12f); return; }   // ブースト移動中・空中
+            // 右手の銃を撃った直後で止まっていれば、右腕を前に出した射撃の構え(左手用の構えのクリップはないので右手だけ)
+            if (sp <= 0.5f && Arms != null && Arms.Hand(0) is { kind: DuelKind.HandGun } && Arms.ShotRecently(DuelSlot.RightHand, 0.4f) && rig != null && rig.Has(MechRig.Aim))
+            {
+                Pose(MechRig.Aim, 0f, 20f);
+                return;
+            }
             if (sp > 0.5f)
             {
                 stepPhase += sp * dt / 6f;

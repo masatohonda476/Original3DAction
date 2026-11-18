@@ -73,6 +73,10 @@ namespace HuntProto
         public static bool LeftHandHeld => !Blocked && ((Ms != null && MouseLocked && Ms.rightButton.isPressed) || (Pad != null && Pad.leftShoulder.isPressed));
         public static bool RightShoulderHeld => !Blocked && ((Kb != null && Kb.rKey.isPressed) || (Pad != null && Pad.rightTrigger.isPressed));
         public static bool LeftShoulderHeld => !Blocked && ((Kb != null && Kb.eKey.isPressed) || (Pad != null && Pad.leftTrigger.isPressed));
+        /// <summary>R2 / R を押した瞬間(近接の試作で、押すたびに撃つ肩の武装・付け先の選択に使う)。</summary>
+        public static bool RightShoulderPressed => !Blocked && (K(k => k.rKey) || P(p => p.rightTrigger));
+        /// <summary>L2 / E を押した瞬間(近接の試作で、押すたびに撃つ肩の武装・付け先の選択に使う)。</summary>
+        public static bool LeftShoulderPressed => !Blocked && (K(k => k.eKey) || P(p => p.leftTrigger));
         /// <summary>装備メニューを開く/閉じる(切り替え方式では開くときにラックを解放)。</summary>
         /// <summary>パッド右のメニューボタン(OPTIONS・≡)/ G。</summary>
         public static bool Menu => K(k => k.gKey) || P(p => p.startButton);

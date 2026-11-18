@@ -106,3 +106,11 @@ InitTestScene*.unity*
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
 .DS_Store
+
+# Claude Code の並行作業(ワークツリーとロック)
+/.claude/worktrees/
+/.claude/locks/
+/.claude/settings.local.json
+
+# 確認用のスクリーンショット
+/Screenshots/

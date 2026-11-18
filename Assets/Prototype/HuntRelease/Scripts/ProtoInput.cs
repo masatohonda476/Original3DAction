@@ -176,7 +176,10 @@ namespace HuntProto
         /// <summary>足元の武装を拾う(△ / C を押した瞬間。長押しは照準)。パラメータ制のときだけ使う。</summary>
         public static bool PickUp => !Blocked && (K(k => k.cKey) || (Pad != null && !DebugMod && P(p => p.buttonNorth)));
 
-        /// <summary>足元の武装を在庫を通さずその場で装備する(十字キー右 / V)。パラメータ制のときだけ使う。</summary>
+        /// <summary>
+        /// 足元の武装をその場で装備する(十字キー右 / V)。武装ハントではパラメータ制のとき(在庫を通さず装備)、
+        /// 近接の試作(MeleeDuel)のステージでは、落ちている武装を拾って付けるのに使う。
+        /// </summary>
         public static bool EquipNow => !Blocked && (K(k => k.vKey) || P(p => p.dpad.right));
 
         /// <summary>メニュー内:選んでいる在庫を完全に削除する(△ / C 長押し)。</summary>

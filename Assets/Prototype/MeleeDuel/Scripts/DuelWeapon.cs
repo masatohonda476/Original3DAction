@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using HuntProto;
 using UnityEngine;
 
 namespace MeleeDuel
@@ -137,12 +136,21 @@ namespace MeleeDuel
                     continue;
                 }
                 float ratio = a[i].value / Mathf.Max(0.0001f, b[i].value);
-                string arrow = PartDefinition.Arrow(ratio);
+                string arrow = Arrow(ratio);
                 bool better = (ratio > 1f) == a[i].higherBetter;
                 string body = $"{a[i].name} {b[i].text}→{a[i].text}";
                 sb.Append(arrow.Length == 0 ? body : $"<color={(better ? "#7CFC8A" : "#FF7A6A")}>{body}{arrow}</color>");
             }
             return sb.ToString();
+        }
+
+        /// <summary>比(新/今)の大きさを矢印に:6%未満は無印、25%以上は二重(武装ハントの PartDefinition.Arrow と同じ決まり)。</summary>
+        public static string Arrow(float r)
+        {
+            float a = Mathf.Abs(Mathf.Log(Mathf.Max(0.0001f, r)));
+            if (a < Mathf.Log(1.06f)) return "";
+            bool up = r > 1f;
+            return a >= Mathf.Log(1.25f) ? (up ? "↑↑" : "↓↓") : (up ? "↑" : "↓");
         }
 
         // ───────── 初期の一覧(仮置き) ─────────

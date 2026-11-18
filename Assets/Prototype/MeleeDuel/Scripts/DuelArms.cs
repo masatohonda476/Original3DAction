@@ -76,37 +76,37 @@ namespace MeleeDuel
                 Nearby = null;
                 return;
             }
-            Nearby = DuelLoot.Nearest(player);
+            // ボスを倒した後(武装が消し飛んだ後)は拾えない
+            Nearby = game.stage != null && game.stage.Cleared ? null : DuelLoot.Nearest(player);
             if (Nearby != null && ProtoInput.EquipNow) Equip(Nearby);
 
+            bool shootGun = gun != null && player.CanShoot && ProtoInput.RightShoulderHeld;
+            if (!shootGun) cdR = Mathf.Max(cdR, 0f);   // 撃っていない間に端数を溜めない(押し始めにまとめて出ないように)
             if (!player.CanShoot) return;
-            if (gun != null && ProtoInput.RightShoulderHeld) FireGun(gun);
+            if (shootGun) FireGun(gun);
             var heavy = Get(DuelSlot.LeftShoulder);
             if (heavy != null && ProtoInput.LeftShoulderHeld) FireHeavy(heavy);
         }
 
         // ───────── 付ける・外す ─────────
 
-        /// <summary>落ちている武装を付ける。同じ所の今の武装は足もとに落とす(拾い直せる)。</summary>
+        /// <summary>落ちている武装を付ける。同じ所の今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。</summary>
         void Equip(DuelLoot loot)
         {
             var w = loot.Weapon;
             int i = (int)w.slot;
             var old = slots[i];
             slots[i] = w;
+            Vector3 at = loot.transform.position;
             loot.Take();
-            if (old != null)
-            {
-                Vector3 back = -player.transform.forward;
-                DuelLoot.Drop(old, player.transform.position + Vector3.up * 3f + back * 3f, back * 6f);
-            }
+            if (old != null) DuelLoot.Place(old, at);
             if (w.slot == DuelSlot.RightShoulder)
             {
                 magR = w.magazine;
                 reloadR = 0f;
                 cdR = 0.2f;
             }
-            if (w.slot == DuelSlot.LeftShoulder) cdL = 0.3f;
+            if (w.slot == DuelSlot.LeftShoulder) cdL = cdLMax = 0.3f;
             Refresh(w.slot);
             game.Log($"{DuelWeapon.SlotName(w.slot)}に{w.name}({w.RarityName})を付けた");
         }
@@ -137,20 +137,45 @@ namespace MeleeDuel
             return n;
         }
 
-        /// <summary>外れた武装を、回しながら外へ吹き飛ばして少しして消す。</summary>
+        /// <summary>
+        /// 外れた武装を、回しながら外へ吹き飛ばして少しして消す。当たり判定は付けず自前で動かす
+        /// (カメラの壁よけ・足もとのレイ・敵の見通しに当たらないよう、機体と同じ Ignore Raycast の層にも置く)。
+        /// </summary>
         void Fling(Transform v)
         {
             v.SetParent(null, true);
+            foreach (var c in v.GetComponentsInChildren<Collider>()) DestroyImmediate(c);
+            foreach (var tr in v.GetComponentsInChildren<Transform>()) tr.gameObject.layer = DuelFighter.FighterLayer;
             ProtoFx.Blast(v.position, 3f, new Color(1f, 0.6f, 0.2f), 0.25f);
             DuelSpark.Burst(v.position, Vector3.up, new Color(1f, 0.75f, 0.4f), 12, 1f);
-            var rb = v.gameObject.AddComponent<Rigidbody>();
-            rb.mass = 5f;
             Vector3 out_ = v.position - player.Chest;
             out_.y = 0f;
-            rb.linearVelocity = (out_.sqrMagnitude > 0.01f ? out_.normalized : Random.onUnitSphere) * 14f + Vector3.up * 16f;
-            rb.angularVelocity = Random.insideUnitSphere * 6f;
-            foreach (var mf in v.GetComponentsInChildren<MeshFilter>()) mf.gameObject.AddComponent<BoxCollider>();
-            Destroy(v.gameObject, 3f);
+            Vector3 vel = (out_.sqrMagnitude > 0.01f ? out_.normalized : Random.onUnitSphere) * 14f + Vector3.up * 16f;
+            StartCoroutine(Debris(v, vel, Random.insideUnitSphere * 360f, 2.5f));
+        }
+
+        /// <summary>破片の動き:重力で落ち、床で弾んで勢いを失い、life 秒で消える(床は真下へのレイで、移動量を含めて調べる)。</summary>
+        static IEnumerator Debris(Transform v, Vector3 vel, Vector3 spin, float life)
+        {
+            float t = 0f;
+            while (t < life && v != null)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                vel.y -= DuelFighter.Gravity * dt;
+                Vector3 p = v.position, next = p + vel * dt;
+                if (vel.y < 0f && Physics.Raycast(new Vector3(next.x, p.y, next.z), Vector3.down, out var hit, p.y - next.y + 0.5f,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                {
+                    next.y = hit.point.y + 0.5f;
+                    vel = new Vector3(vel.x * 0.5f, -vel.y * 0.3f, vel.z * 0.5f);
+                    spin *= 0.5f;
+                }
+                v.position = next;
+                v.Rotate(spin * dt, Space.World);
+                yield return null;
+            }
+            if (v != null) Destroy(v.gameObject);
         }
 
         /// <summary>その所の見た目を作り直す。</summary>
@@ -259,6 +284,14 @@ namespace MeleeDuel
             return o + d * best;
         }
 
+        /// <summary>画面の中央の先の点を、from から射程(range)までに切ったもの(狙う敵がいないとき、射程より遠くへ飛ばさない)。</summary>
+        Vector3 FreeAimPoint(Vector3 from, float range)
+        {
+            Vector3 p = FreeAimPoint();
+            Vector3 d = p - from;
+            return d.magnitude > range ? from + d.normalized * range : p;
+        }
+
         /// <summary>from から dir へ len まで飛ばして、最初に当たる敵(機体を縦長のカプセルとみなす)。</summary>
         bool RayHitsEnemy(Vector3 from, Vector3 dir, float len, out DuelEnemy hitEnemy, out float dist)
         {
@@ -320,16 +353,21 @@ namespace MeleeDuel
         {
             if (cdR > 0f || reloadR > 0f) return;
             if (w.magazine > 0 && magR <= 0) { reloadR = w.reload; return; }
-            cdR = w.interval;
             lastFireR = Time.time;
             Vector3 from = Muzzle(DuelSlot.RightShoulder);
             var t = AimTarget(w.range, from);
-            Vector3 aim = t != null ? t.Chest : FreeAimPoint();
+            Vector3 aim = t != null ? t.Chest : FreeAimPoint(from, w.range);
             Vector3 dir = (aim - from).normalized;
             Color c = w.magazine <= 0 ? BeamColor : BulletColor;
             int n = Mathf.Max(1, w.pellets);
-            for (int i = 0; i < n; i++) Shot(from, Jitter(dir, w.spread), w, c, n > 1);
-            if (w.magazine > 0 && --magR <= 0) reloadR = w.reload;   // 撃ち切ったらリロード
+            // 間隔の端数は持ち越す(1フレームより短い間隔なら、そのフレームに何発か出す。最大4回)
+            for (int k = 0; k < 4 && cdR <= 0f; k++)
+            {
+                cdR += Mathf.Max(0.01f, w.interval);
+                for (int i = 0; i < n; i++) Shot(from, Jitter(dir, w.spread), w, c, n > 1);
+                if (w.magazine > 0 && --magR <= 0) { reloadR = w.reload; break; }   // 撃ち切ったらリロード
+            }
+            cdR = Mathf.Max(cdR, 0f);
         }
 
         /// <summary>銃の1発:まっすぐ飛び、最初に当たった地形・敵で止まる。</summary>
@@ -360,7 +398,7 @@ namespace MeleeDuel
             {
                 // ミサイル:狙える敵に順番に割り振る(ロックオン中の敵が先、あとは近い順)。いなければ画面の中央の先へ
                 var targets = MissileTargets(w.range);
-                Vector3 point = FreeAimPoint();
+                Vector3 point = FreeAimPoint(from, w.range);
                 for (int j = 0; j < w.salvo; j++)
                 {
                     var t = targets.Count > 0 ? targets[j % targets.Count] : null;
@@ -370,7 +408,7 @@ namespace MeleeDuel
                 return;
             }
             var target = AimTarget(w.range, from);
-            Vector3 aim = target != null ? target.Chest : FreeAimPoint();
+            Vector3 aim = target != null ? target.Chest : FreeAimPoint(from, w.range);
             Vector3 dir = (aim - from).normalized;
             float len = Mathf.Min(Vector3.Distance(from, aim), w.range);
             // 間を地形・ほかの敵がさえぎっていれば、そこで爆発する
@@ -393,6 +431,7 @@ namespace MeleeDuel
             var t = player.Target;
             list.Sort((a, b) =>
             {
+                if (a == b) return 0;
                 if (a == t) return -1;
                 if (b == t) return 1;
                 return (a.transform.position - eye).sqrMagnitude.CompareTo((b.transform.position - eye).sqrMagnitude);

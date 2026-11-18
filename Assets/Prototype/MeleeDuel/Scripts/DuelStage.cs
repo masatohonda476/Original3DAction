@@ -330,15 +330,17 @@ namespace MeleeDuel
             Solid(-34, -26, 160, 188, 446, 454, PipeColor);
             Solid(26, 34, 160, 188, 408, 416, PipeColor);
             Save("機関区画", 0, 160, 449, 0f);    // 大ホールへの坂の手前(どちらの道から来ても通る)
-            // 群れ:兵卒5・剣士3。機関のまわりに散って立つ(入ってきたほう・機関を向く)
-            G(-26, 160, 414, 90);
-            G(20, 160, 418, 270);
-            G(0, 160, 410, 0);
-            G(-22, 160, 440, 150);
-            G(24, 160, 438, 210);
-            D(-30, 160, 428, 90);
-            D(30, 160, 426, 270);
-            D(-20, 160, 454, 150);
+            // 群れ:兵卒5・剣士3。機関の手前(南の半分)に固まって、西口・東口のほうを向いて立つ。
+            // セーブポイント(北の坂の手前)とその再開地点からは 30m 以上離し、機関の陰になり、背を向けている
+            // (撃墜されて再開しても群れの真ん中にならない。倒した敵はそのままなので、ボスに負けても群れはやり直しにならない)
+            G(-26, 160, 410, 270);
+            G(-12, 160, 409, 240);
+            G(10, 160, 409, 120);
+            G(20, 160, 421, 90);
+            G(-22, 160, 424, 270);
+            D(-35, 160, 420, 270);   // 西口(配管の道から)を向く
+            D(30, 160, 430, 60);     // 東口(外殻の道から)を向く
+            D(0, 160, 417, 180);
 
             // ── 6. 頭頂部の大ホール(床176m):広い。天井が大きく裂けている。四隅寄りに柱(突進を柱にぶつけられる) ──
             Region("大ホール", -75, 75, 155, 280, 463, 625);
@@ -736,6 +738,7 @@ namespace MeleeDuel
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
             game.Log("ボスを倒した");
+            DuelLoot.ClearAll();   // 床の武装も消す(消し飛んだ後にまた付けられないように)
             StartCoroutine(BossBlast(e.Chest, e.Size));
         }
 
@@ -767,7 +770,7 @@ namespace MeleeDuel
         /// <summary>倒した敵が武装を落とすか決め、落とすなら倒した所の高さのレア度の重みで1つ選んで落とす。</summary>
         void TryDrop(DuelEnemy e)
         {
-            if (arsenal == null || arsenal.Count == 0 || e == null) return;
+            if (arsenal == null || arsenal.Count == 0 || e == null || Cleared) return;   // ボスを倒した後は落とさない
             var kind = Kind.Grunt;
             foreach (var s in spawns) if (s.enemy == e) { kind = s.kind; break; }
             float chance = kind == Kind.Duelist ? duelistDropChance : gruntDropChance;

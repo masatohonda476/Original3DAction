@@ -394,28 +394,45 @@ namespace MeleeDuel
             }
         }
 
+        // 武装の表示の文字列は、中身が変わったときだけ作り直す(OnGUI は1フレームに何度も呼ばれる)
+        readonly string[] armsHead = new string[4], armsBody = new string[4];
+        readonly (DuelWeapon w, int mag, int reload, ProtoInput.Device dev, bool set)[] armsKey = new (DuelWeapon, int, int, ProtoInput.Device, bool)[4];
+        (DuelLoot loot, DuelWeapon cur, ProtoInput.Device dev) pickupKey;
+        string pickupLine1, pickupLine2;
+        (ProtoInput.Device dev, bool arms, bool set) helpKey;
+        string helpText;
+
         /// <summary>
         /// 左下(HP の上):付けている武装。剣・背中・右肩・左肩の4行。空きは灰色。右肩は弾倉・リロード、左肩は装填の残りも出す。
         /// </summary>
         void DrawArms(DuelArms arms, float x, float y)
         {
+            var dev = ProtoInput.Current;
             for (int i = 0; i < 4; i++)
             {
                 var slot = (DuelSlot)i;
                 var w = arms.Get(slot);
-                string head = slot switch
+                bool gun = w != null && slot == DuelSlot.RightShoulder;
+                int mag = gun ? arms.MagLeft : 0;
+                int reload = gun ? Mathf.CeilToInt(arms.ReloadLeft * 10f) : 0;
+                var key = (w, mag, reload, dev, true);
+                if (armsKey[i] != key)
                 {
-                    DuelSlot.RightShoulder => "右肩 " + ProtoInput.L(ProtoInput.Btn.R2),
-                    DuelSlot.LeftShoulder => "左肩 " + ProtoInput.L(ProtoInput.Btn.L2),
-                    _ => DuelWeapon.SlotName(slot),
-                };
-                string body = w == null ? (slot == DuelSlot.Sword ? "素の剣" : "なし") : w.name + "〈" + w.RarityName + "〉";
-                if (w != null && slot == DuelSlot.RightShoulder)
-                    body += arms.ReloadLeft > 0f ? $"  リロード {arms.ReloadLeft:0.0}秒" : arms.MagLeft >= 0 ? $"  {arms.MagLeft}/{w.magazine}" : "  弾数∞";
+                    armsKey[i] = key;
+                    armsHead[i] = slot switch
+                    {
+                        DuelSlot.RightShoulder => "右肩 " + ProtoInput.L(ProtoInput.Btn.R2),
+                        DuelSlot.LeftShoulder => "左肩 " + ProtoInput.L(ProtoInput.Btn.L2),
+                        _ => DuelWeapon.SlotName(slot),
+                    };
+                    string body = w == null ? (slot == DuelSlot.Sword ? "素の剣" : "なし") : w.name + "〈" + w.RarityName + "〉";
+                    if (gun) body += reload > 0 ? $"  リロード {reload / 10f:0.0}秒" : mag >= 0 ? $"  {mag}/{w.magazine}" : "  弾数∞";
+                    armsBody[i] = body;
+                }
                 GUI.color = new Color(1f, 1f, 1f, 0.75f);
-                GUI.Label(new Rect(x, y + i * 21f, 90f, 22f), head, small);
+                GUI.Label(new Rect(x, y + i * 21f, 90f, 22f), armsHead[i], small);
                 GUI.color = w == null ? new Color(0.6f, 0.6f, 0.6f) : w.Color;
-                GUI.Label(new Rect(x + 90f, y + i * 21f, 330f, 22f), body, small);
+                GUI.Label(new Rect(x + 90f, y + i * 21f, 330f, 22f), armsBody[i], small);
                 GUI.color = Color.white;
                 if (w != null && slot == DuelSlot.LeftShoulder)
                 {
@@ -433,28 +450,51 @@ namespace MeleeDuel
             if (loot == null || player.Dead) return;
             var w = loot.Weapon;
             var cur = arms.Get(w.slot);
+            var key = (loot, cur, ProtoInput.Current);
+            if (pickupKey != key || pickupLine1 == null)
+            {
+                pickupKey = key;
+                string col = ColorUtility.ToHtmlStringRGB(w.Color);
+                string curName = cur != null ? cur.name : w.slot == DuelSlot.Sword ? "素の剣" : "なし";
+                pickupLine1 = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "] " + DuelWeapon.SlotName(w.slot) + "に付ける:<color=#" + col + ">"
+                              + w.name + "〈" + w.RarityName + "〉</color>  ― " + w.feel + "(今:" + curName + ")";
+                pickupLine2 = DuelWeapon.CompareText(w, cur, w.slot);
+            }
             float h = 58f, wd = 960f, bx = (SW - wd) / 2f, by = SH * 0.66f;
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(new Rect(bx, by, wd, h), Texture2D.whiteTexture);
             GUI.color = Color.white;
-            string col = ColorUtility.ToHtmlStringRGB(w.Color);
-            string curName = cur != null ? cur.name : w.slot == DuelSlot.Sword ? "素の剣" : "なし";
-            string line1 = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "] " + DuelWeapon.SlotName(w.slot) + "に付ける:<color=#" + col + ">"
-                           + w.name + "〈" + w.RarityName + "〉</color>  ― " + w.feel + "(今:" + curName + ")";
-            GUI.Label(new Rect(bx, by + 4f, wd, 24f), line1, richCenter);
-            GUI.Label(new Rect(bx, by + 30f, wd, 24f), DuelWeapon.CompareText(w, cur, w.slot), richCenter);
+            GUI.Label(new Rect(bx, by + 4f, wd, 24f), pickupLine1, richCenter);
+            GUI.Label(new Rect(bx, by + 30f, wd, 24f), pickupLine2, richCenter);
         }
 
+        /// <summary>操作説明。ボタン名は使っているコントローラー(キーボード / PlayStation / Xbox)に合わせる。変わったときだけ作り直す。</summary>
         string Help()
         {
-            bool pad = ProtoInput.Current != ProtoInput.Device.Keyboard;
-            if (player != null && player.Arms != null)
-                return pad
-                    ? "R1 攻撃  △+R1 強攻撃  □ 回避  ✗長押し 飛行  ○ ブースト  L1 ガード  R2 右肩  L2 左肩  十字右 拾って付ける  十字左 ロックオン"
-                    : "左クリック 攻撃  C+左クリック 強攻撃  左Ctrl 回避  Space 飛行  Shift ブースト  右クリック ガード  R 右肩  E 左肩  V 拾って付ける  Q ロックオン";
-            return pad
-                ? "R1 通常攻撃(回避の後で回避斬り)  △+R1 強攻撃  □ 回避  ✗長押し 飛行  ○ ブースト切替  L1 ガード  十字左 ロックオン  右スティック左右 切替"
-                : "左クリック 通常攻撃(回避の後で回避斬り)  C+左クリック 強攻撃  左Ctrl 回避  Space長押し 飛行  左Shift ブースト切替  右クリック ガード  Q ロックオン  マウス左右 / Tab 切替";
+            var dev = ProtoInput.Current;
+            bool arms = player != null && player.Arms != null;
+            var key = (dev, arms, true);
+            if (helpKey == key && helpText != null) return helpText;
+            helpKey = key;
+            static string B(ProtoInput.Btn b) => ProtoInput.L(b);
+            bool kb = dev == ProtoInput.Device.Keyboard;
+            var sb = new System.Text.StringBuilder();
+            sb.Append(B(ProtoInput.Btn.R1)).Append(arms ? " 攻撃" : " 通常攻撃(回避の後で回避斬り)");
+            sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append(" 強攻撃");
+            sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
+            sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
+            sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(arms ? " ブースト" : " ブースト切替");
+            sb.Append("  ").Append(B(ProtoInput.Btn.L1)).Append(" ガード");
+            if (arms)
+            {
+                sb.Append("  ").Append(B(ProtoInput.Btn.R2)).Append(" 右肩");
+                sb.Append("  ").Append(B(ProtoInput.Btn.L2)).Append(" 左肩");
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 拾って付ける");
+            }
+            sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
+            if (!arms) sb.Append(kb ? "  マウス左右 / Tab 切替" : "  右スティック左右 切替");
+            helpText = sb.ToString();
+            return helpText;
         }
 
         void Bar(Rect r, float k, Color c)

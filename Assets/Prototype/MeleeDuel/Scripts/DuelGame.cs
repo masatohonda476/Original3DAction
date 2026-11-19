@@ -634,7 +634,7 @@ namespace MeleeDuel
                     {
                         pickupLines[0] = name + " を背中に付ける?  " + fly + " " + DuelWeapon.SlotName(to[0]) + "に付ける(今:" + (a != null ? a.name : "なし") + ")    " + equip + " やめる";
                         pickupLines[1] = DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
-                        pickupLines[2] = "<color=#AAAAAA>選んでいる間は " + ProtoInput.L(ProtoInput.Btn.Fly) + " で飛ばない(空中なら落ちる)</color>";
+                        pickupLines[2] = "<color=#AAAAAA>選んでいる間は " + ProtoInput.L(ProtoInput.Btn.Fly) + " で飛ばない</color>";
                         pickupLineCount = 3;
                     }
                 }

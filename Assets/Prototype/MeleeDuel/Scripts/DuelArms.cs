@@ -177,7 +177,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// ✗ を飛行に使わない(付け先を選んでいる間と、選ぶ表示を終えた時に押していた ✗ を離すまで)。DuelPlayer の飛行が見る。
-        /// 空中で選ぶ表示を開くと、閉じるまで(と ✗ を離すまで)飛べずに落ちる。
+        /// 空中では選ぶ表示を開かない(Nearby が null)。
         /// </summary>
         public bool FlyBlocked => Choosing != null || suppress[FlyBtn];
 
@@ -239,7 +239,9 @@ namespace MeleeDuel
                 return;
             }
             // ボスを倒した後(武装が消し飛んだ後)は拾えない
-            Nearby = game.stage != null && game.stage.Cleared ? null : DuelLoot.Nearest(player);
+            // 空中では拾う案内も付け先を選ぶ表示も出さない(作者「空中では拾うメニューが開かないようにしてください」)。
+            // 選んでいる途中で空中に出たら、Choosing != Nearby で取り消しになる
+            Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null : DuelLoot.Nearest(player);
             UpdateChoice();
 
             bool can = player.CanShoot;

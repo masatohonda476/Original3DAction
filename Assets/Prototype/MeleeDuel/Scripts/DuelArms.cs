@@ -459,6 +459,7 @@ namespace MeleeDuel
             var w = slots[i];
             if (w == null || player == null || player.Dead || (game.stage != null && game.stage.Cleared) || !HasFloorBelow(slot)) return false;
             bool two = w.IsTwoHand && (i == R || i == L);
+            int left = MagOf(two ? R : i);   // 撃ちかけの弾倉の残り(拾い直しても満タンにしない)
             if (two)
             {
                 // 両手持ち:右手・左手の両方を空ける
@@ -476,7 +477,7 @@ namespace MeleeDuel
                 ResetState(i);
                 Refresh(slot);
             }
-            DuelLoot.Place(w, DropPos(i));
+            DuelLoot.Place(w, DropPos(i)).Mag = left;
             if (w.kind == DuelKind.Shield) player.OnShieldsChanged(false);
             if (two && w.IsBlade)
             {
@@ -496,12 +497,15 @@ namespace MeleeDuel
             pressedAt[i] = -10f;
         }
 
-        /// <summary>付けたばかりの撃つ状態(弾倉を満タンに、撃てるまで少し待つ)。</summary>
-        void ArmState(int i, DuelWeapon w)
+        /// <summary>その状態の弾倉の残り(弾倉のある銃でなければ -1=満タン扱い)。外して床に置くときに覚えさせる。</summary>
+        int MagOf(int i) => slots[i] is { IsGun: true, magazine: > 0 } ? Mathf.Clamp(mag[i], 0, slots[i].magazine) : -1;
+
+        /// <summary>付けたばかりの撃つ状態(弾倉は left、-1 なら満タンに。撃てるまで少し待つ)。</summary>
+        void ArmState(int i, DuelWeapon w, int left = -1)
         {
             ResetState(i);
             if (w == null) return;
-            mag[i] = w.magazine;
+            mag[i] = left >= 0 ? Mathf.Min(left, w.magazine) : w.magazine;
             cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
             lastFire[i] = -10f;   // 付けた直後の 0.3 秒の待ちは、装填のゲージに出さない(CooldownLeft)
         }
@@ -525,14 +529,15 @@ namespace MeleeDuel
                 var oldR = slots[R];
                 var oldL = slots[L];
                 bool oldTwo = oldR is { IsTwoHand: true };
+                int magR = MagOf(R), magL = MagOf(L);
                 slots[R] = slots[L] = null;
                 if (w.IsTwoHand) slots[R] = slots[L] = w;
                 else slots[i] = w;
                 // 外した武装を置く:1つ目は拾った所、2つ目は自機の側へ少し寄せて(重ならないように)
-                if (oldR != null) DuelLoot.Place(oldR, at);
-                if (oldL != null && !oldTwo) DuelLoot.Place(oldL, oldR != null ? Beside(at) : at);
-                ArmState(R, slots[R]);
-                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L]);
+                if (oldR != null) DuelLoot.Place(oldR, at).Mag = magR;
+                if (oldL != null && !oldTwo) DuelLoot.Place(oldL, oldR != null ? Beside(at) : at).Mag = magL;
+                ArmState(R, slots[R], slots[R] == w ? loot.Mag : -1);
+                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L], slots[L] == w ? loot.Mag : -1);
                 ArmState(AltIndex, AltFire);
                 Refresh(DuelSlot.RightHand);
                 Refresh(DuelSlot.LeftHand);
@@ -545,9 +550,10 @@ namespace MeleeDuel
             else
             {
                 var old = slots[i];
+                int oldMag = MagOf(i);
                 slots[i] = w;
-                if (old != null) DuelLoot.Place(old, at);
-                ArmState(i, w);
+                if (old != null) DuelLoot.Place(old, at).Mag = oldMag;
+                ArmState(i, w, loot.Mag);
                 Refresh(slot);
                 game.Log($"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");
             }

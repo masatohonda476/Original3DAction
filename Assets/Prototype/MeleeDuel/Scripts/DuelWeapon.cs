@@ -570,7 +570,7 @@ namespace MeleeDuel
         [Tooltip("オンなら、全部の武装で枠の大きさを共通(commonFrame)にする。オフなら武装ごとの値(作者「エイムの枠はは共通にしてください」)")]
         public bool useCommonFrame = true;
         [Tooltip("共通の枠の大きさ(画面の中央からの角度。横の半分。度)")]
-        public float commonFrame = 12f;
+        public float commonFrame = 16f;
         [Tooltip("全部の武装の枠の大きさに掛ける倍率(1 で武装ごとの値・共通の値のまま)")]
         public float frameMul = 1f;
         [Tooltip("枠の縦の大きさ(横に対する割合)")]

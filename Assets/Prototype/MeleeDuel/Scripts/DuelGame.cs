@@ -484,6 +484,7 @@ namespace MeleeDuel
                     GUI.color = Color.white;
                 }
             }
+            DrawLockCorners(cam);   // ロックオンのオン・オフの照準枠
 
             // 上の中央:ロックオンしている敵のHPと怯みゲージ(ステージでは、ロックオンしていなくてもボスは出す)
             e = TopGaugeEnemy();
@@ -666,6 +667,153 @@ namespace MeleeDuel
             }
             GUI.matrix = saved;
             GUI.color = Color.white;
+        }
+
+        // ───────── ロックオンのオン・オフの照準枠(電脳斬禅の DuelHud.LockState・LockCornersGraphic と同じ考え。値は 1280×720 の画面の単位) ─────────
+        // オンの間:画面の縁寄りに薄い水色の四つの角を出し続ける(オンにした瞬間は外から締まって止まる)。
+        //   狙う敵が画面に映って見えている間は、角ごと敵の体を囲む小さな枠へ移って(縮みながら)ついて回る。見えなくなったら画面の縁へ戻る。
+        // オフにした瞬間:角が外へ広がりながら灰色に褪せて消える。オフの間は何も出さない。
+        // 揺らさない(枠が動くのは付け外しの一度だけで、画面は動かさない)。文字の「LOCK ON / OFF」は出さない(電脳斬禅も作者の指示でやめた)。
+        const float LockCornerHalfW = 507f, LockCornerHalfH = 180f, LockCornerEdge = 107f, LockCornerArm = 37f;
+        const float LockCornerTravel = 173f, LockRestAlpha = 0.55f, LockOnTime = 0.55f, LockOffTime = 0.45f;
+        const float LockFollowTime = 0.3f, LockFollowAlpha = 0.4f, LockFollowHold = 0.5f;
+        static readonly Color LockInk = new(0.48f, 0.93f, 1f), LockMuted = new(0.56f, 0.66f, 0.7f, 0.65f);
+        bool lockHudInit, lockShownOn, lockCornersShown;
+        float lockOnAt = -1f, lockOffAt = -1f, lockFromOffset = LockCornerTravel, lockOffset, lockHalfH = LockCornerHalfH;
+        Color lockFromInk = Color.white, lockInk = LockInk;
+        float lockFollow, lockFollowSeenAt = -10f, lockHudAt = -1f;
+        Vector2 lockFollowCenter, lockFollowHalf;
+
+        void DrawLockCorners(Camera cam)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            float now = Time.unscaledTime;
+            bool on = player.LockOn;
+            if (!lockHudInit) { lockHudInit = true; lockShownOn = on; }   // 始めたときは動かさない(切り替えたときだけ動く)
+            if (on != lockShownOn)
+            {
+                // 付け外しの途中で反対に切り替えたときは、今の広がりと色から次の動きを始める(跳ばない)
+                lockShownOn = on;
+                lockFromOffset = lockCornersShown ? lockOffset : on ? LockCornerTravel : 0f;
+                lockFromInk = lockCornersShown ? lockInk : on ? Color.white : LockInk;
+                if (!lockCornersShown) lockFromInk.a = on ? 0.95f : LockRestAlpha;
+                lockOnAt = on ? now : -1f;
+                lockOffAt = on ? -1f : now;
+            }
+            if (player.Dead || equipOpen)
+            {
+                lockOnAt = lockOffAt = -1f;
+                lockCornersShown = false;
+                lockFollow = 0f;
+                lockHudAt = -1f;
+                return;
+            }
+            if (on)
+            {
+                float t = lockOnAt >= 0f ? Mathf.Clamp01((now - lockOnAt) / LockOnTime) : 1f;
+                if (t >= 1f) lockOnAt = -1f;
+                float ease = 1f - Mathf.Pow(1f - t, 3f);
+                lockOffset = Mathf.Lerp(lockFromOffset, 0f, ease);
+                var ink = Color.Lerp(lockFromInk, LockInk, ease);
+                ink.a = Mathf.Lerp(lockFromInk.a, LockRestAlpha, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 1f, t)));
+                lockInk = ink;
+            }
+            else
+            {
+                if (lockOffAt < 0f || now - lockOffAt >= LockOffTime)
+                {
+                    lockOffAt = -1f;
+                    lockCornersShown = false;
+                    lockFollow = 0f;
+                    lockHudAt = -1f;
+                    return;
+                }
+                float t = Mathf.Clamp01((now - lockOffAt) / LockOffTime);
+                float alpha = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 1f, t));
+                lockOffset = lockFromOffset + LockCornerTravel * 0.75f * t * t;
+                var ink = Color.Lerp(lockFromInk, LockMuted, Mathf.Clamp01(t * 2f));
+                ink.a = alpha * Mathf.Lerp(lockFromInk.a, 0.85f, Mathf.Sin(t * Mathf.PI));
+                lockInk = ink;
+            }
+            lockCornersShown = true;
+
+            // 敵を捉えている間は、敵の体を囲む枠へ移る。切り替え直後に次の敵がまだ見えない短い間は、今の場所で待つ(オフにしたときは待たない)
+            float dt = lockHudAt < 0f ? 0f : Mathf.Max(0f, now - lockHudAt);
+            lockHudAt = now;
+            var target = on ? player.Target : null;
+            bool onEnemy = LockTargetBox(cam, target, out var boxCenter, out var boxHalf);
+            if (onEnemy)
+            {
+                lockFollowSeenAt = now;
+                float k = lockFollow <= 0f ? 1f : 1f - Mathf.Exp(-dt * 18f);
+                lockFollowCenter = Vector2.Lerp(lockFollowCenter, boxCenter, k);
+                lockFollowHalf = Vector2.Lerp(lockFollowHalf, boxHalf, k);
+            }
+            bool hold = on && !onEnemy && lockFollow > 0f && now - lockFollowSeenAt < LockFollowHold;
+            if (!hold) lockFollow = Mathf.MoveTowards(lockFollow, onEnemy ? 1f : 0f, dt / LockFollowTime);
+            float e = Mathf.SmoothStep(0f, 1f, lockFollow);
+
+            // 画面の縁寄りの枠:縦は上の敵のゲージ・右上の知らせと、下の自機のゲージ・武装の欄の手前まで(低い画面では縮める。なめらかに)
+            float bottom = Mathf.Min(leftTop, player.Arms != null ? ArmsTop : SH) - 12f;
+            float wantH = Mathf.Max(53f, Mathf.Min(LockCornerHalfH, bottom - SH * 0.5f));
+            lockHalfH = dt <= 0f ? wantH : Mathf.MoveTowards(lockHalfH, wantH, 267f * dt);
+            float baseW = Mathf.Max(80f, Mathf.Min(LockCornerHalfW, SW * 0.5f - LockCornerEdge));
+            float hw = baseW + lockOffset, hh = lockHalfH + lockOffset * (lockHalfH / baseW);
+            hw = Mathf.Lerp(hw, lockFollowHalf.x + lockOffset * 0.35f, e);
+            hh = Mathf.Lerp(hh, lockFollowHalf.y + lockOffset * 0.35f, e);
+            Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
+            var col = lockInk;
+            if (e > 0f) col.a = Mathf.Min(1f, col.a * Mathf.Lerp(1f, LockFollowAlpha / LockRestAlpha, e));   // 敵に重なる間は薄く
+            float thin = Mathf.Lerp(1f, 0.7f, e);
+            // 明るい床の上でも形が読めるよう、細い暗い縁を下に敷く
+            LockCornerLines(c, hw, hh, e < 0.5f, 2.7f * thin, new Color(0f, 0.025f, 0.04f, col.a * 0.8f));
+            LockCornerLines(c, hw, hh, e < 0.5f, 1.35f * thin, col);
+            GUI.color = Color.white;
+        }
+
+        /// <summary>狙う敵の体を囲む画面上の枠(中心は画面の中央から、下向きが +y。横・縦の半分)。敵が画面に映っていて、自機から遮られていないときだけ true。</summary>
+        bool LockTargetBox(Camera cam, DuelEnemy target, out Vector2 center, out Vector2 half)
+        {
+            center = half = Vector2.zero;
+            if (target == null || target.Dead || cam == null) return false;
+            Vector3 vp = cam.WorldToViewportPoint(target.LockPoint);
+            if (vp.z <= 0.1f || vp.x < 0f || vp.x > 1f || vp.y < 0f || vp.y > 1f) return false;
+            if (stage != null && !DuelSenses.ClearSight(player.LockPoint, target.LockPoint)) return false;
+            Vector3 feet = target.transform.position, head = feet + Vector3.up * (mechHeight * target.Size * 1.2f);
+            Vector3 a = cam.WorldToScreenPoint(feet), b = cam.WorldToScreenPoint(head);
+            if (a.z <= 0.1f || b.z <= 0.1f) return false;
+            Vector2 ga = new(a.x / uiScale, SH - a.y / uiScale), gb = new(b.x / uiScale, SH - b.y / uiScale);
+            center = (ga + gb) * 0.5f - new Vector2(SW * 0.5f, SH * 0.5f);
+            float hh = Mathf.Clamp(Vector2.Distance(ga, gb) * 0.6f, 30f, 160f);
+            half = new Vector2(hh * 0.7f, hh);
+            return true;
+        }
+
+        /// <summary>照準枠の線:四つの L 字の角(腕の先寄りに内向きの小さな刻み)と、各辺の真ん中の内向きの目盛り(marks が偽なら角だけ)。</summary>
+        static void LockCornerLines(Vector2 c, float hw, float hh, bool marks, float w, Color ink)
+        {
+            GUI.color = ink;
+            var tex = Texture2D.whiteTexture;
+            float arm = Mathf.Min(LockCornerArm, Mathf.Min(hw, hh) * 0.3f), hw2 = w * 0.5f;
+            void H(float x0, float x1, float y) => GUI.DrawTexture(new Rect(Mathf.Min(x0, x1), y - hw2, Mathf.Abs(x1 - x0), w), tex);
+            void V(float x, float y0, float y1) => GUI.DrawTexture(new Rect(x - hw2, Mathf.Min(y0, y1), w, Mathf.Abs(y1 - y0)), tex);
+            for (int i = 0; i < 4; i++)
+            {
+                float sx = i % 2 == 0 ? -1f : 1f, sy = i < 2 ? -1f : 1f;
+                float px = c.x + sx * hw, py = c.y + sy * hh;
+                H(px + sx * hw2, px - sx * arm, py);   // 角の外側で腕を少し重ね、継ぎ目が欠けないようにする
+                V(px, py + sy * hw2, py - sy * arm);
+                if (!marks) continue;
+                float tx = px - sx * arm * 0.7f, ty = py - sy * arm * 0.7f;
+                V(tx, py, py - sy * 5f);
+                H(px, px - sx * 5f, ty);
+            }
+            if (!marks) return;
+            const float mid = 9f;
+            V(c.x, c.y - hh, c.y - hh + mid);
+            V(c.x, c.y + hh, c.y + hh - mid);
+            H(c.x - hw, c.x - hw + mid, c.y);
+            H(c.x + hw, c.x + hw - mid, c.y);
         }
 
         /// <summary>四角の4つの角に鉤(長さ len・太さ th)を描く。</summary>
@@ -1292,8 +1440,9 @@ namespace MeleeDuel
             helpKey = key;
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
             bool kb = dev == ProtoInput.Device.Keyboard;
-            // ロックオンの相手の切り替え:撃っていないときに右スティック(マウスは左右に振る)を左右に弾く。R3 / Tab でも切り替わる
-            string lockSwitch = kb ? "  マウスを左右に振る/Tab 切替" : "  右スティックを左右に弾く 切替";
+            // ロックオンのボタンはオン・オフの切り替え(電脳斬禅と同じ)。狙う敵の切り替え:撃っていないときに右スティック(マウスは左右に振る)を左右に弾く。
+            // R3 / Tab でも切り替わる(オフのときに押すとオンに戻る)
+            string lockSwitch = kb ? "  マウスを左右に振る/Tab 狙う敵を変更" : "  右スティックを左右に弾く/R3 狙う敵を変更";
             var sb = new System.Text.StringBuilder();
             if (arms)
             {
@@ -1317,7 +1466,7 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 付ける→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
                 sb.Append("  ").Append(B(ProtoInput.Btn.Stash)).Append(" 持つ  ").Append(B(ProtoInput.Btn.Break)).Append(" 分解(弾か回復)");
-                sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン").Append(lockSwitch);
+                sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン切替").Append(lockSwitch);
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・所持品");
                 helpText = sb.ToString();
                 return helpText;
@@ -1328,7 +1477,7 @@ namespace MeleeDuel
             sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
             sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト切替");
             sb.Append("  ").Append(B(ProtoInput.Btn.L1)).Append(" ガード");
-            sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
+            sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン切替");
             sb.Append(lockSwitch);
             helpText = sb.ToString();
             return helpText;

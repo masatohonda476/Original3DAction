@@ -72,6 +72,8 @@ namespace MeleeDuel
         readonly float[] lastFire = new float[StateCount], pressedAt = new float[StateCount];
         /// <summary>次に撃てるまでの待ちを装填のゲージに出すか(撃った後と、外したときの装填待ちを持ち越して付け直した後。付けた直後の 0.3 秒の待ちは出さない)。</summary>
         readonly bool[] cdShown = new bool[StateCount];
+        /// <summary>弾が受け継ぐ自機の速度(今の速度へ DuelArmsRules.inheritSmoothTime 秒ほどで追いつく。Fly と十字の見込み PredictShot で同じ値を使う)。</summary>
+        Vector3 inheritVel;
         readonly int[] mag = new int[StateCount];
         /// <summary>撃つ状態ごとの反動の広がり(度。spread に足す)。撃つたびに広がり、撃つのをやめると戻る。</summary>
         readonly float[] bloom = new float[StateCount];
@@ -494,6 +496,12 @@ namespace MeleeDuel
         public void Tick()
         {
             float dt = Time.deltaTime, now = Time.time;
+            if (player != null)
+            {
+                // 弾が受け継ぐ速度は、今の速度へなめらかに追いつかせる(動き始め・止まり・回避で、十字と弾の流れが一瞬で跳ばないように)
+                float st = Rules.inheritSmoothTime;
+                inheritVel = st <= 0f ? player.Velocity : Vector3.Lerp(inheritVel, player.Velocity, 1f - Mathf.Exp(-3f * dt / st));
+            }
             bool fh = ProtoInput.FlyHeld;
             flyPressed = fh && !flyPrev;
             flyPrev = fh;

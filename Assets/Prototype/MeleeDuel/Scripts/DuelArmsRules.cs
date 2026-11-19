@@ -66,6 +66,8 @@ namespace MeleeDuel
         public float shotSpeedMul = 1f;
         [Tooltip("撃った自機の速度を弾が受け継ぐ割合(1 で全部、0 で受け継がない)。敵と相対速度を合わせて動きながら撃つと当たる。速さを持つ弾(実弾・ビームの弾・砲弾)だけで、すぐ届く光線には効かない")]
         [Range(0f, 1f)] public float inheritShooterVelocity = 1f;
+        [Tooltip("弾が受け継ぐ自機の速度が、今の速度へ追いつくまでの秒数(だいたい)。動き始め・止まり・回避で十字と弾の流れが跳ばないように(作者「1: なめらかにするだけ」)。0 で今の速度そのまま")]
+        public float inheritSmoothTime = 0.2f;
         [Tooltip("全部の武装の、撃つたびに照準をずらす角度に掛ける倍率(0 でずれない)")]
         public float kickMul = 1f;
         [Tooltip("銃の弾の球の大きさ(m。機体は約9m)/ 散弾の1粒の大きさ")]

@@ -194,6 +194,11 @@ namespace MeleeDuel
         /// <summary>今の照準の枠(撃つ武装ごと、同じ大きさはまとめる)と、枠の中で当てる相手(印を出す)。毎フレーム Tick で作り直す。</summary>
         public readonly List<AimFrame> Frames = new();
         public readonly List<DuelEnemy> Marks = new();
+        /// <summary>
+        /// 弾が飛んでいく所(銃・砲。照準の向きを吸い付く相手へ寄せた先の、最初に当たる地形・敵)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
+        /// 撃っている・撃ったばかり・溜めている武装を先に選ぶ。銃・砲を付けていなければ null。毎フレーム UpdateFrames で求める。
+        /// </summary>
+        public Vector3? ShotPoint { get; private set; }
         readonly List<DuelEnemy> missileBuf = new();
 
         /// <summary>両手の銃・砲の L1 の撃ち方なら、その両手の武装(枠の大きさを借りる)。</summary>
@@ -388,6 +393,8 @@ namespace MeleeDuel
         {
             Frames.Clear();
             Marks.Clear();
+            ShotPoint = null;
+            bool shotHot = false;
             var cam = Camera.main;
             if (cam == null || Choosing != null) return;
             float aspect = Rules.frameAspect;
@@ -423,9 +430,14 @@ namespace MeleeDuel
                     var t = AimTarget(w, parent, Muzzle(at));
                     aimCache[i] = t;
                     // 枠を橙にして印を出すのは、吸い付いた狙いが体に掛かる(当たる)ときだけ
-                    any = false;
-                    if (t != null) AssistDir(cam, t, AssistDeg(w, parent), out any);
+                    Vector3 sd = AssistDir(cam, t, AssistDeg(w, parent), out any);   // t が null なら照準の向きのまま(any は偽)
                     if (any) AddMark(t);
+                    // 弾が飛んでいく所:撃っている・撃ったばかり・溜めている武装を先に、なければ最初の銃・砲
+                    if (ShotPoint == null || (hot && !shotHot))
+                    {
+                        ShotPoint = AimPointAlong(cam.transform.position, sd, out _);
+                        shotHot = hot;
+                    }
                 }
                 int same = -1;
                 for (int k = 0; k < Frames.Count; k++)

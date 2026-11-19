@@ -214,7 +214,12 @@ namespace MeleeDuel
                     Vector3 sp = cam.WorldToScreenPoint(shot);
                     if (sp.z > 0f) { sx = sp.x / uiScale; sy = SH - sp.y / uiScale; }
                 }
-                DrawCross(sx, sy, Mathf.Clamp(spread * k, 3f, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
+                // 見た目だけ、出す所へ CrossFollowTime 秒ほどで追いつかせる(狙いが急に変わっても跳ばずに滑る。弾の向きは変えない。作者「見た目だけでも間を補正とかできますか？」)
+                float now = Time.unscaledTime;
+                if (crossShownAt < 0f || now - crossShownAt > 0.2f) crossPos = new Vector2(sx, sy);   // しばらく出していなければ、その場に出す
+                else crossPos = Vector2.Lerp(crossPos, new Vector2(sx, sy), 1f - Mathf.Exp(-3f * (now - crossShownAt) / CrossFollowTime));
+                crossShownAt = now;
+                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, 3f, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
             }
             var mc = FrameLocked;
             mc.a = 0.95f;
@@ -229,6 +234,11 @@ namespace MeleeDuel
             }
             GUI.color = Color.white;
         }
+
+        /// <summary>真ん中の十字の見た目の位置(GUI の座標)と、最後に出した時刻(実時間。-1 はまだ)。出す所へ CrossFollowTime 秒ほどで追いつく。</summary>
+        Vector2 crossPos;
+        float crossShownAt = -1f;
+        const float CrossFollowTime = 0.08f;
 
         /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。</summary>
         static void DrawCross(float cx, float cy, float g, float alpha)

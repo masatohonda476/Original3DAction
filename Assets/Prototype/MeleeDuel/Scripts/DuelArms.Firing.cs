@@ -36,6 +36,7 @@ namespace MeleeDuel
                 return false;
             }
             lastFire[i] = Time.time;
+            cdShown[i] = true;
             Vector3 from = Muzzle(s);
             // 照準の先へ撃つ(枠の中の敵がいれば、狙いを少しだけ寄せる。照準を動かせるときは、弾が速さを持つ撃ち方は寄せない。AssistDeg)
             var t = TargetFor(w, i, from);
@@ -214,6 +215,7 @@ namespace MeleeDuel
             if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
             cd[i] = cdMax[i] = w.interval;
             lastFire[i] = Time.time;
+            cdShown[i] = true;
             Vector3 from = Muzzle(s);
             if (w.IsMissile)
             {

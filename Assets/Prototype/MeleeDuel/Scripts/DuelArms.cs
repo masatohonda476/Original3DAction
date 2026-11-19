@@ -22,6 +22,9 @@ namespace MeleeDuel
     ///   付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、それまでの右手・左手の武装は拾った所に置く(素の剣も)。
     ///   両手持ちのまま片手の武装を付けると、両手持ちは外れて置かれ、もう片方の手は空になる。捨てると両手が空く。盾がないのでガードはできない。
     ///   両手の銃・砲の撃つ状態は右手の所で持ち、L1 の撃ち方は別の状態(AltIndex)で持つ。溜め撃ちは L1 を押して溜め、溜まってから離すと撃つ。
+    /// リロード:弾倉のある銃は、撃ち切ると自動でリロードする。撃ちかけでも △ を押しながらその銃を撃つボタンを押すとリロードする
+    ///   (作者「△+射撃ボタンで手動リロードできるようにして、待てば自動リロードは消してください」。TryManualReload)。
+    ///   リロード中はその銃だけ撃てない(ほかの武装は使える)。弾倉のない銃・砲・ミサイル・剣・盾では △+ボタンは今までどおり(剣なら強攻撃)。
     /// 毎フレームの処理は DuelPlayer.Update の始めに Tick() で呼ぶ(ボタンの横取りを、自機が読むより先に決めるため)。
     /// </summary>
     public class DuelArms : MonoBehaviour
@@ -201,8 +204,25 @@ namespace MeleeDuel
         public int MagLeft(DuelSlot s) => Get(s) is { IsGun: true, magazine: > 0 } ? mag[(int)s] : -1;
         /// <summary>その所の銃のリロードの残り(秒。0ならリロードしていない)。</summary>
         public float ReloadLeft(DuelSlot s) => Mathf.Max(0f, reload[(int)s]);
+        /// <summary>その所の銃のリロードの残り(0〜1。1でリロードを始めたところ、0でリロードしていない)。</summary>
+        public float Reload01(DuelSlot s) => Get(s) is { IsGun: true, magazine: > 0 } w && reload[(int)s] > 0f
+            ? Mathf.Clamp01(reload[(int)s] / Mathf.Max(0.01f, w.reload)) : 0f;
         /// <summary>その所の砲・ミサイルが次に撃てるまでの残り(0〜1。0で撃てる)。</summary>
         public float Cooldown01(DuelSlot s) => cd[(int)s] > 0f ? Mathf.Clamp01(cd[(int)s] / Mathf.Max(0.01f, cdMax[(int)s])) : 0f;
+        /// <summary>その所の砲・ミサイルが次に撃てるまでの残り(秒)。</summary>
+        public float CooldownLeft(DuelSlot s) => Mathf.Max(0f, cd[(int)s]);
+        /// <summary>L1 の撃ち方が次に撃てるまでの残り(秒)。</summary>
+        public float AltCooldownLeft => AltFire != null ? Mathf.Max(0f, cd[AltIndex]) : 0f;
+        /// <summary>手動でリロードできる銃(弾倉のある銃)をどこかに付けている(操作説明に「△+撃つボタン リロード」を出すか)。</summary>
+        public bool AnyReloadable
+        {
+            get
+            {
+                for (int i = 0; i < SlotCount; i++)
+                    if (slots[i] is { IsGun: true, magazine: > 0 }) return true;
+                return false;
+            }
+        }
         /// <summary>その所で、最近(秒)撃ったか(手の銃の構えの見た目用)。</summary>
         public bool ShotRecently(DuelSlot s, float sec) => Time.time - lastFire[(int)s] < sec;
 
@@ -225,8 +245,7 @@ namespace MeleeDuel
                     reload[i] -= dt;
                     if (reload[i] <= 0f) mag[i] = w.magazine;
                 }
-                // 撃たずにリロードの時間の1.5倍たったら、弾倉を満タンに戻す(撃ちかけの弾倉が残り続けないように)
-                else if (w.magazine > 0 && mag[i] < w.magazine && now - lastFire[i] > w.reload * 1.5f) mag[i] = w.magazine;
+                // 待てば満タンに戻る自動リロードはない(作者「待てば自動リロードは消してください」)。撃ちかけの弾倉は △+撃つボタンで詰め直す
             }
             for (int b = 0; b < suppress.Length; b++)
                 if (suppress[b] && !RawHeld(b)) suppress[b] = false;
@@ -243,6 +262,7 @@ namespace MeleeDuel
             // 選んでいる途中で空中に出たら、Choosing != Nearby で取り消しになる
             Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null : DuelLoot.Nearest(player);
             UpdateChoice();
+            TryManualReload();
 
             bool can = player.CanShoot;
             for (int i = 0; i < SlotCount; i++)
@@ -311,6 +331,40 @@ namespace MeleeDuel
                 return;
             }
             if (Fire(a, i, DuelSlot.RightHand)) pressedAt[i] = -10f;
+        }
+
+        static readonly DuelSlot[] FireSlots = { DuelSlot.RightHand, DuelSlot.LeftHand, DuelSlot.RightShoulder, DuelSlot.LeftShoulder };
+
+        /// <summary>
+        /// そのボタンの所で手動リロードできる銃の、撃つ状態の番号(できなければ -1)。弾倉のある銃(手・肩・両手の銃の主の撃ち方)だけ。
+        /// 両手の銃は、L1 の撃ち方に弾倉がないので、R1 でも L1 でも主の銃(右手の所の状態)。
+        /// </summary>
+        int ReloadState(DuelSlot s)
+        {
+            int i = (s is DuelSlot.RightHand or DuelSlot.LeftHand) && TwoHanded ? R : (int)s;
+            return slots[i] is { IsGun: true, magazine: > 0 } ? i : -1;
+        }
+
+        /// <summary>
+        /// △を押しながら、弾倉のある銃を撃つボタンを押した:その銃のリロードを始める(弾倉が満タン・もうリロード中なら何もしない)。
+        /// どちらの場合も、押したボタンは離すまで撃つ・溜める・振るのに使わない(この押下で弾が出たり、L1 の溜め撃ちが始まったりしないように)。
+        /// 押して覚えている射撃(先行入力)も忘れる。押したのが剣・盾・砲・弾倉のない銃のボタンなら何もしない(△+R1 の強攻撃などは DuelPlayer がそのまま読む)。
+        /// 撃てない間(振っている途中・回避中など)でも始められる。付け先を選んでいる間は Pressed が数えないので始めない。
+        /// </summary>
+        void TryManualReload()
+        {
+            if (!ProtoInput.AimHeld) return;
+            foreach (var s in FireSlots)
+            {
+                if (!Pressed(s)) continue;
+                int i = ReloadState(s);
+                if (i < 0) continue;
+                suppress[Btn(s)] = true;
+                pressedAt[i] = -10f;
+                var w = slots[i];
+                if (reload[i] > 0f || mag[i] >= w.magazine) continue;
+                reload[i] = w.reload;
+            }
         }
 
         // ───────── 付ける・外す ─────────
@@ -860,6 +914,7 @@ namespace MeleeDuel
                 if (w.magazine > 0 && --mag[i] <= 0) { reload[i] = w.reload; break; }   // 撃ち切ったらリロード
             }
             cd[i] = Mathf.Max(cd[i], 0f);
+            cdMax[i] = Mathf.Max(0.01f, cd[i]);   // 次に撃てるまでのゲージの分母(両手の銃の L1 の弾。付けたときの 0.3 秒のままだとゲージが合わない)
             return true;
         }
 

@@ -398,7 +398,7 @@ namespace MeleeDuel
             float inherit = Rules.inheritShooterVelocity;
             if (dist < 0.01f || speed <= 0f || player == null || inherit <= 0f) return aim;
             Vector3 dir = to / dist;
-            Vector3 v = dir * speed + player.Velocity * inherit;
+            Vector3 v = dir * speed + inheritVel * inherit;
             float m = v.magnitude;
             if (m <= 1f) return aim;
             Vector3 fd = v / m;

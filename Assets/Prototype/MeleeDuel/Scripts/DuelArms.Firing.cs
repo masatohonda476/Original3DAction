@@ -317,7 +317,7 @@ namespace MeleeDuel
             // 敵と同じ向き・速さで動きながら撃てば、狙った所へ当たる。止まって動く敵を撃つと外れる。先読みの自動補正はしない
             if (player != null && r.inheritShooterVelocity > 0f)
             {
-                Vector3 v = dir * speed + player.Velocity * r.inheritShooterVelocity;
+                Vector3 v = dir * speed + inheritVel * r.inheritShooterVelocity;
                 float m = v.magnitude;
                 if (m > 1f) { dir = v / m; speed = m; }
             }

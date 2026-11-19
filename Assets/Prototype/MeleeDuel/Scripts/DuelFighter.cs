@@ -36,6 +36,8 @@ namespace MeleeDuel
         public Vector3 Chest => transform.position + Vector3.up * game.mechHeight * 0.6f * Size;
         /// <summary>ロックオンの印を出す所で、カメラの注視点にも使う(機体の高さの7割)。</summary>
         public Vector3 LockPoint => transform.position + Vector3.up * game.mechHeight * 0.7f * Size;
+        /// <summary>今の動きの速度(m/s。CharacterController が最後に動いた量から)。撃った弾が受け継ぐ(DuelArms.Fly)。</summary>
+        public Vector3 Velocity => cc != null ? cc.velocity : Vector3.zero;
 
         protected DuelGame game;
         protected CharacterController cc;

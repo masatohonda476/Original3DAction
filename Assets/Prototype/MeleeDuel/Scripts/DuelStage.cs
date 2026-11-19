@@ -15,7 +15,7 @@ namespace MeleeDuel
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
     /// 「重厚→無双」の弧ひとつ分:倒した敵がときどき武装を落とし(上ほどレア度の高い武装)、十字右で付け替えながら強くなる(DuelArms)。
-    /// 撃墜されても武装は残る。ボスを倒すと爆発で武装が全部消し飛んでクリア。
+    /// 撃墜されても武装・所持品・共通の弾は残る。ボスを倒すと爆発で武装も所持品も全部消し飛び、弾も0になってクリア。
     /// </summary>
     public class DuelStage : MonoBehaviour
     {
@@ -28,7 +28,10 @@ namespace MeleeDuel
         [Header("発覚(敵が自機に気づく仕組み)")]
         public DuelSenses senses = new();
         [Tooltip("ロックオンできる距離(m)。壁・床ごしの敵はロックオンしない")]
-        public float lockRange = 80f;
+        public float lockRange = 130f;
+        [Tooltip("自動でロックオンする距離(m)。ロックオンがオンで狙う敵がいないとき、画面に映っていて壁・床ごしでなく、この距離の内の敵がいれば自動で付く" +
+                 "(画面の中央に近く、近い敵ほど先。敵が気づいたかどうかは見ない)。撃破・見失ったあとの移り先も同じ条件。オンにした瞬間・切り替えでは lockRange まで付けられる")]
+        public float autoLockRange = 40f;
 
         [Header("マップ")]
         [Tooltip("ステージに入ったときに一度だけ画面の中央に出すマップ名(場所ごとの名前は出さない)")]
@@ -67,7 +70,9 @@ namespace MeleeDuel
             new(120f, 0.15f, 0.5f, 0.35f),// 外殻・配管
             new(155f, 0f, 0.35f, 0.65f), // 機関区画(ボスの前の群れ)
         };
-        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装が全部消し飛ぶ(画面は揺らさない)")]
+        [Tooltip("照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)")]
+        public DuelArmsRules armsRules = new();
+        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装(所持品も)が全部消し飛び、共通の弾も0になる(画面は揺らさない)")]
         public float bossBlastRadius = 45f;
 
         [Header("ボス(大剣士)")]
@@ -771,10 +776,11 @@ namespace MeleeDuel
             ProtoFx.Blast(at, bossBlastRadius * 0.45f, new Color(1f, 0.95f, 0.75f), 0.4f);
             DuelSpark.Burst(at, Vector3.zero, new Color(1f, 0.7f, 0.3f), 80, 2.5f * size);
             game.HitStop(0.15f);
-            int lost = player != null && player.Arms != null ? player.Arms.LoseAll() : 0;
-            if (lost > 0)
+            bool hadAmmo = player != null && player.Arms != null && player.Arms.Ammo > 0f;
+            int lost = player != null && player.Arms != null ? player.Arms.LoseAll() : 0;   // 所持品も消し飛び、共通の弾も0に戻る
+            if (lost > 0 || hadAmmo)
             {
-                ClearNote = "ボスの爆発に巻き込まれ、武装がすべて消し飛んだ";
+                ClearNote = "ボスの爆発に巻き込まれ、武装も所持品も弾も、すべて消し飛んだ";
                 game.Log(ClearNote);
             }
         }

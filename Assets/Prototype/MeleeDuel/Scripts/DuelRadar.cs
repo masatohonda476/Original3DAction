@@ -95,8 +95,17 @@ namespace MeleeDuel
             A("怯ませ", w => w.stagger * Mathf.Max(1, w.pellets), w => $"{w.stagger * Mathf.Max(1, w.pellets):0.#}"),
             A("射程", w => w.range, w => $"{w.range:0}m"),
             A("連射", w => 1f / Mathf.Max(0.01f, w.interval), w => $"{1f / Mathf.Max(0.01f, w.interval):0.#}/秒"),
-            A("弾持ち", w => w.magazine <= 0 ? float.PositiveInfinity : w.magazine, w => w.magazine <= 0 ? "∞" : $"{w.magazine}発"),
+            A("弾持ち", ShotsPerLoad, w => w.magazine > 0 || !w.UsesEnergy ? (w.magazine <= 0 ? "∞" : $"{w.magazine}発") : $"{ShotsPerLoad(w):0}発(EN)"),
         };
+
+        /// <summary>続けて撃てる数:弾倉のある銃は弾倉の数、エネルギー武器はENが満タンから0になるまでの数(素のENの最大で数える)。</summary>
+        static float ShotsPerLoad(DuelWeapon w)
+        {
+            if (w.magazine > 0) return w.magazine;
+            if (!w.UsesEnergy) return float.PositiveInfinity;
+            float max = DuelPlayer.I != null ? DuelPlayer.I.maxEnergy : 150f;
+            return Mathf.Ceil(max / Mathf.Max(0.01f, w.EnPerShot));
+        }
 
         static Axis[] BlastAxes() => new[]
         {

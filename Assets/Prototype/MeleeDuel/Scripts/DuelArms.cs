@@ -12,12 +12,33 @@ namespace MeleeDuel
     ///   背中:スラスター。走り・ブースト・回避の距離が伸び、回避・ブースト・飛行のENが減る。
     ///   肩:銃・砲・ミサイルのどれでも(左右どちらにも)。R2 で右肩、L2 で左肩を撃つ。撃ち方(押している間 / 押すたび)は武装ごと。
     /// 近接攻撃の間(振りかぶり〜戻り)と回避の間は撃てない(DuelPlayer.CanShoot)。
-    /// 狙い:ロックオン中はその敵(射程の外・壁ごしなら、画面の中央に近い敵 → いなければ画面の中央の先)。
-    /// 拾う:落ちている武装の近くで十字右(V)。付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
+    /// 狙い(画面の上の照準。作者「ロックオンにカメラ操作は完全に委ねられますか?」→「これでやってみてください」。仮の形):
+    ///   照準(Cursor)は画面の上を動くカーソル。銃・砲(ミサイル以外)のボタンを押している間と撃ってから少しの間(構え。Aiming = CursorActive)は、
+    ///   右スティック・マウスで動かす(カメラは回さない。DuelCamera)。可動範囲は画面の中央の楕円(DuelArmsRules.cursorRangeX / Y)。
+    ///   構えていない間はゆっくり画面の中央へ戻る(表示が動くだけ)。照準が敵の上にある間は、右スティックでの動きを少し遅くする(cursorSlowOnEnemy)。
+    ///   銃・砲は、カメラから照準を通る向きの先(最初に当たる地形・敵)へ撃つ。照準の枠は照準の位置を中心にし、枠に掛かっている射程の内・見通せる敵へ
+    ///   狙いを少しだけ寄せる(吸い付き。最大で「枠の大きさ × assistPart」度)。弾が速さを持つ武装は既定で吸い付かない(projectileAssist。
+    ///   照準を先に置いた偏差射撃を、吸い付きが敵の今の位置へ引き戻してしまうため)。照準が体に掛かる・寄せた狙いが掛かるときだけ枠を橙にして敵に印。
+    ///   ミサイルは今までどおり枠(照準の位置が中心)の中の敵に割り振る(ロックオン中の敵は枠を lockFrameMul 倍に広くみなす)。
+    /// 弾の速さ:実弾の銃・砲は見える弾が DuelWeapon.shotSpeed(m/s)で飛び、当たった時に火花・ヒットマーカーを出す。横に動く・避ける敵には
+    ///   照準を先に置かないと当たらない(偏差の自動補正はしない)。shotSpeed が 0 の撃ち方(照射し続けるレーザー)は今までどおりの光線。
+    /// 反動:撃つたびに照準そのものが上(と少し左右ランダム)へずれる(DuelWeapon.aimKick / aimKickSide。全体の倍率 kickMul)。押さえ込まないと上がっていく。
+    ///   ばらつきの広がり(DuelWeapon.recoilPerShot / recoilMax。枠と十字が開く)も今までどおり。カメラは一切動かさない。
+    ///   自機は構えの間、照準の先を向く(DuelPlayer)。近接・回避で構えは終わる。
+    ///   手応え:当たったら照準の位置にヒットマーカー(HitMarkAt / HitMarkKind。崩せる・崩れた・倒したで色を変える)。
+    /// 共通の弾:実弾の銃・砲・ミサイルは1種類の弾(Ammo)を使う。弾倉のある銃はリロードのときに詰めた分だけ、弾倉のない撃ち方は撃つたびに使う
+    ///   (DuelWeapon.ammoCost。エネルギー武器は 0 で使わない)。弾は武装を分解して得る。
+    /// EN:エネルギー武器(ビーム・レーザー。DuelWeapon.enCost)は弾の代わりに自機のENを使う(回避・攻撃と同じEN)。ENが0以下の間は撃てず、
+    ///   少しでも残っていれば撃てて足りない分はマイナスになる。押している間撃ち続ける武装は1秒あたり、ほかは1発ごと。
+    ///   溜め撃ちは溜め始めにENが残っていれば溜められ、離して撃つときに使う(溜めている間に0以下になっても撃てる)。
+    /// 所持:付けずに持っておける(Stash)。付けている武装と所持品の重さの合計で、持てる上限と推力(ENを使う移動:ブースト移動・回避の距離・
+    ///   飛ぶときの上昇の速さ)が決まる(Mobility)。歩き・走りには効かない(作者「歩きには効かないようにして、ENを使った移動に効くようにします」)。
+    /// 拾う:落ちている武装の近くで、十字下(G)で所持品へ、十字上(F)で分解(十字上で弾・十字下で回復)、十字右(V)で付ける。付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
     ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
     ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
-    ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。在庫はない。装備の確認の画面から、足もとの床に捨てられる(Drop)。
-    /// 撃墜されても武装は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。両手持ちも消え、右手は素の剣、左手は空に戻る)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
+    ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。装備の確認の画面から、外して持つ・所持品を付ける・
+    ///   足もとの床に捨てる(Drop)・分解する。
+    /// 撃墜されても武装・所持品・弾は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。両手持ちも消え、右手は素の剣、左手は空に戻る。所持品も消え、弾は0)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
     /// 両手持ち(両手の近接・両手の銃・砲):右手と左手の両方の所に同じ武装を入れる。R1 が主の技、L1 が別の技(近接は別の振り、射撃は別の撃ち方)。
     ///   付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、それまでの右手・左手の武装は拾った所に置く(素の剣も)。
     ///   両手持ちのまま片手の武装を付けると、両手持ちは外れて置かれ、もう片方の手は空になる。捨てると両手が空く。盾がないのでガードはできない。
@@ -46,6 +67,20 @@ namespace MeleeDuel
         readonly float[] cd = new float[StateCount], cdMax = new float[StateCount], reload = new float[StateCount];
         readonly float[] lastFire = new float[StateCount], pressedAt = new float[StateCount];
         readonly int[] mag = new int[StateCount];
+        /// <summary>撃つ状態ごとの反動の広がり(度。spread に足す)。撃つたびに広がり、撃つのをやめると戻る。</summary>
+        readonly float[] bloom = new float[StateCount];
+
+        /// <summary>
+        /// 最後に射撃(銃・砲。ミサイルは入れない)が敵に当たった時刻(実時間)と、その印の種類(照準の真ん中に出すヒットマーカー)。
+        /// 0 = 当たった / 1 = 崩せる(怯みゲージが射撃の上限まで溜まっている。斬りにいけ)/ 2 = 崩れている敵に当たった / 3 = 倒した。
+        /// </summary>
+        public float HitMarkAt { get; private set; } = -10f;
+        public int HitMarkKind { get; private set; }
+        /// <summary>リロード中に取り置いた共通の弾(詰める数と弾の量)。リロードを始めたときに弾から引き、終わったら弾倉へ。やめたら返す。</summary>
+        readonly int[] resN = new int[StateCount];
+        readonly float[] resAmmo = new float[StateCount];
+        /// <summary>実弾の溜め撃ち(L1)の、溜め始めに取り置いた1回分の弾(撃ったら使い、取り消したら返す)。</summary>
+        float chargeAmmo;
         /// <summary>L1 の溜め撃ちを溜めている秒数(0なら溜めていない)。</summary>
         float charge;
         /// <summary>
@@ -61,6 +96,46 @@ namespace MeleeDuel
         public DuelLoot Nearby { get; private set; }
         /// <summary>付け先を選んでいる武装(選んでいなければ null)。</summary>
         public DuelLoot Choosing { get; private set; }
+        /// <summary>分解(弾にするか回復にするか)を選んでいる武装(選んでいなければ null)。十字上で弾、十字下で回復、十字右でやめる。</summary>
+        public DuelLoot Breaking { get; private set; }
+
+        // ───────── 所持品・共通の弾 ─────────
+
+        /// <summary>
+        /// 外した武装が覚えておく撃つ状態(所持品・床に置いた武装)。付け直したときに戻す(外して付け直すと装填待ちが縮む・弾倉が満ちる、を防ぐ)。
+        /// mag:弾倉の残り(-1=満タン)。ready / altReady:主の撃ち方・両手の銃・砲の L1 の撃ち方が次に撃てる時刻(Time.time。0 なら待ちなし)。
+        /// 時刻で覚えるので、装備の確認(時間が止まっている)の中で付け外ししても待ちは減らず、持ち歩いている間・床にある間は進む。
+        /// </summary>
+        public struct Memo
+        {
+            public int mag;
+            public float ready, altReady;
+            /// <summary>まだ撃っていない武装(敵が落とした武装など。弾倉は満タン)。</summary>
+            public static readonly Memo Fresh = new() { mag = -1 };
+        }
+
+        /// <summary>所持品の1つ(付けていない武装)と、外したときの撃つ状態(Memo)。</summary>
+        public class Carried
+        {
+            public DuelWeapon w;
+            public Memo memo = Memo.Fresh;
+        }
+
+        readonly List<Carried> stash = new();
+        /// <summary>所持品(付けずに持っている武装。拾った順)。</summary>
+        public IReadOnlyList<Carried> Stash => stash;
+        /// <summary>共通の弾(実弾の銃・砲・ミサイルが使う)。</summary>
+        public float Ammo { get; private set; }
+        /// <summary>照準の枠・重さ・弾・分解の決まり(ステージのインスペクター)。</summary>
+        public DuelArmsRules Rules => game != null && game.stage != null && game.stage.armsRules != null ? game.stage.armsRules : FallbackRules;
+        static readonly DuelArmsRules FallbackRules = new();
+        /// <summary>弾が足りなくて撃てなかった・リロードできなかった時刻(右下の弾の表示を赤く光らせる)。</summary>
+        public float NoAmmoAt { get; private set; } = -10f;
+        /// <summary>ENが0以下でエネルギー武器を撃てなかった時刻(左下のENの表示を赤く光らせる)。</summary>
+        public float NoEnergyAt { get; private set; } = -10f;
+        /// <summary>重すぎて持てなかった・付けられなかった時刻(実時間。重さの表示を赤く光らせる)。</summary>
+        public float TooHeavyAt { get; private set; } = -10f;
+        float noAmmoLogAt = -10f, noEnergyLogAt = -10f;
 
         public void Init(DuelPlayer p, DuelGame g, MechRig r)
         {
@@ -72,6 +147,67 @@ namespace MeleeDuel
             for (int i = 0; i < StateCount; i++) lastFire[i] = pressedAt[i] = -10f;
             slots[(int)DuelSlot.RightHand] = DuelWeapon.BaseSword;
             for (int i = 0; i < SlotCount; i++) Refresh((DuelSlot)i);
+            Ammo = Mathf.Clamp(Rules.ammoStart, 0f, Rules.ammoMax);
+        }
+
+        // ───────── 重さ ─────────
+
+        /// <summary>付けている武装の重さ(両手持ちは1つとして数える)。</summary>
+        public float EquippedWeight
+        {
+            get
+            {
+                float s = 0f;
+                for (int i = 0; i < SlotCount; i++)
+                {
+                    var w = slots[i];
+                    if (w == null || (i == L && w.IsTwoHand)) continue;
+                    s += w.weight;
+                }
+                return s;
+            }
+        }
+
+        /// <summary>所持品の重さ(そのまま。重さの合計には stockWeightRate 倍で入る)。</summary>
+        public float StashWeight
+        {
+            get
+            {
+                float s = 0f;
+                foreach (var c in stash) s += c.w.weight;
+                return s;
+            }
+        }
+
+        /// <summary>重さの合計(付けている武装 + 所持品 × stockWeightRate)。持てる上限(CarryMax)と速さ(Mobility)はこれで決まる。</summary>
+        public float TotalWeight => EquippedWeight + StashWeight * Rules.stockWeightRate;
+        public float CarryMax => Rules.carryMax;
+        /// <summary>重さによる推力の倍率(ブースト移動・回避の距離・上昇の速さ。歩き・走りには掛けない)。</summary>
+        public float Mobility => Rules.MobilityAt(TotalWeight);
+        bool Fits(float total) => total <= CarryMax + 0.001f;
+
+        /// <summary>その所に w を付けたときに外れる武装の重さ(両手持ちが絡むときは両手の分。DuelArms.Mount と同じ決まり)。</summary>
+        float RemovedWeight(DuelWeapon w, DuelSlot slot)
+        {
+            int i = (int)slot;
+            if ((i == R || i == L) && (w.IsTwoHand || TwoHanded))
+            {
+                float s = slots[R] != null ? slots[R].weight : 0f;
+                if (slots[L] != null && !TwoHanded) s += slots[L].weight;
+                return s;
+            }
+            return slots[i] != null ? slots[i].weight : 0f;
+        }
+
+        /// <summary>落ちている武装をその所に付けたときの重さの合計(外れた武装は床に置かれる)。</summary>
+        public float WeightIfEquipped(DuelWeapon w, DuelSlot slot) => TotalWeight + w.weight - RemovedWeight(w, slot);
+        /// <summary>落ちている武装を所持品に入れたときの重さの合計。</summary>
+        public float WeightIfStashed(DuelWeapon w) => TotalWeight + w.weight * Rules.stockWeightRate;
+
+        void TooHeavy(float after, string what)
+        {
+            TooHeavyAt = Time.unscaledTime;
+            game.Log($"重すぎて{what}(重さ {after:0}/{CarryMax:0})― いらない武装を分解か捨てると軽くなる");
         }
 
         public DuelWeapon Get(DuelSlot s) => slots[(int)s];
@@ -94,12 +230,40 @@ namespace MeleeDuel
         public float Charge01 => AltFire is { charge: > 0f } a ? Mathf.Clamp01(charge / a.charge) : 0f;
         /// <summary>L1 の撃ち方が次に撃てるまでの残り(0〜1。0で撃てる)。</summary>
         public float AltCooldown01 => AltFire != null && cd[AltIndex] > 0f ? Mathf.Clamp01(cd[AltIndex] / Mathf.Max(0.01f, cdMax[AltIndex])) : 0f;
+        /// <summary>
+        /// 射撃の構え:狙って撃つ武装(手の銃・肩の銃・砲・両手の銃・砲と、その L1 の撃ち方。ミサイルは入らない)のボタンを押している間と、
+        /// それを最後に撃ってから DuelArmsRules.aimHoldAfterShot 秒の間(L1 の溜め撃ちを溜めている間も)。
+        /// 構えの間、右スティック・マウスは画面の上の照準を動かし(カメラは回さない。DuelCamera)、自機は照準の先を向く(DuelPlayer)。
+        /// ロックオン中の右スティックの弾きでの切り替え・自動で選ぶのは、構えの間はしない(DuelPlayer)。
+        /// 近接・回避を出したら終わる(それより前に撃った分は数えない。ボタンを押したままなら、近接・回避が終わったらまた構える)。
+        /// </summary>
+        public bool Aiming
+        {
+            get
+            {
+                if (player == null || player.Dead || Choosing != null) return false;
+                if (player.Current is DuelPlayer.State.Attack or DuelPlayer.State.Dodge) return false;
+                float now = Time.time, cut = player.MeleeOrDodgeAt, hold = Rules.aimHoldAfterShot;
+                for (int i = 0; i < StateCount; i++)
+                {
+                    var w = StateWeapon(i);
+                    if (w == null || !w.IsShooter || w.IsMissile || (i == L && w.IsTwoHand)) continue;
+                    if (Held(i == AltIndex ? DuelSlot.LeftHand : (DuelSlot)i)) return true;
+                    if (lastFire[i] > cut && now - lastFire[i] < hold) return true;
+                }
+                return charge > 0f && AltFire is { IsMissile: false };
+            }
+        }
+
+        /// <summary>右スティック・マウスが画面の上の照準を動かしている(= 構え。DuelCamera はこの間カメラを回さない)。</summary>
+        public bool CursorActive => Aiming && Rules.cursorMovable;   // 作者「照準は動かせないようにしましょう」で既定は動かさない(照準は画面の中央のまま)
+
         /// <summary>右手の銃(手の銃・両手の銃・砲)を最近撃ったか、L1 を溜めている(射撃の構えの見た目用)。</summary>
         public bool AimPose(float sec) => slots[R] is { kind: DuelKind.HandGun or DuelKind.TwoHandGun }
                                            && (ShotRecently(DuelSlot.RightHand, sec) || (TwoHandGun != null && (Time.time - lastFire[AltIndex] < sec || charge > 0f)));
 
         public DuelWeapon BackW => slots[(int)DuelSlot.Back];
-        /// <summary>走りの倍率:スラスター × 持っている盾の重さ。</summary>
+        /// <summary>走りの倍率:スラスター × 持っている盾の重さ。重さの合計による倍率(Mobility)は掛けない(ENを使わない移動なので)。</summary>
         public float RunMul
         {
             get
@@ -110,8 +274,10 @@ namespace MeleeDuel
                 return m;
             }
         }
-        public float DashMul => BackW != null ? BackW.dashMul : 1f;
-        public float DodgeMul => BackW != null ? BackW.dodgeMul : 1f;
+        /// <summary>ブースト移動と飛ぶときの上昇の速さの倍率(スラスター × 重さ)。</summary>
+        public float DashMul => (BackW != null ? BackW.dashMul : 1f) * Mobility;
+        /// <summary>回避で動く距離の倍率(スラスター × 重さ)。</summary>
+        public float DodgeMul => (BackW != null ? BackW.dodgeMul : 1f) * Mobility;
         public float EnCostMul => BackW != null ? BackW.enCostMul : 1f;
 
         /// <summary>
@@ -226,6 +392,95 @@ namespace MeleeDuel
         /// <summary>その所で、最近(秒)撃ったか(手の銃の構えの見た目用)。</summary>
         public bool ShotRecently(DuelSlot s, float sec) => Time.time - lastFire[(int)s] < sec;
 
+        /// <summary>
+        /// その所の武装が、共通の弾が足りなくて撃てない(弾倉の銃:弾倉が空でリロードもしておらず、1発も詰められない /
+        /// 撃つたびに使う砲・ミサイル:1回分に足りない)。右下の武装の欄に「弾切れ」を出す。
+        /// </summary>
+        public bool Starved(DuelSlot s)
+        {
+            int i = (int)s;
+            var w = slots[i];
+            if (w == null || !w.IsShooter || !w.UsesAmmo) return false;
+            if (w.IsGun && w.magazine > 0) return mag[i] <= 0 && reload[i] <= 0f && Loadable(w, w.magazine) <= 0;
+            return Ammo < w.ammoCost - 0.0001f;
+        }
+
+        /// <summary>両手の銃・砲の L1 の撃ち方が、共通の弾が足りなくて撃てない。</summary>
+        public bool AltStarved => AltFire is { } a && a.PaysPerShot && Ammo < a.ammoCost - 0.0001f;
+
+        /// <summary>その所のエネルギー武器が、ENが0以下で撃てない(右下の武装の欄に「EN切れ」を出す)。</summary>
+        public bool EnergyStarved(DuelSlot s) => slots[(int)s] is { IsShooter: true, UsesEnergy: true } && player != null && player.Overheated;
+        /// <summary>両手の銃・砲の L1 の撃ち方がエネルギー武器で、ENが0以下で撃てない(溜めている途中は撃てるので数えない)。</summary>
+        public bool AltEnergyStarved => AltFire is { UsesEnergy: true } && charge <= 0f && player != null && player.Overheated;
+        /// <summary>撃ち方 w がENを使うのに、ENが0以下で撃てない。</summary>
+        bool NoEnergy(DuelWeapon w) => w.UsesEnergy && player.Overheated;
+
+        /// <summary>弾倉へ詰められる数(必要な数 need と、共通の弾で足りる数の少ないほう。弾を使わない銃は need)。</summary>
+        int Loadable(DuelWeapon w, int need) =>
+            need <= 0 ? 0 : w.ammoCost <= 0f ? need : Mathf.Min(need, Mathf.FloorToInt(Ammo / w.ammoCost + 0.0001f));
+
+        /// <summary>
+        /// リロードを始める(弾倉のある銃で、満タンでもリロード中でもなく、共通の弾で1発以上詰められるとき)。
+        /// 詰める分(足りなければ詰められる分だけ)を、始めたときに共通の弾から取り置く(終わったら弾倉へ。外す・捨てるなどでやめたら返す。ResetState)。
+        /// 始めたら true。
+        /// </summary>
+        bool StartReload(int i, DuelWeapon w)
+        {
+            if (w == null || w.magazine <= 0 || reload[i] > 0f || mag[i] >= w.magazine) return false;
+            int n = Loadable(w, w.magazine - mag[i]);
+            if (n <= 0)
+            {
+                OutOfAmmo();
+                return false;
+            }
+            resN[i] = n;
+            resAmmo[i] = w.ammoCost > 0f ? n * w.ammoCost : 0f;
+            Ammo = Mathf.Max(0f, Ammo - resAmmo[i]);
+            reload[i] = w.reload;
+            return true;
+        }
+
+        /// <summary>取り置いた弾を返す(上限まで)。</summary>
+        void Refund(float amount)
+        {
+            if (amount > 0f) Ammo = Mathf.Min(Rules.ammoMax, Ammo + amount);
+        }
+
+        /// <summary>L1 の溜めをやめる(撃たずにやめたなら、取り置いた1回分の弾を返す)。</summary>
+        void StopCharge()
+        {
+            Refund(chargeAmmo);
+            chargeAmmo = 0f;
+            charge = 0f;
+        }
+
+        /// <summary>共通の弾が足りなかった:右下の弾の表示を光らせ、知らせを出す(続けて押しても2秒に1回)。</summary>
+        void OutOfAmmo()
+        {
+            NoAmmoAt = Time.time;
+            if (Time.unscaledTime - noAmmoLogAt < 2f) return;
+            noAmmoLogAt = Time.unscaledTime;
+            game.Log($"弾が足りない ― 落ちている武装を分解すると弾になる({ProtoInput.L(ProtoInput.Btn.Break)})");
+        }
+
+        /// <summary>ENが0以下でエネルギー武器を撃てなかった:左下のENの表示を光らせ、知らせを出す(続けて押しても2秒に1回)。</summary>
+        void OutOfEnergy()
+        {
+            NoEnergyAt = Time.time;
+            if (Time.unscaledTime - noEnergyLogAt < 2f) return;
+            noEnergyLogAt = Time.unscaledTime;
+            game.Log("ENが足りない ― ビーム・レーザーはENを使う。回復を待つ");
+        }
+
+        /// <summary>共通の弾を使う(足りていれば減らして true)。</summary>
+        bool PayAmmo(DuelWeapon w)
+        {
+            if (!w.PaysPerShot) return true;
+            if (Ammo < w.ammoCost - 0.0001f) return false;
+            Ammo = Mathf.Max(0f, Ammo - w.ammoCost);
+            return true;
+        }
+
         // ───────── 毎フレーム(DuelPlayer.Update の始めから) ─────────
 
         public void Tick()
@@ -235,26 +490,40 @@ namespace MeleeDuel
             flyPressed = fh && !flyPrev;
             flyPrev = fh;
             bool two = TwoHanded;
+            float recoilDelay = Rules.recoilDelay;
             for (int i = 0; i < StateCount; i++)
             {
                 cd[i] -= dt;
                 var w = StateWeapon(i);
+                // 反動の広がり:撃つのをやめて少したったら戻す(連射の間は戻らない)
+                if (bloom[i] > 0f && now - lastFire[i] >= recoilDelay)
+                    bloom[i] = w == null ? 0f : Mathf.MoveTowards(bloom[i], 0f, Mathf.Max(0f, w.recoilRecover) * dt);
                 if (w == null || !w.IsGun || (i == L && two)) continue;   // 両手持ちの状態は右手の所で持つ
                 if (reload[i] > 0f)
                 {
                     reload[i] -= dt;
-                    if (reload[i] <= 0f) mag[i] = w.magazine;
+                    if (reload[i] <= 0f)
+                    {
+                        // 始めたときに取り置いた分を詰める(2つの銃が同時にリロードしても、先に終わった方が弾を使い切らないように)
+                        mag[i] = Mathf.Min(w.magazine, mag[i] + resN[i]);
+                        resN[i] = 0;
+                        resAmmo[i] = 0f;
+                    }
                 }
                 // 待てば満タンに戻る自動リロードはない(作者「待てば自動リロードは消してください」)。撃ちかけの弾倉は △+撃つボタンで詰め直す
             }
             for (int b = 0; b < suppress.Length; b++)
                 if (suppress[b] && !RawHeld(b)) suppress[b] = false;
+            UpdateCursor();   // 画面の上の照準(撃つ向きと枠の中心。撃つ前に決める)
 
             if (player == null || player.Dead)
             {
                 Nearby = null;
-                charge = 0f;
+                Breaking = null;
+                StopCharge();
                 if (Choosing != null) EndChoice();
+                Frames.Clear();
+                Marks.Clear();
                 return;
             }
             // ボスを倒した後(武装が消し飛んだ後)は拾えない
@@ -263,6 +532,7 @@ namespace MeleeDuel
             Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null : DuelLoot.Nearest(player);
             UpdateChoice();
             TryManualReload();
+            UpdateFrames();   // 照準の枠と当てる相手(撃つときもこの結果を使う。同じ探索をし直さない)
 
             bool can = player.CanShoot;
             for (int i = 0; i < SlotCount; i++)
@@ -285,8 +555,11 @@ namespace MeleeDuel
             TickAlt(can, now, dt);
         }
 
-        /// <summary>撃つ(爆発なら砲・ミサイル、それ以外は銃)。i は撃つ状態の番号、at は撃ち出す所。撃ったら true。</summary>
-        bool Fire(DuelWeapon w, int i, DuelSlot at) => w.Explosive ? FireHeavy(w, i, at) : FireGun(w, i, at);
+        /// <summary>
+        /// 撃つ(爆発なら砲・ミサイル、それ以外は銃)。i は撃つ状態の番号、at は撃ち出す所。撃ったら true。
+        /// charged は溜め撃ちを離したとき(ENは溜め始めに確かめてあるので、0以下でも撃ってENを使う)。
+        /// </summary>
+        bool Fire(DuelWeapon w, int i, DuelSlot at, bool charged = false) => w.Explosive ? FireHeavy(w, i, at, charged) : FireGun(w, i, at, charged);
 
         /// <summary>
         /// 両手の銃・砲の L1 の撃ち方。溜め撃ち(charge > 0)は、撃てる間に L1 を押している間溜め、溜まってから離すと撃つ
@@ -298,30 +571,48 @@ namespace MeleeDuel
             const int i = AltIndex;
             if (a == null)
             {
-                charge = 0f;
+                StopCharge();
                 return;
             }
             if (a.charge > 0f)
             {
                 if (!can || Choosing != null)   // 付け先を選び始めたら溜めをやめる(ボタンが選ぶ側に回り、離したことになって撃たないように)
                 {
-                    charge = 0f;
+                    StopCharge();
                     return;
                 }
                 if (Held(DuelSlot.LeftHand))
                 {
                     if (charge <= 0f && cd[i] > 0f) return;
+                    // 共通の弾が1回分ないなら溜め始めない(溜めてから撃てないことに気づかないように)
+                    if (charge <= 0f && a.PaysPerShot && Ammo < a.ammoCost - 0.0001f)
+                    {
+                        if (Pressed(DuelSlot.LeftHand)) OutOfAmmo();
+                        return;
+                    }
+                    // ENを使う溜め撃ちは、ENが0以下なら溜め始めない(溜め始めたら、溜めている間に0以下になっても離せば撃てる)
+                    if (charge <= 0f && NoEnergy(a))
+                    {
+                        if (Pressed(DuelSlot.LeftHand)) OutOfEnergy();
+                        return;
+                    }
+                    // 実弾の溜め撃ちは、溜め始めに1回分を取り置く(溜めている間にほかの銃のリロードで使い切られないように。取り消したら返す)
+                    if (charge <= 0f && a.PaysPerShot)
+                    {
+                        chargeAmmo = a.ammoCost;
+                        Ammo = Mathf.Max(0f, Ammo - chargeAmmo);
+                    }
                     float before = charge;
                     charge += dt;
                     // 溜まった合図:銃口に小さな火花(画面は揺らさない)
                     if (before < a.charge && charge >= a.charge) DuelSpark.Burst(Muzzle(DuelSlot.RightHand), player.transform.forward, new Color(1f, 0.9f, 0.6f), 10, 0.7f);
                     return;
                 }
-                if (charge >= a.charge) Fire(a, i, DuelSlot.RightHand);
-                charge = 0f;
+                if (charge >= a.charge && Fire(a, i, DuelSlot.RightHand, true)) chargeAmmo = 0f;   // 撃ったら取り置いた弾を使う
+                StopCharge();   // 溜まる前に離した・撃てなかったら返す
                 return;
             }
-            charge = 0f;
+            StopCharge();
             if (Pressed(DuelSlot.LeftHand)) pressedAt[i] = now;
             if (!can) pressedAt[i] = -10f;
             bool want = can && (a.hold ? Held(DuelSlot.LeftHand) : now - pressedAt[i] <= PressBuffer);
@@ -365,9 +656,7 @@ namespace MeleeDuel
                 suppress[Btn(s)] = true;
                 pressedAt[i] = -10f;
                 ReloadChordAt = Time.time;
-                var w = slots[i];
-                if (reload[i] > 0f || mag[i] >= w.magazine) continue;
-                reload[i] = w.reload;
+                StartReload(i, slots[i]);   // 満タン・リロード中なら何もしない。共通の弾が1発分もなければ知らせる
             }
         }
 
@@ -379,9 +668,29 @@ namespace MeleeDuel
         /// ✗ は押し始めだけ数える(飛んでいて押し続けていた ✗ では付かない)。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
         /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
         /// </summary>
+        /// 拾う案内(選んでいない間)では、十字右で付け先を選ぶ表示、十字下でそのまま所持品へ(重さの上限を超えるなら持てない)、
+        /// 十字上で分解を選ぶ表示(十字上で弾・十字下で回復・十字右でやめる。離れる・動ける状態でなくなるでも取り消し)。
+        /// 付け先を選ぶ表示で、付けると重さの上限を超える所のボタンを押したら、付けずに知らせる(表示はそのまま)。
         void UpdateChoice()
         {
             bool ready = player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
+            if (Breaking != null)
+            {
+                if (Breaking != Nearby || ProtoInput.EquipNow || !ready)
+                {
+                    Breaking = null;
+                    return;
+                }
+                bool toAmmo = ProtoInput.BreakNow, toHeal = !toAmmo && ProtoInput.StashNow;
+                if (!toAmmo && !toHeal) return;
+                if (SalvageFull(toHeal)) return;   // 弾が上限・HP が満タン:武装だけ消えないよう、分解しない(選ぶ表示はそのまま)
+                var loot = Breaking;
+                Breaking = null;
+                var w = loot.Weapon;
+                loot.Take();
+                Salvage(w, toHeal);
+                return;
+            }
             if (Choosing != null)
             {
                 if (Choosing != Nearby || ProtoInput.EquipNow || !ready)
@@ -394,15 +703,73 @@ namespace MeleeDuel
                     int b = ChoiceBtn(s);
                     if (b < 0 || !RawPressed(b)) continue;
                     var loot = Choosing;
+                    float after = WeightIfEquipped(loot.Weapon, s);
+                    if (!Fits(after))
+                    {
+                        TooHeavy(after, "付けられない");
+                        return;
+                    }
                     EndChoice();
                     Equip(loot, s);
                     return;
                 }
                 return;
             }
-            if (!ready || Nearby == null || !ProtoInput.EquipNow) return;
-            Choosing = Nearby;
+            if (!ready || Nearby == null) return;
+            if (ProtoInput.EquipNow) Choosing = Nearby;
+            else if (ProtoInput.StashNow) StashLoot(Nearby);
+            else if (ProtoInput.BreakNow) Breaking = Nearby;
         }
+
+        /// <summary>落ちている武装を所持品に入れる(重さの上限を超えるなら入れない)。弾倉の残りも覚える。</summary>
+        void StashLoot(DuelLoot loot)
+        {
+            var w = loot.Weapon;
+            float after = WeightIfStashed(w);
+            if (!Fits(after))
+            {
+                TooHeavy(after, "持てない");
+                return;
+            }
+            stash.Add(new Carried { w = w, memo = loot.Memo });
+            loot.Take();
+            game.Log($"{w.name}({w.RarityName})を持った(所持 {stash.Count}  重さ {TotalWeight:0}/{CarryMax:0})");
+        }
+
+        /// <summary>分解しても何も得ない(弾にする:弾が上限 / 回復にする:HP が満タンか撃墜中)。</summary>
+        public bool SalvageUseless(bool heal) => heal ? player == null || player.Dead || player.HP >= player.MaxHP - 0.001f : Ammo >= Rules.ammoMax - 0.001f;
+
+        /// <summary>分解しても何も得ないなら、知らせて true(分解しない)。</summary>
+        bool SalvageFull(bool heal)
+        {
+            if (!SalvageUseless(heal)) return false;
+            game.Log(heal ? "HP は満タン ― 回復にしても何も得ない" : $"弾は上限({Rules.ammoMax:0})― 弾にしても何も得ない");
+            return true;
+        }
+
+        /// <summary>武装を分解して、共通の弾(上限まで)か HP の回復にする。量は DuelArmsRules(レア度と重さ)。</summary>
+        void Salvage(DuelWeapon w, bool heal)
+        {
+            var r = Rules;
+            if (heal)
+            {
+                float before = player.HP;
+                player.Heal(r.BreakHeal(w));
+                game.Log($"{w.name}を分解して回復 +{player.HP - before:0}(HP {player.HP:0}/{player.MaxHP:0})");
+                DuelSpark.Burst(player.Chest, Vector3.up, new Color(0.45f, 1f, 0.55f), 14, 0.9f);
+            }
+            else
+            {
+                float before = Ammo;
+                Ammo = Mathf.Min(r.ammoMax, Ammo + r.BreakAmmo(w));
+                game.Log($"{w.name}を分解して弾 +{Ammo - before:0}(弾 {Ammo:0}/{r.ammoMax:0})" + (Ammo >= r.ammoMax ? " 上限" : ""));
+                DuelSpark.Burst(player.Chest, Vector3.up, new Color(1f, 0.85f, 0.35f), 14, 0.9f);
+            }
+        }
+
+        /// <summary>分解したときの量(弾・回復)。案内に出す。</summary>
+        public int SalvageAmmo(DuelWeapon w) => Rules.BreakAmmo(w);
+        public int SalvageHeal(DuelWeapon w) => Rules.BreakHeal(w);
 
         /// <summary>
         /// 付け先を選ぶ表示を終える(決めた・取り消した)。その時に押している R1/L1/R2/L2 は全部、離すまで攻撃・射撃・ガードにしない
@@ -418,7 +785,8 @@ namespace MeleeDuel
         /// <summary>付け先を選ぶ表示の途中なら取り消す(装備の確認を開いたとき)。L1 の溜めもやめる(閉じた後に、離したことになって撃たないように)。</summary>
         public void CancelChoice()
         {
-            charge = 0f;
+            StopCharge();
+            Breaking = null;
             if (Choosing != null) EndChoice();
         }
 
@@ -456,18 +824,34 @@ namespace MeleeDuel
         public bool Drop(DuelSlot slot)
         {
             int i = (int)slot;
+            if (slots[i] == null || !CanDrop || !HasFloorBelow(slot)) return false;
+            var w = Unequip(slot, out var memo, out bool two);   // memo:撃ちかけの弾倉の残り・装填待ち(拾い直しても満タン・待ちなしにしない)
+            DuelLoot.Place(w, DropPos(i)).Memo = memo;
+            game.Log(two ? $"両手の{w.name}を床に捨てた" : $"{DuelWeapon.SlotName(slot)}の{w.name}を床に捨てた");
+            return true;
+        }
+
+        /// <summary>
+        /// その所の武装を外す(両手持ちなら両手とも空ける)。外した武装・撃つ状態(弾倉の残り・装填待ち)・両手持ちだったかを返す(空なら null)。
+        /// リロード中ならやめて、取り置いた弾を返す。盾ならガードを引き直し、剣ならその手の振り・押して覚えている攻撃をやめる。
+        /// </summary>
+        DuelWeapon Unequip(DuelSlot slot, out Memo memo, out bool two)
+        {
+            int i = (int)slot;
             var w = slots[i];
-            if (w == null || player == null || player.Dead || (game.stage != null && game.stage.Cleared) || !HasFloorBelow(slot)) return false;
-            bool two = w.IsTwoHand && (i == R || i == L);
-            int left = MagOf(two ? R : i);   // 撃ちかけの弾倉の残り(拾い直しても満タンにしない)
+            memo = Memo.Fresh;
+            two = false;
+            if (w == null) return null;
+            two = w.IsTwoHand && (i == R || i == L);
+            memo = MemoOf(two ? R : i);
             if (two)
             {
                 // 両手持ち:右手・左手の両方を空ける
+                StopCharge();
                 slots[R] = slots[L] = null;
                 ResetState(R);
                 ResetState(L);
                 ResetState(AltIndex);
-                charge = 0f;
                 Refresh(DuelSlot.RightHand);
                 Refresh(DuelSlot.LeftHand);
             }
@@ -477,7 +861,6 @@ namespace MeleeDuel
                 ResetState(i);
                 Refresh(slot);
             }
-            DuelLoot.Place(w, DropPos(i)).Mag = left;
             if (w.kind == DuelKind.Shield) player.OnShieldsChanged(false);
             if (two && w.IsBlade)
             {
@@ -485,29 +868,135 @@ namespace MeleeDuel
                 player.OnSwordDropped(1);
             }
             else if (w.IsBlade) player.OnSwordDropped(slot == DuelSlot.RightHand ? 0 : 1);
-            game.Log(two ? $"両手の{w.name}を床に捨てた" : $"{DuelWeapon.SlotName(slot)}の{w.name}を床に捨てた");
+            return w;
+        }
+
+        // ───────── 所持品(装備の確認の画面から) ─────────
+
+        /// <summary>
+        /// 装備の確認から付け外し・捨てる・分解ができるか:自機が動ける(Free)かガード中だけ(床から拾うときと同じ決まり)。
+        /// 撃墜中・攻撃・回避・怯み・ガードで受けて固まっている・崩れている間はできない(止まった時間の中で外して、固まりを解くなどを防ぐ)。
+        /// </summary>
+        public bool CanRearrange => player != null && !player.Dead && player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
+
+        /// <summary>今は所持品・装備を床に捨てられるか(付け外しできる間で、ボスを倒した後でない)。</summary>
+        bool CanDrop => CanRearrange && !(game.stage != null && game.stage.Cleared);
+
+        /// <summary>付けている武装を外して所持品にする(重さの合計は増えない。付け外しできる間だけ)。外したら true。</summary>
+        public bool StoreSlot(DuelSlot slot)
+        {
+            if (!CanRearrange) return false;
+            var w = Unequip(slot, out var memo, out bool two);
+            if (w == null) return false;
+            stash.Add(new Carried { w = w, memo = memo });
+            game.Log(two ? $"両手の{w.name}を外して持った" : $"{DuelWeapon.SlotName(slot)}の{w.name}を外して持った");
             return true;
         }
 
-        /// <summary>撃つ状態を空に戻す(弾倉・リロード・間隔・押したことの記憶)。</summary>
+        /// <summary>付けている武装を分解して、弾か回復にする(付け外しできる間だけ。弾が上限・HP が満タンなら分解しない)。分解したら true。</summary>
+        public bool SalvageSlot(DuelSlot slot, bool heal)
+        {
+            if (!CanRearrange || slots[(int)slot] == null || SalvageFull(heal)) return false;
+            Salvage(Unequip(slot, out _, out _), heal);
+            return true;
+        }
+
+        /// <summary>
+        /// 所持品をその所に付ける。今その所の武装(両手持ちが絡むときは両手の分)は所持品に入る(1つ目は付けた所持品と同じ番号に入れ替え、2つ目は末尾)。
+        /// 付け外しできない間・付けられない所・重さの上限を超える(所持品を軽く数えている場合)なら付けない。付けたら true。
+        /// 撃つ状態(弾倉の残り・装填待ち)は外したときのまま戻す。盾のゲージは満タンにせず、今の値を新しい最大で切るだけ(外して付け直して満タンにしないように)。
+        /// </summary>
+        public bool EquipFromStash(int index, DuelSlot slot)
+        {
+            if (!CanRearrange || index < 0 || index >= stash.Count) return false;
+            var c = stash[index];
+            if (System.Array.IndexOf(DuelWeapon.SlotsFor(c.w.kind), slot) < 0) return false;
+            float keep = 1f - Rules.stockWeightRate;   // 所持品から付けると、所持品として軽く数えていた分だけ重くなる
+            float after = TotalWeight + (c.w.weight - RemovedWeight(c.w, slot)) * keep;
+            if (!Fits(after))
+            {
+                TooHeavy(after, "付けられない");
+                return false;
+            }
+            stash.RemoveAt(index);
+            var removed = Mount(c.w, c.memo, slot, false);
+            for (int k = 0; k < removed.Count; k++)
+            {
+                var nc = new Carried { w = removed[k].w, memo = removed[k].memo };
+                if (k == 0) stash.Insert(index, nc);   // 入れ替え(所持品の並びが変わらないように)
+                else stash.Add(nc);
+            }
+            game.Log((c.w.IsTwoHand ? $"両手に{c.w.name}を付けた" : $"{DuelWeapon.SlotName(slot)}に{c.w.name}を付けた")
+                     + (removed.Count > 0 ? "(外した武装は所持品へ)" : ""));
+            return true;
+        }
+
+        /// <summary>所持品を足もとの床に捨てる(真下に床がない・撃墜中・ボスの後は捨てない)。捨てたら true。</summary>
+        public bool DropStash(int index)
+        {
+            if (index < 0 || index >= stash.Count || !CanDrop || !HasFloorBelow(DuelSlot.Back)) return false;
+            var c = stash[index];
+            stash.RemoveAt(index);
+            DuelLoot.Place(c.w, DropPos((int)DuelSlot.Back)).Memo = c.memo;
+            game.Log($"所持品の{c.w.name}を床に捨てた");
+            return true;
+        }
+
+        /// <summary>所持品を分解して、弾か回復にする(付け外しできる間だけ。弾が上限・HP が満タンなら分解しない)。分解したら true。</summary>
+        public bool SalvageStash(int index, bool heal)
+        {
+            if (!CanRearrange || index < 0 || index >= stash.Count || SalvageFull(heal)) return false;
+            var c = stash[index];
+            stash.RemoveAt(index);
+            Salvage(c.w, heal);
+            return true;
+        }
+
+        /// <summary>撃つ状態を空に戻す(弾倉・リロード・間隔・押したことの記憶)。リロード中なら取り置いた弾を返す。</summary>
         void ResetState(int i)
         {
+            Refund(resAmmo[i]);
+            resAmmo[i] = 0f;
+            resN[i] = 0;
             mag[i] = 0;
+            bloom[i] = 0f;
             reload[i] = cd[i] = cdMax[i] = 0f;
             pressedAt[i] = -10f;
         }
 
-        /// <summary>その状態の弾倉の残り(弾倉のある銃でなければ -1=満タン扱い)。外して床に置くときに覚えさせる。</summary>
+        /// <summary>その状態の弾倉の残り(弾倉のある銃でなければ -1=満タン扱い)。</summary>
         int MagOf(int i) => slots[i] is { IsGun: true, magazine: > 0 } ? Mathf.Clamp(mag[i], 0, slots[i].magazine) : -1;
 
-        /// <summary>付けたばかりの撃つ状態(弾倉は left、-1 なら満タンに。撃てるまで少し待つ)。</summary>
-        void ArmState(int i, DuelWeapon w, int left = -1)
+        /// <summary>その状態が次に撃てる時刻(待ちがなければ 0)。</summary>
+        float ReadyOf(int i) => cd[i] > 0f ? Time.time + cd[i] : 0f;
+
+        /// <summary>外すときに覚えさせる撃つ状態(弾倉の残り・主の撃ち方と、右手の両手の銃・砲なら L1 の撃ち方の装填待ち)。</summary>
+        Memo MemoOf(int i) => new()
+        {
+            mag = MagOf(i),
+            ready = ReadyOf(i),
+            altReady = i == R && TwoHandGun != null ? ReadyOf(AltIndex) : 0f,
+        };
+
+        /// <summary>
+        /// 付けたばかりの撃つ状態(弾倉は left、-1 なら満タンに)。撃てるまで少なくとも 0.3 秒待つ。
+        /// 外したときの装填待ち(ready。時刻)が残っていれば、その残りを待つ(外して付け直して待ちが縮まないように)。
+        /// </summary>
+        void ArmState(int i, DuelWeapon w, int left = -1, float ready = 0f)
         {
             ResetState(i);
             if (w == null) return;
             mag[i] = left >= 0 ? Mathf.Min(left, w.magazine) : w.magazine;
             cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
             lastFire[i] = -10f;   // 付けた直後の 0.3 秒の待ちは、装填のゲージに出さない(CooldownLeft)
+            float rest = ready - Time.time;
+            if (w.IsShooter && rest > cd[i])
+            {
+                // 外したときの装填待ちの続き(ゲージにも出す)
+                cd[i] = rest;
+                cdMax[i] = Mathf.Max(rest, w.interval);
+                lastFire[i] = Time.time;
+            }
         }
 
         /// <summary>
@@ -518,47 +1007,65 @@ namespace MeleeDuel
         void Equip(DuelLoot loot, DuelSlot slot)
         {
             var w = loot.Weapon;
+            Vector3 at = loot.transform.position;
+            loot.Take();
+            bool wasTwo = TwoHanded;
+            var removed = Mount(w, loot.Memo, slot, true);
+            // 外した武装を置く:1つ目は拾った所、2つ目は自機の側へ少し寄せて(重ならないように)
+            for (int k = 0; k < removed.Count; k++) DuelLoot.Place(removed[k].w, k == 0 ? at : Beside(at)).Memo = removed[k].memo;
+            game.Log(w.IsTwoHand ? $"両手に{w.name}({w.RarityName})を付けた"
+                     : wasTwo && w.IsHand ? $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた(両手の{removed[0].w.name}は外した)"
+                     : $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");
+        }
+
+        readonly List<(DuelWeapon w, Memo memo)> mountRemoved = new();
+
+        /// <summary>
+        /// w をその所に付け(撃つ状態は memo:弾倉の残り・装填待ち)、外れた武装と撃つ状態を返す(置き場所は呼ぶ側が決める:床か所持品)。
+        /// refillShield:盾を付けたらガードのゲージを満タンにする(床から拾ったとき)。false なら今の値を最大で切るだけ(所持品から付けたとき)。
+        /// 両手持ちを付けるときは(R1/L1 のどちらで決めても)両手に付け、右手・左手の今の武装を両方外す(同じ武装を2つ持っていれば2つとも)。
+        /// 両手持ちのまま片手の武装を付けるときは、両手持ちを外し、選んだ手に付ける(もう片方の手は空になる)。
+        /// 外れた手の剣は振り・押して覚えている攻撃をやめ、盾が絡めばガードを引き直す。返すリストは次に呼ぶまで使える。
+        /// </summary>
+        List<(DuelWeapon w, Memo memo)> Mount(DuelWeapon w, Memo memo, DuelSlot slot, bool refillShield)
+        {
+            mountRemoved.Clear();
             int i = (int)slot;
             bool hand = i == R || i == L;
             bool shieldBefore = Hand(0) is { kind: DuelKind.Shield } || Hand(1) is { kind: DuelKind.Shield };
-            Vector3 at = loot.transform.position;
-            loot.Take();
-            charge = 0f;
+            StopCharge();
             if (hand && (w.IsTwoHand || TwoHanded))
             {
                 var oldR = slots[R];
                 var oldL = slots[L];
                 bool oldTwo = oldR is { IsTwoHand: true };
-                int magR = MagOf(R), magL = MagOf(L);
+                Memo memR = MemoOf(R), memL = MemoOf(L);
                 slots[R] = slots[L] = null;
                 if (w.IsTwoHand) slots[R] = slots[L] = w;
                 else slots[i] = w;
-                // 外した武装を置く:1つ目は拾った所、2つ目は自機の側へ少し寄せて(重ならないように)
-                if (oldR != null) DuelLoot.Place(oldR, at).Mag = magR;
-                if (oldL != null && !oldTwo) DuelLoot.Place(oldL, oldR != null ? Beside(at) : at).Mag = magL;
-                ArmState(R, slots[R], slots[R] == w ? loot.Mag : -1);
-                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L], slots[L] == w ? loot.Mag : -1);
-                ArmState(AltIndex, AltFire);
+                if (oldR != null) mountRemoved.Add((oldR, memR));
+                if (oldL != null && !oldTwo) mountRemoved.Add((oldL, memL));
+                ArmState(R, slots[R], slots[R] == w ? memo.mag : -1, slots[R] == w ? memo.ready : 0f);
+                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L], slots[L] == w ? memo.mag : -1, slots[L] == w ? memo.ready : 0f);
+                ArmState(AltIndex, AltFire, -1, w.IsTwoHand ? memo.altReady : 0f);
                 Refresh(DuelSlot.RightHand);
                 Refresh(DuelSlot.LeftHand);
-                // 振っている途中ではない(付けるのは Free・ガードの間だけ)が、押して覚えている攻撃は忘れる
                 if (oldR is { IsBlade: true }) player.OnSwordDropped(0);
                 if (oldL is { IsBlade: true }) player.OnSwordDropped(1);
-                game.Log(w.IsTwoHand ? $"両手に{w.name}({w.RarityName})を付けた"
-                                     : $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた(両手の{oldR?.name}は外した)");
             }
             else
             {
                 var old = slots[i];
-                int oldMag = MagOf(i);
+                var oldMemo = MemoOf(i);
                 slots[i] = w;
-                if (old != null) DuelLoot.Place(old, at).Mag = oldMag;
-                ArmState(i, w, loot.Mag);
+                if (old != null) mountRemoved.Add((old, oldMemo));
+                ArmState(i, w, memo.mag, memo.ready);
                 Refresh(slot);
-                game.Log($"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");
+                if (hand && old is { IsBlade: true }) player.OnSwordDropped(i == R ? 0 : 1);
             }
             // 盾を付けた・盾を持っていた(外れたかもしれない):ゲージと構えている盾を引き直す
-            if (w.kind == DuelKind.Shield || shieldBefore) player.OnShieldsChanged(w.kind == DuelKind.Shield);
+            if (w.kind == DuelKind.Shield || shieldBefore) player.OnShieldsChanged(refillShield && w.kind == DuelKind.Shield);
+            return mountRemoved;
         }
 
         /// <summary>at から自機の方へ少し寄せた所(2つ目の武装を置く。壁の外に出ないよう、拾えた=見通せる向きへ寄せる)。</summary>
@@ -611,10 +1118,15 @@ namespace MeleeDuel
             }
             slots[(int)DuelSlot.RightHand] = DuelWeapon.BaseSword;
             for (int i = 0; i < SlotCount; i++) Refresh((DuelSlot)i);
+            StopCharge();
             for (int i = 0; i < StateCount; i++) ResetState(i);
-            charge = 0f;
             if (Choosing != null) EndChoice();
+            Breaking = null;
             player.OnShieldsChanged(false);
+            // 所持品も消し飛び、共通の弾も0に戻る(弧の終わりに全部失う。仮置き)
+            n += stash.Count;
+            stash.Clear();
+            Ammo = 0f;
             return n;
         }
 
@@ -799,47 +1311,466 @@ namespace MeleeDuel
             return player.transform.position + Vector3.up * game.mechHeight * (hand ? 0.55f : 0.85f) + player.transform.right * side + f * 1.5f;
         }
 
+        // ───────── 画面の上の照準(カーソル) ─────────
+
+        Vector2 cursor;
+        Vector3 aimDir = Vector3.forward;
+        bool aimDirValid;
+        Vector2 cursorTan;
+        bool cursorOnEnemy;
+
+        /// <summary>照準の位置(画面の中央からのずれ。ビューポートの単位で、0.5 が画面の端。x は右、y は上が +)。</summary>
+        public Vector2 Cursor => cursor;
         /// <summary>
-        /// 撃つ相手:ロックオン中の敵(射程の内で見通せれば)。なければ、画面の中央から30°以内で見通せる、射程の内の敵(中央に近く近いもの)。
+        /// 照準を可動範囲の端へ押し付けている向きと強さ(長さ 0〜1。x は右、y は上が +)。押し付けていなければ 0。
+        /// ロックオンしていないカメラだけが、これでゆっくり回る(DuelCamera)。反動で端へ押されたときは入れない(右スティック・マウスの入力だけ)。
         /// </summary>
-        DuelEnemy AimTarget(float range, Vector3 from)
+        public Vector2 EdgePush { get; private set; }
+        /// <summary>照準の先(カメラから照準を通る向きで最初に当たる地形・敵。なければ遠く)。自機は構えの間、ここを向く。</summary>
+        public Vector3 CursorPoint { get; private set; }
+
+        /// <summary>構えの間に自機が向く向き(照準の先へ。水平)。決まらなければ zero。</summary>
+        public Vector3 AimFacing
         {
-            var t = player.Target;
-            if (t != null && !t.Dead && Vector3.Distance(t.Chest, from) <= range && DuelSenses.ClearSight(from, t.Chest)) return t;
+            get
+            {
+                if (player == null) return Vector3.zero;
+                Vector3 d = CursorPoint - player.transform.position;
+                d.y = 0f;
+                if (d.sqrMagnitude > 1f) return d.normalized;
+                d = aimDir;
+                d.y = 0f;
+                return d.sqrMagnitude > 0.0001f ? d.normalized : Vector3.zero;
+            }
+        }
+
+        /// <summary>
+        /// 照準を動かす(毎フレーム Tick から。ヒットストップ中も応えるよう実時間)。
+        /// 構えの間:右スティック(倒した量を cursorStickCurve 乗。照準が敵の上なら cursorSlowOnEnemy だけ遅く)とマウスで動かし、楕円の可動範囲に収める。
+        ///   範囲の外へ押した分は EdgePush に(カメラがゆっくり回る。ロックオンしていないときだけ)。
+        /// 構えていない間:ゆっくり画面の中央へ戻る(最後は速さを落として止まる)。
+        /// 最後に、カメラから照準を通る向き・照準の先・照準が敵の上か・枠の中心(tan)を求める。
+        /// </summary>
+        void UpdateCursor()
+        {
+            var r = Rules;
+            float dt = Time.unscaledDeltaTime;
             var cam = Camera.main;
-            Vector3 camF = cam != null ? cam.transform.forward : player.transform.forward;
+            float aspect = cam != null ? Mathf.Max(0.1f, cam.aspect) : 16f / 9f;
+            float rx = Mathf.Clamp(r.cursorRangeX, 0.001f, 0.49f), ry = Mathf.Clamp(r.cursorRangeY, 0.001f, 0.49f);
+            Vector2 push = Vector2.zero;
+            if (player != null && !player.Dead && CursorActive)
+            {
+                // 動かす量は画面の高さを単位に(横も縦も、画面の上で同じ速さ)。横はビューポートの単位へ直すとき aspect で割る
+                Vector2 stick = ProtoInput.RightStick, mouse = ProtoInput.MouseDelta;
+                float sm = stick.magnitude, eff = 0f;
+                Vector2 move = Vector2.zero;
+                if (sm > 0.0001f)
+                {
+                    eff = Mathf.Pow(Mathf.InverseLerp(0.15f, 1f, Mathf.Min(1f, sm)), Mathf.Max(0.1f, r.cursorStickCurve));
+                    float slow = cursorOnEnemy ? 1f - Mathf.Clamp01(r.cursorSlowOnEnemy) : 1f;
+                    move += stick / sm * (eff * Mathf.Max(0f, r.cursorStickSpeed) * slow * dt);
+                }
+                move += mouse * Mathf.Max(0f, r.cursorMouseSens);
+                Vector2 next = cursor + new Vector2(move.x / aspect, move.y);
+                Vector2 e = new(next.x / rx, next.y / ry);
+                if (e.sqrMagnitude > 1f)
+                {
+                    // 可動範囲の外へ押した:端に止め、外向きに押している強さを EdgePush に(スティックは倒した量、マウスは動かした速さ)
+                    Vector2 n = e.normalized;
+                    next = new Vector2(n.x * rx, n.y * ry);
+                    float s = sm > 0.0001f ? Mathf.Clamp01(Vector2.Dot(stick / sm, n)) * eff : 0f;
+                    if (dt > 0f) s = Mathf.Max(s, Mathf.Clamp01(Vector2.Dot(mouse, n) / dt / Mathf.Max(1f, r.cursorMouseEdgeFull)));
+                    push = n * s;
+                }
+                cursor = next;
+            }
+            else
+            {
+                // 構えていない:画面の中央へゆっくり戻る(画面の上の表示が動くだけ。カメラは動かない)
+                float len = cursor.magnitude;
+                if (len > 0f) cursor = Vector2.MoveTowards(cursor, Vector2.zero, Mathf.Min(Mathf.Max(0f, r.cursorReturnSpeed), len * 4f) * dt + 0.00001f);
+            }
+            EdgePush = push;
+            ClampCursor(rx, ry);
+
+            aimDirValid = false;
+            cursorOnEnemy = false;
+            if (cam == null || game == null) return;
+            if (r.aimByFacing && player != null && !r.cursorMovable)
+            {
+                // 自機の向いている方へ撃つ(作者「自機の向いている方に弾が飛ぶようにしてください」):
+                // 左右は自機の向き、上下はロックオンの相手の胸へ(いなければカメラの上下の向き)。自機の胸から伸ばした先を照準の先にし、
+                // 照準の表示(cursor)と枠の中心(cursorTan)はその点を画面に映した所へ置く。弾の向き・吸い付きはカメラからその点への向きで求める
+                Vector3 chest = player.Chest;
+                Vector3 f = Flat(player.transform.forward);
+                if (f.sqrMagnitude < 0.0001f) f = Flat(cam.transform.forward);
+                f.Normalize();
+                var tg = player.Target;
+                Vector3 up = tg != null && !tg.Dead ? tg.Chest - chest : cam.transform.forward;
+                float dh = Mathf.Max(0.001f, new Vector2(up.x, up.z).magnitude);
+                Vector3 fd = (f * dh + Vector3.up * up.y).normalized;
+                CursorPoint = AimPointAlong(chest, fd, out var fhit);
+                cursorOnEnemy = fhit != null;
+                aimDir = (CursorPoint - cam.transform.position).normalized;
+                aimDirValid = true;
+                Vector3 fl = cam.transform.InverseTransformDirection(aimDir);
+                cursorTan = fl.z > 0.01f ? new Vector2(fl.x / fl.z, fl.y / fl.z) : Vector2.zero;
+                Vector3 vp = cam.WorldToViewportPoint(CursorPoint);
+                cursor = vp.z > 0f ? new Vector2(Mathf.Clamp(vp.x - 0.5f, -0.49f, 0.49f), Mathf.Clamp(vp.y - 0.5f, -0.49f, 0.49f)) : Vector2.zero;
+                return;
+            }
+            var ray = cam.ViewportPointToRay(new Vector3(0.5f + cursor.x, 0.5f + cursor.y, 0f));
+            aimDir = ray.direction;
+            aimDirValid = true;
+            Vector3 local = cam.transform.InverseTransformDirection(aimDir);
+            cursorTan = local.z > 0.01f ? new Vector2(local.x / local.z, local.y / local.z) : Vector2.zero;
+            CursorPoint = AimPointAlong(cam.transform.position, aimDir, out var hitE);
+            cursorOnEnemy = hitE != null;
+        }
+
+        /// <summary>照準を楕円の可動範囲に収める。</summary>
+        void ClampCursor(float rx, float ry)
+        {
+            Vector2 e = new(cursor.x / rx, cursor.y / ry);
+            if (e.sqrMagnitude > 1f)
+            {
+                e.Normalize();
+                cursor = new Vector2(e.x * rx, e.y * ry);
+            }
+        }
+
+        /// <summary>
+        /// 反動で照準そのものをずらす(1回撃つごと):上へ aimKick 度、左右へ ±aimKickSide 度のランダム(kickMul を掛ける)。
+        /// 角度は今の画角で画面の上の距離へ直す。可動範囲で止まる(カメラは動かさない。端へ押し付けてもカメラは回らない)。
+        /// </summary>
+        void Kick(DuelWeapon w)
+        {
+            var r = Rules;
+            if (!r.cursorMovable) return;   // 照準を動かせないときは、反動で照準をずらさない(押さえ込めないため。ばらつきの広がりは残る)
+            float mul = Mathf.Max(0f, r.kickMul);
+            if (mul <= 0f || (w.aimKick <= 0f && w.aimKickSide <= 0f)) return;
+            var cam = Camera.main;
+            float tanV = Mathf.Tan((cam != null ? cam.fieldOfView : 55f) * 0.5f * Mathf.Deg2Rad);
+            float aspect = cam != null ? Mathf.Max(0.1f, cam.aspect) : 16f / 9f;
+            float up = Mathf.Tan(Mathf.Max(0f, w.aimKick) * mul * Mathf.Deg2Rad) / (2f * tanV);
+            float side = Mathf.Tan(Random.Range(-1f, 1f) * Mathf.Max(0f, w.aimKickSide) * mul * Mathf.Deg2Rad) / (2f * tanV * aspect);
+            cursor += new Vector2(side, up);
+            ClampCursor(Mathf.Clamp(r.cursorRangeX, 0.001f, 0.49f), Mathf.Clamp(r.cursorRangeY, 0.001f, 0.49f));
+        }
+
+        /// <summary>カメラから照準を通る向き(このフレームに求めていなければカメラの前)。</summary>
+        Vector3 AimDir(Camera cam) => aimDirValid ? aimDir : cam.transform.forward;
+
+        /// <summary>撃ち方の弾の速さ(m/s。DuelArmsRules.shotSpeedMul を掛ける)。0 以下なら弾を飛ばさず、今までどおりすぐ届く光線。</summary>
+        float SpeedOf(DuelWeapon w) => w.shotSpeed * Mathf.Max(0f, Rules.shotSpeedMul);
+
+        // ───────── 照準の枠(射撃だけ。アーマード・コアの FCS のように、枠の中の敵に当てる) ─────────
+
+        /// <summary>画面に出す照準の枠1つ(大きさが同じ武装はまとめる)。halfW / halfH は画面の中央からの tan、buttons は使うボタン(1=R1 2=L1 4=R2 8=L2)。</summary>
+        public struct AimFrame
+        {
+            public float halfW, halfH;
+            public int buttons;
+            /// <summary>その武装を今撃っている・撃ったばかり・溜めている(枠を明るく)。</summary>
+            public bool hot;
+            /// <summary>枠の中に当てる相手がいる(枠の色を変える)。</summary>
+            public bool locked;
+            /// <summary>画面に描く大きさ(tan)。反動で広がっている分だけ halfW / halfH より大きい(吸い付く範囲は広げない。見た目だけ)。</summary>
+            public float drawW, drawH;
+            /// <summary>今のばらつき(spread + 反動の広がり)の tan。真ん中の十字の開きに出す。ミサイルだけの枠は -1(十字を出さない)。</summary>
+            public float spread;
+        }
+
+        /// <summary>今の照準の枠(撃つ武装ごと、同じ大きさはまとめる)と、枠の中で当てる相手(印を出す)。毎フレーム Tick で作り直す。</summary>
+        public readonly List<AimFrame> Frames = new();
+        public readonly List<DuelEnemy> Marks = new();
+        readonly List<DuelEnemy> missileBuf = new();
+
+        /// <summary>両手の銃・砲の L1 の撃ち方なら、その両手の武装(枠の大きさを借りる)。</summary>
+        DuelWeapon ParentOf(int i) => i == AltIndex ? TwoHandGun : null;
+
+        /// <summary>枠の横の半分の大きさ(画面の中央からの角度の tan)。縦は frameAspect 倍。L1 の撃ち方に枠がなければ両手の武装の枠(DuelArmsRules.FrameDeg)。</summary>
+        public float FrameTan(DuelWeapon w, DuelWeapon parent = null) => Mathf.Tan(Rules.FrameDeg(w, parent) * Mathf.Deg2Rad);
+
+        /// <summary>
+        /// 敵1体の、このフレームの見え方(1フレームに1回まとめて求め、枠の判定・撃つ相手選び・ミサイルで使い回す)。
+        /// a / b は体(縦長のカプセル)の下と上の球の中心を画面に写した位置(tan)、ra / rb はその半径、off は胸が画面の中央からずれている角度(度)。
+        /// sight は自機(LockPoint)から胸まで見通せるか(0 = まだ調べていない / 1 = 見通せる / -1 = さえぎられている。要るときだけ調べる)。
+        /// </summary>
+        struct EnemyView
+        {
+            public DuelEnemy e;
+            public bool front;
+            public float ax, ay, ra, bx, by, rb, off;
+            public sbyte sight;
+        }
+
+        EnemyView[] views = new EnemyView[32];
+        int viewCount, viewFrame = -1;
+        Vector3 viewEye;
+
+        /// <summary>このフレームの敵ごとの見え方を作る(もう作ってあれば何もしない)。カメラの後ろの敵は front が false。</summary>
+        void PrepareViews(Camera cam)
+        {
+            if (viewFrame == Time.frameCount) return;
+            viewFrame = Time.frameCount;
+            var list = game.Enemies;
+            if (views.Length < list.Count) views = new EnemyView[Mathf.NextPowerOfTwo(list.Count)];
+            viewCount = list.Count;
+            viewEye = player.LockPoint;
+            var ct = cam.transform;
+            float mh = game.mechHeight;
+            for (int k = 0; k < viewCount; k++)
+            {
+                var e = list[k];
+                ref var v = ref views[k];
+                v = default;
+                v.e = e;
+                if (e == null || e.Dead) continue;
+                Vector3 c = ct.InverseTransformPoint(e.Chest);
+                if (c.z <= 0.5f) continue;
+                float r = e.Radius, h = mh * e.Size;
+                Vector3 a = ct.InverseTransformPoint(e.transform.position + Vector3.up * r);
+                Vector3 b = ct.InverseTransformPoint(e.transform.position + Vector3.up * Mathf.Max(r, h - r));
+                if (a.z <= 0.5f) a = c;
+                if (b.z <= 0.5f) b = c;
+                v.ax = a.x / a.z;
+                v.ay = a.y / a.z;
+                v.ra = r / a.z;
+                v.bx = b.x / b.z;
+                v.by = b.y / b.z;
+                v.rb = r / b.z;
+                v.off = Mathf.Atan(new Vector2(c.x / c.z, c.y / c.z).magnitude) * Mathf.Rad2Deg;
+                v.front = true;
+            }
+        }
+
+        /// <summary>
+        /// k 番目の敵の体が、照準の位置を中心にした枠(横 ±hw・縦 ±hh。tan)に掛かっているか。近い敵ほど画面で大きいので掛かりやすい。カメラの後ろの敵は入らない。
+        /// </summary>
+        bool InFrame(int k, float hw, float hh)
+        {
+            ref var v = ref views[k];
+            if (!v.front || v.e == null || v.e.Dead) return false;
+            float cx = cursorTan.x, cy = cursorTan.y;
+            if (Mathf.Max(v.ax + v.ra, v.bx + v.rb) - cx < -hw || Mathf.Min(v.ax - v.ra, v.bx - v.rb) - cx > hw) return false;
+            return !(Mathf.Max(v.ay + v.ra, v.by + v.rb) - cy < -hh || Mathf.Min(v.ay - v.ra, v.by - v.rb) - cy > hh);
+        }
+
+        /// <summary>k 番目の敵を自機から見通せるか(このフレームで初めて聞かれたときだけ調べ、あとは覚えておく)。</summary>
+        bool Visible(int k)
+        {
+            ref var v = ref views[k];
+            if (v.sight == 0) v.sight = DuelSenses.ClearSight(viewEye, v.e.Chest) ? (sbyte)1 : (sbyte)-1;
+            return v.sight > 0;
+        }
+
+        /// <summary>
+        /// 吸い付く相手(銃・砲):照準の枠に掛かっている、射程の内で見通せる敵のうち、照準から体まで寄せる角度が一番小さい敵
+        /// (同じくらいならロックオン中の敵。ロックオン中の敵も枠は広くみなさない)。いなければ null(照準の先へまっすぐ撃つ)。
+        /// 枠に掛かっていても、寄せきれなければ外れる(AssistDir)。射程は撃ち出す所(from)から測る。
+        /// 見通しは自機から調べる(敵ごとに1フレーム1回。武装ごとに撃ち出す所から調べ直さない)。
+        /// </summary>
+        DuelEnemy AimTarget(DuelWeapon w, DuelWeapon parent, Vector3 from)
+        {
+            var cam = Camera.main;
+            if (cam == null) return null;
+            PrepareViews(cam);
+            var rules = Rules;
+            float hw = FrameTan(w, parent), hh = hw * rules.frameAspect;
+            float range2 = w.range * w.range;
+            Vector3 o = cam.transform.position, d = AimDir(cam);
+            var t = player.Target;
             DuelEnemy best = null;
             float bestScore = float.MaxValue;
-            foreach (var e in game.Enemies)
+            for (int k = 0; k < viewCount; k++)
             {
-                if (e == null || e.Dead) continue;
-                Vector3 to = e.Chest - from;
-                float d = to.magnitude;
-                if (d > range) continue;
-                float ang = Vector3.Angle(camF, to);
-                if (ang > 30f) continue;
-                float score = d * (1f + ang / 15f);
-                if (score >= bestScore || !DuelSenses.ClearSight(from, e.Chest)) continue;
+                var e = views[k].e;
+                if (e == null || !InFrame(k, hw, hh)) continue;
+                float d2 = (e.Chest - from).sqrMagnitude;
+                if (d2 > range2) continue;
+                float score = BodyNeedDeg(o, d, e, out _) - (e == t ? 0.5f : 0f) + Mathf.Sqrt(d2) * 0.002f;
+                if (score >= bestScore || !Visible(k)) continue;
                 bestScore = score;
                 best = e;
             }
             return best;
         }
 
-        /// <summary>狙う相手がいないとき:画面の中央の先(最初に当たる地形・敵。なければ遠く)。</summary>
+        /// <summary>
+        /// 吸い付きの強さ:照準の狙いを、枠の中の敵へ寄せられる最大の角度(度)。枠の大きさ × assistPart(小さい枠ほど弱い)。
+        /// 弾が速さを持つ撃ち方(実弾の銃・砲)は、projectileAssist がオフ(既定)なら 0(照準を先に置いた偏差射撃を、敵の今の位置へ引き戻さないように)。
+        /// </summary>
+        float AssistDeg(DuelWeapon w, DuelWeapon parent)
+        {
+            var r = Rules;
+            // 照準を動かせない(既定)ときは、先に置く偏差射撃ができないので、弾が速さを持つ撃ち方にも吸い付かせる(敵の今の位置へ。先読みはしない)
+            if (!r.projectileAssist && r.cursorMovable && (w.Explosive || SpeedOf(w) > 0f)) return 0f;
+            return r.FrameDeg(w, parent) * Mathf.Clamp01(r.assistPart);
+        }
+
+        /// <summary>
+        /// 向き d(o から)を敵 e の体に掛けるのに要る角度(度。もう掛かっていれば 0)。q は体の芯(縦の線)の上で d に一番近い点。
+        /// </summary>
+        float BodyNeedDeg(Vector3 o, Vector3 d, DuelEnemy e, out Vector3 q)
+        {
+            float r = e.Radius, h = game.mechHeight * e.Size;
+            Vector3 a = e.transform.position + Vector3.up * r, b = e.transform.position + Vector3.up * Mathf.Max(r, h - r);
+            SegSegDistance(a, b, o, o + d * AimFar, out float s);
+            q = a + (b - a) * s;
+            Vector3 to = q - o;
+            float len = to.magnitude;
+            if (len <= r) return 0f;
+            float body = Mathf.Asin(Mathf.Clamp01(r / len)) * Mathf.Rad2Deg;
+            return Mathf.Max(0f, Vector3.Angle(d, to) - body);
+        }
+
+        /// <summary>
+        /// 照準の向き(カメラから照準を通る向き)を、敵 t の体へ最大 maxDeg 度だけ寄せた向き。reach は寄せた向きが体に掛かるか(当たるか)。
+        /// </summary>
+        Vector3 AssistDir(Camera cam, DuelEnemy t, float maxDeg, out bool reach)
+        {
+            Vector3 o = cam.transform.position, d = AimDir(cam);
+            reach = false;
+            if (t == null || t.Dead) return d;
+            float need = BodyNeedDeg(o, d, t, out Vector3 q);
+            if (need <= 0f) { reach = true; return d; }
+            reach = need <= maxDeg;
+            // 体の芯へ向けて回す。体に掛かるのに要る分(+少し)より多くは回さない(中央の狙いをなるべく残す)
+            float turn = Mathf.Min(maxDeg, need + 0.3f);
+            return Vector3.RotateTowards(d, (q - o).normalized, turn * Mathf.Deg2Rad, 0f);
+        }
+
+        /// <summary>
+        /// 銃・砲の狙う所:照準の向きを、吸い付く相手 t へ少しだけ寄せた向きの先(最初に当たる地形・敵)。from から射程(range)までに切る。
+        /// </summary>
+        Vector3 AssistedAimPoint(DuelEnemy t, float maxDeg, Vector3 from, float range)
+        {
+            var cam = Camera.main;
+            if (cam == null) return t != null ? t.Chest : FreeAimPoint(from, range);
+            Vector3 dir = AssistDir(cam, t, maxDeg, out _);
+            Vector3 p = AimPointAlong(cam.transform.position, dir, out _);
+            Vector3 d = p - from;
+            return d.magnitude > range ? from + d.normalized * range : p;
+        }
+
+        /// <summary>UpdateFrames が求めた、撃つ状態ごとの当てる相手(銃・砲)とミサイルの割り振り先。aimCacheFrame のフレームだけ使える。</summary>
+        readonly DuelEnemy[] aimCache = new DuelEnemy[StateCount];
+        readonly List<DuelEnemy>[] missileCache = new List<DuelEnemy>[StateCount];
+        int aimCacheFrame = -1;
+
+        /// <summary>撃つ状態 i の当てる相手(このフレームに UpdateFrames が求めていればそれ。このフレームに倒れていれば null)。</summary>
+        DuelEnemy TargetFor(DuelWeapon w, int i, Vector3 from)
+        {
+            if (aimCacheFrame != Time.frameCount) return AimTarget(w, ParentOf(i), from);
+            var c = aimCache[i];
+            return c != null && !c.Dead ? c : null;
+        }
+
+        /// <summary>撃つ状態 i のミサイルの割り振り先(このフレームに UpdateFrames が求めていればそれ)。</summary>
+        List<DuelEnemy> MissilesFor(DuelWeapon w, int i) =>
+            aimCacheFrame == Time.frameCount && missileCache[i] != null ? missileCache[i] : MissileTargets(w, ParentOf(i), missileBuf);
+
+        /// <summary>
+        /// 画面に出す枠と印を作り直し、撃つ状態ごとの当てる相手をとっておく(撃つ武装ごと。同じ大きさの枠は1つにまとめ、ボタン名を並べる)。
+        /// Tick で撃つ前に呼び、撃つとき(FireGun・FireHeavy)はこの結果を使う。付け先を選んでいる間(性能のグラフを出している間)は出さない。
+        /// </summary>
+        void UpdateFrames()
+        {
+            Frames.Clear();
+            Marks.Clear();
+            var cam = Camera.main;
+            if (cam == null || Choosing != null) return;
+            float aspect = Rules.frameAspect;
+            for (int i = 0; i < StateCount; i++)
+            {
+                aimCache[i] = null;
+                var w = StateWeapon(i);
+                if (w == null || !w.IsShooter || (i == L && w.IsTwoHand)) continue;
+                var parent = ParentOf(i);
+                bool alt = i == AltIndex;
+                var at = alt ? DuelSlot.RightHand : (DuelSlot)i;
+                int btn = alt ? 1 : Btn(at);
+                bool hot = Time.time - lastFire[i] < 0.6f || Held(alt ? DuelSlot.LeftHand : at) || (alt && charge > 0f);
+                float hw = FrameTan(w, parent);
+                // 反動の広がりを枠の見た目と真ん中の十字に出す(ミサイルは狙いの要らない武装なので出さない)
+                float drawW = hw, spread = -1f;
+                if (!w.IsMissile)
+                {
+                    float deg = Rules.FrameDeg(w, parent);
+                    drawW = bloom[i] > 0f ? Mathf.Tan(Mathf.Min(80f, deg + bloom[i]) * Mathf.Deg2Rad) : hw;
+                    spread = Mathf.Tan(Mathf.Min(80f, Mathf.Max(0f, w.spread) + bloom[i]) * Mathf.Deg2Rad);
+                }
+                bool any;
+                if (w.IsMissile)
+                {
+                    var list = missileCache[i] ??= new List<DuelEnemy>();
+                    MissileTargets(w, parent, list);
+                    any = list.Count > 0;
+                    for (int k = 0; k < list.Count; k++) AddMark(list[k]);
+                }
+                else
+                {
+                    var t = AimTarget(w, parent, Muzzle(at));
+                    aimCache[i] = t;
+                    // 枠を橙にして印を出すのは、吸い付いた狙いが体に掛かる(当たる)ときだけ
+                    any = false;
+                    if (t != null) AssistDir(cam, t, AssistDeg(w, parent), out any);
+                    if (any) AddMark(t);
+                }
+                int same = -1;
+                for (int k = 0; k < Frames.Count; k++)
+                    if (Mathf.Abs(Frames[k].halfW - hw) < 0.002f) { same = k; break; }
+                if (same >= 0)
+                {
+                    var f = Frames[same];
+                    f.buttons |= 1 << btn;
+                    f.hot |= hot;
+                    f.locked |= any;
+                    f.drawW = Mathf.Max(f.drawW, drawW);
+                    f.drawH = f.drawW * aspect;
+                    f.spread = Mathf.Max(f.spread, spread);
+                    Frames[same] = f;
+                }
+                else Frames.Add(new AimFrame
+                {
+                    halfW = hw, halfH = hw * aspect, buttons = 1 << btn, hot = hot, locked = any,
+                    drawW = drawW, drawH = drawW * aspect, spread = spread,
+                });
+            }
+            aimCacheFrame = Time.frameCount;
+        }
+
+        void AddMark(DuelEnemy e)
+        {
+            if (!Marks.Contains(e)) Marks.Add(e);
+        }
+
+        /// <summary>狙う相手がいないとき:照準の先(最初に当たる地形・敵。なければ遠く)。</summary>
         Vector3 FreeAimPoint()
         {
             var cam = Camera.main;
             if (cam == null) return player.Chest + player.transform.forward * 100f;
-            Vector3 o = cam.transform.position, d = cam.transform.forward;
-            const float far = 250f;
-            float best = far;
-            if (Physics.Raycast(o, d, out var hit, far, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
-            if (RayHitsEnemy(o, d, best, out _, out float ed)) best = ed;
-            return o + d * best;
+            return AimPointAlong(cam.transform.position, AimDir(cam), out _);
         }
 
-        /// <summary>画面の中央の先の点を、from から射程(range)までに切ったもの(狙う敵がいないとき、射程より遠くへ飛ばさない)。</summary>
+        const float AimFar = 250f;
+
+        /// <summary>o から向き d の先で最初に当たる地形・敵(なければ AimFar 先)。enemy は当たった敵(地形・空なら null)。</summary>
+        Vector3 AimPointAlong(Vector3 o, Vector3 d, out DuelEnemy enemy)
+        {
+            // カメラは壁で寄らず、壁の向こうに残って壁を透かすことがある(DuelCamera)。カメラと自機の間の物(透けている壁など)に当てて、
+            // 照準の先が自機より手前(カメラ側)にならないよう、自機の位置(線の上へ下ろした所)より先だけを調べる
+            float skip = player != null ? Mathf.Max(0f, Vector3.Dot(player.Chest - o, d)) : 0f;
+            Vector3 s = o + d * skip;
+            float best = AimFar;
+            if (Physics.Raycast(s, d, out var hit, AimFar, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
+            if (RayHitsEnemy(s, d, best, out enemy, out float ed)) best = ed;
+            return s + d * best;
+        }
+
+        /// <summary>照準の先の点を、from から射程(range)までに切ったもの(狙う敵がいないとき、射程より遠くへ飛ばさない)。</summary>
         Vector3 FreeAimPoint(Vector3 from, float range)
         {
             Vector3 p = FreeAimPoint();
@@ -904,53 +1835,152 @@ namespace MeleeDuel
 
         static readonly Color BulletColor = new(1f, 0.85f, 0.35f), BeamColor = new(1f, 0.45f, 0.95f);
 
-        /// <summary>銃を撃つ(撃てる間隔・弾倉の残りがあれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。</summary>
-        bool FireGun(DuelWeapon w, int i, DuelSlot s)
+        /// <summary>
+        /// 銃を撃つ(撃てる間隔・弾倉の残り・共通の弾・ENがあれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。
+        /// エネルギー武器はENが0以下なら撃たない(charged の溜め撃ちは除く)。1発ごとにEN(EnPerShot)を使い、足りない分はマイナスになる。
+        /// </summary>
+        bool FireGun(DuelWeapon w, int i, DuelSlot s, bool charged = false)
         {
             if (cd[i] > 0f || reload[i] > 0f) return false;
-            if (w.magazine > 0 && mag[i] <= 0) { reload[i] = w.reload; return false; }
+            if (w.magazine > 0 && mag[i] <= 0)
+            {
+                StartReload(i, w);   // 共通の弾が1発分もなければ知らせるだけ
+                return false;
+            }
+            bool prepaid = charged && chargeAmmo > 0f;   // 溜め撃ち:溜め始めに1回分を取り置いてある
+            if (!prepaid && w.PaysPerShot && Ammo < w.ammoCost - 0.0001f)
+            {
+                OutOfAmmo();
+                return false;
+            }
+            if (!charged && NoEnergy(w))
+            {
+                OutOfEnergy();
+                return false;
+            }
             lastFire[i] = Time.time;
             Vector3 from = Muzzle(s);
-            var t = AimTarget(w.range, from);
-            Vector3 aim = t != null ? t.Chest : FreeAimPoint(from, w.range);
+            // 照準の先へ撃つ(枠の中の敵がいれば、狙いを少しだけ寄せる。弾が速さを持つ撃ち方は既定で寄せない。AssistDeg)
+            var t = TargetFor(w, i, from);
+            Vector3 aim = AssistedAimPoint(t, AssistDeg(w, ParentOf(i)), from, w.range);
             Vector3 dir = (aim - from).normalized;
             Color c = w.magazine <= 0 ? BeamColor : BulletColor;
             int n = Mathf.Max(1, w.pellets);
+            float speed = SpeedOf(w);   // 0 以下ならすぐ届く光線(照射し続けるレーザー)
             // 間隔の端数は持ち越す(1フレームより短い間隔なら、そのフレームに何発か出す。最大4回。押すたびに撃つ銃は1回)
             int bursts = w.hold ? 4 : 1;
             for (int k = 0; k < bursts && cd[i] <= 0f; k++)
             {
+                if (k > 0 && NoEnergy(w)) break;   // 同じフレームの2発目からは、ENが0以下になったら止める
+                if (!prepaid && !PayAmmo(w)) break;   // 弾倉のない実弾の撃ち方は撃つたびに共通の弾を使う(1回目は上で確かめてある)
+                if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
                 cd[i] += Mathf.Max(0.01f, w.interval);
-                for (int p = 0; p < n; p++) Shot(from, Jitter(dir, w.spread), w, c, n > 1);
-                if (w.magazine > 0 && --mag[i] <= 0) { reload[i] = w.reload; break; }   // 撃ち切ったらリロード
+                // ばらつき = 武装の spread + 反動の広がり(撃つたびに広がる。カメラは動かさない)
+                float jitter = w.spread + bloom[i];
+                for (int p = 0; p < n; p++)
+                {
+                    if (speed > 0f) StartCoroutine(Fly(from, Jitter(dir, jitter), w, c, n > 1, speed, false));   // 見える弾が速さを持って飛ぶ
+                    else Shot(from, Jitter(dir, jitter), w, c, n > 1);
+                }
+                AddRecoil(i, w);
+                Kick(w);   // 照準そのものが上へずれる(カメラは動かさない)
+                if (w.magazine > 0 && --mag[i] <= 0) { StartReload(i, w); break; }   // 撃ち切ったらリロード(共通の弾が足りれば)
             }
             cd[i] = Mathf.Max(cd[i], 0f);
             cdMax[i] = Mathf.Max(0.01f, w.interval);   // 次に撃てるまでのゲージの分母(両手の銃の L1 の弾。付けたときの 0.3 秒のままだとゲージが合わない)
             return true;
         }
 
-        /// <summary>銃の1発:まっすぐ飛び、最初に当たった地形・敵で止まる(貫く弾は地形まで飛び、線の上の敵みんなに当たる)。</summary>
+        /// <summary>撃った後の反動:撃つ状態 i の広がりを1回分足す(上限まで。DuelArmsRules.recoilMul を掛ける)。</summary>
+        void AddRecoil(int i, DuelWeapon w)
+        {
+            float mul = Mathf.Max(0f, Rules.recoilMul);
+            if (w.recoilPerShot <= 0f || mul <= 0f) return;
+            bloom[i] = Mathf.Min(Mathf.Max(0f, w.recoilMax) * mul, bloom[i] + w.recoilPerShot * mul);
+        }
+
+        /// <summary>
+        /// 射撃(銃・砲)が敵 e に当たった:照準の真ん中のヒットマーカーを出す。同じ瞬間に何発も当たったら(散弾・貫く弾・爆発)強い方の印。
+        /// TakeRangedHit の後に呼ぶ(倒した・崩れている・崩せるを見分ける)。
+        /// </summary>
+        void NoteHit(DuelEnemy e)
+        {
+            if (e == null) return;
+            float cap = game.rangedStaggerCap;
+            int kind = e.Dead ? 3 : e.Flinching ? 2 : cap < 1f && e.Stagger >= e.maxStagger * cap - 0.01f ? 1 : 0;
+            float now = Time.unscaledTime;
+            if (now - HitMarkAt < 0.05f) kind = Mathf.Max(kind, HitMarkKind);
+            HitMarkAt = now;
+            HitMarkKind = kind;
+        }
+
+        /// <summary>
+        /// 弾の筋:from から to へ光る線を出し、life 秒で細くなって消える。外れた弾(miss)は少し太く・長く残して、どこへ飛んだか見えるようにする。
+        /// </summary>
+        void Tracer(Vector3 from, Vector3 to, Color c, float width, bool miss)
+        {
+            var r = Rules;
+            float life = Mathf.Max(0.02f, miss ? r.missTracerLife : r.tracerLife);
+            if (miss) width = Mathf.Max(width, r.missTracerWidth);
+            var go = new GameObject("Tracer");
+            var lr = go.AddComponent<LineRenderer>();
+            lr.positionCount = 2;
+            lr.useWorldSpace = true;
+            lr.SetPosition(0, from);
+            lr.SetPosition(1, to);
+            lr.sharedMaterial = ProtoFx.Unlit(c);
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.receiveShadows = false;
+            lr.startWidth = width * 0.5f;
+            lr.endWidth = width;
+            StartCoroutine(FadeTracer(lr, width, life));
+            Destroy(go, life + 0.5f);   // 念のため(止まった時間の中などでコルーチンが進まなくても残らない)
+        }
+
+        /// <summary>弾の筋を life 秒で細くして消す(撃つ側の根元から先に細くなる)。</summary>
+        static IEnumerator FadeTracer(LineRenderer lr, float width, float life)
+        {
+            float t = 0f;
+            while (t < life && lr != null)
+            {
+                t += Time.deltaTime;
+                float k = 1f - Mathf.Clamp01(t / life);
+                lr.startWidth = width * 0.5f * k * k;
+                lr.endWidth = width * k;
+                yield return null;
+            }
+            if (lr != null) Destroy(lr.gameObject);
+        }
+
+        /// <summary>
+        /// 銃の1発(弾の速さが 0 の撃ち方だけ。照射し続けるレーザーなど):すぐ届く光線。最初に当たった地形・敵で止まる(貫く弾は地形まで飛び、線の上の敵みんなに当たる)。
+        /// 当たればヒットマーカー。外れた弾は筋を長めに残し、地形に当たったら小さな火花を出す。速さのある弾は Fly。
+        /// </summary>
         void Shot(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet)
         {
             float len = w.range;
-            if (Physics.Raycast(from, dir, out var hit, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) len = hit.distance;
+            bool wall = Physics.Raycast(from, dir, out var hit, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            if (wall) len = hit.distance;
             Vector3 end = from + dir * len;
             if (w.pierce)
             {
-                PierceShot(from, dir, len, w, c);
+                PierceShot(from, dir, len, w, c, wall ? hit : (RaycastHit?)null);
                 return;
             }
-            if (RayHitsEnemy(from, dir, len, out var e, out float d))
+            bool hitEnemy = RayHitsEnemy(from, dir, len, out var e, out float d);
+            if (hitEnemy)
             {
                 end = from + dir * d;
                 e.TakeRangedHit(w.damage, w.stagger, Flat(dir) * w.knock, 0.3f);
                 DuelSpark.Burst(end, -dir, c, pellet ? 2 : 3, 0.6f);
+                NoteHit(e);
             }
-            ProtoFx.Tracer(from, end, c, pellet ? 0.15f : 0.25f, 0.05f);
+            else if (wall) DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
+            Tracer(from, end, c, pellet ? 0.15f : 0.25f, !hitEnemy);
         }
 
         /// <summary>貫く弾:from から len まで、線から(敵の半径 + 太さ)の内にいる敵みんなに当てる。太いほど光線も太く長く残る。</summary>
-        void PierceShot(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c)
+        void PierceShot(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c, RaycastHit? wall)
         {
             Vector3 to = from + dir * len;
             bool any = false;
@@ -962,9 +1992,13 @@ namespace MeleeDuel
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
                 e.TakeRangedHit(w.damage, w.stagger, Flat(dir) * w.knock, 0.3f);
                 DuelSpark.Burst(from + dir * (s * len), -dir, c, 3, 0.6f + w.beamWidth * 0.2f);
+                NoteHit(e);
                 any = true;
             }
-            ProtoFx.Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, w.beamWidth >= 1f ? 0.18f : 0.05f);
+            if (!any && wall is { } wh) DuelSpark.Burst(wh.point, wh.normal, c, 1, 0.45f);   // 外れて地形に当たった:小さな火花
+            // 太い光線(溜め撃ち)は今までどおり長めに残す。細い光線は弾の筋と同じ(外れたら長めに)
+            if (w.beamWidth >= 1f) ProtoFx.Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, 0.18f);
+            else Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, !any);
             if (any && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
         }
 
@@ -973,16 +2007,28 @@ namespace MeleeDuel
         static readonly Color ShellColor = new(0.8f, 1f, 0.35f), MissileColor = new(1f, 0.6f, 0.25f), BlastColor = new(1f, 0.6f, 0.25f);
 
         /// <summary>砲・ミサイルを撃つ(次に撃てるまでの時間がたっていれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。</summary>
-        bool FireHeavy(DuelWeapon w, int i, DuelSlot s)
+        /// 今の一覧に ENを使う砲・ミサイルはないが、enCost を入れれば銃と同じ決まりで ENを使う。
+        bool FireHeavy(DuelWeapon w, int i, DuelSlot s, bool charged = false)
         {
             if (cd[i] > 0f) return false;
+            if (!charged && NoEnergy(w))
+            {
+                OutOfEnergy();
+                return false;
+            }
+            if (!(charged && chargeAmmo > 0f) && !PayAmmo(w))   // 溜め撃ちは溜め始めに取り置いた分を使う
+            {
+                OutOfAmmo();
+                return false;
+            }
+            if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
             cd[i] = cdMax[i] = w.interval;
             lastFire[i] = Time.time;
             Vector3 from = Muzzle(s);
             if (w.IsMissile)
             {
-                // ミサイル:狙える敵に順番に割り振る(ロックオン中の敵が先、あとは近い順)。いなければ画面の中央の先へ
-                var targets = MissileTargets(w.range);
+                // ミサイル:枠(照準の位置が中心)に掛かっている狙える敵に順番に割り振る(ロックオン中の敵が先、あとは近い順)。いなければ照準の先へ
+                var targets = MissilesFor(w, i);
                 Vector3 point = FreeAimPoint(from, w.range);
                 for (int j = 0; j < w.salvo; j++)
                 {
@@ -992,41 +2038,56 @@ namespace MeleeDuel
                 }
                 return true;
             }
-            var target = AimTarget(w.range, from);
-            Vector3 aim = target != null ? target.Chest : FreeAimPoint(from, w.range);
-            Vector3 dir = (aim - from).normalized;
-            float len = Mathf.Min(Vector3.Distance(from, aim), w.range);
-            // 間を地形・ほかの敵がさえぎっていれば、そこで爆発する
-            if (Physics.Raycast(from, dir, out var hit, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) len = hit.distance;
-            if (RayHitsEnemy(from, dir, len, out _, out float ed)) len = ed;
-            StartCoroutine(Shell(from, from + dir * len, w));
+            // 砲も銃と同じく照準の先へ(弾が速さを持つので、既定では吸い付かない)。砲弾は速さを持って飛び、地形・敵に当たるか射程の端で爆発する
+            var target = TargetFor(w, i, from);
+            Vector3 aim = AssistedAimPoint(target, AssistDeg(w, ParentOf(i)), from, w.range);
+            Vector3 dir = Jitter((aim - from).normalized, bloom[i]);   // 反動の広がり(今の砲は広がり 0。.Recoil を入れれば広がる)
+            AddRecoil(i, w);
+            Kick(w);   // 照準そのものが上へずれる(カメラは動かさない)
+            float speed = SpeedOf(w);
+            StartCoroutine(Fly(from, dir, w, ShellColor, false, speed > 0f ? speed : FallbackShellSpeed, true));
             return true;
         }
 
-        List<DuelEnemy> MissileTargets(float range)
+        /// <summary>
+        /// ミサイルの狙える敵(list に入れて返す。多くても1回に撃つ数 salvo まで):照準の枠に掛かっていて(ロックオン中の敵は lockFrameMul 倍に広くみなす)、
+        /// 射程の内で見通せる敵。ロックオン中の敵が先、あとは近い順。先に枠と射程で絞って並べ、見通し(Linecast)は前から salvo 体そろうまでだけ調べる。
+        /// </summary>
+        List<DuelEnemy> MissileTargets(DuelWeapon w, DuelWeapon parent, List<DuelEnemy> list)
         {
-            var list = new List<DuelEnemy>();
-            Vector3 eye = player.LockPoint;
-            foreach (var e in game.Enemies)
+            list.Clear();
+            var cam = Camera.main;
+            if (cam == null) return list;
+            PrepareViews(cam);
+            var rules = Rules;
+            float range = w.range, hw = FrameTan(w, parent), hh = hw * rules.frameAspect, lm = Mathf.Max(1f, rules.lockFrameMul);
+            Vector3 eye = viewEye;
+            var t = player.Target;
+            missileCand.Clear();
+            for (int k = 0; k < viewCount; k++)
             {
+                var e = views[k].e;
                 if (e == null || e.Dead) continue;
                 if ((e.Chest - eye).sqrMagnitude > range * range) continue;
-                if (!DuelSenses.ClearSight(eye, e.Chest)) continue;
-                list.Add(e);
+                float m = e == t ? lm : 1f;
+                if (!InFrame(k, hw * m, hh * m)) continue;
+                missileCand.Add((e == t ? -1f : (e.transform.position - eye).sqrMagnitude, k));   // ロックオン中の敵が先(-1)、あとは近い順
             }
-            var t = player.Target;
-            list.Sort((a, b) =>
+            missileCand.Sort(ByNear);
+            int cap = Mathf.Max(1, w.salvo);
+            for (int c = 0; c < missileCand.Count && list.Count < cap; c++)
             {
-                if (a == b) return 0;
-                if (a == t) return -1;
-                if (b == t) return 1;
-                return (a.transform.position - eye).sqrMagnitude.CompareTo((b.transform.position - eye).sqrMagnitude);
-            });
+                int k = missileCand[c].k;
+                if (Visible(k)) list.Add(views[k].e);
+            }
             return list;
         }
 
-        /// <summary>弾の見た目:光る球と、尾を引く線。</summary>
-        static Transform Projectile(Vector3 at, Color c, float size)
+        readonly List<(float key, int k)> missileCand = new();
+        static readonly System.Comparison<(float key, int k)> ByNear = (a, b) => a.key.CompareTo(b.key);
+
+        /// <summary>弾の見た目:光る球と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
+        static Transform Projectile(Vector3 at, Color c, float size, float trail = 0.18f)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             Destroy(go.GetComponent<Collider>());
@@ -1037,7 +2098,7 @@ namespace MeleeDuel
             r.sharedMaterial = ProtoFx.Unlit(c);
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var tr = go.AddComponent<TrailRenderer>();
-            tr.time = 0.18f;
+            tr.time = trail;
             tr.startWidth = size * 0.7f;
             tr.endWidth = 0f;
             tr.sharedMaterial = ProtoFx.Unlit(c);
@@ -1045,20 +2106,115 @@ namespace MeleeDuel
             return go.transform;
         }
 
-        /// <summary>砲弾:まっすぐ飛んで、着いた所で爆発する。</summary>
-        IEnumerator Shell(Vector3 from, Vector3 to, DuelWeapon w)
+        /// <summary>砲の弾の速さが 0 のときの速さ(m/s。前の砲弾の速さ)。</summary>
+        const float FallbackShellSpeed = 160f;
+
+        /// <summary>
+        /// 速さを持って飛ぶ弾(実弾の銃・砲。作者が選んだ形「弾に速さを持たせる」)。from から dir へ speed(m/s)でまっすぐ飛び、射程(range)まで。
+        /// 毎フレーム、進む分の線で地形と敵を調べる(偏差の自動補正はしない。動く敵には照準を先に置く)。
+        ///   銃の弾:最初に当たった敵に当てて火花とヒットマーカー、地形なら小さな火花で消える。貫く弾は地形・射程の端まで飛び、線の上の敵に1回ずつ当てる。
+        ///   砲弾(explosive):敵・地形に当たるか射程の端で爆発する。
+        /// 弾の筋は弾の尾(TrailRenderer)。止まったら球を隠して尾だけ消えていく。ヒットストップ中は止まる(Time.deltaTime)。
+        /// </summary>
+        IEnumerator Fly(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet, float speed, bool explosive)
         {
-            const float speed = 160f;
-            var p = Projectile(from, ShellColor, 1.2f + w.radius * 0.05f);
-            float dur = Vector3.Distance(from, to) / speed, t = 0f;
-            while (t < dur)
+            var r = Rules;
+            // 撃った自機の速度を弾が受け継ぐ(作者「弾は、停止中を狙うより、相対速度を合わせる方が楽しそうです」):
+            // 敵と同じ向き・速さで動きながら撃てば、狙った所へ当たる。止まって動く敵を撃つと外れる。先読みの自動補正はしない
+            if (player != null && r.inheritShooterVelocity > 0f)
             {
-                t += Time.deltaTime;
-                p.position = Vector3.Lerp(from, to, Mathf.Clamp01(t / Mathf.Max(0.001f, dur)));
-                yield return null;
+                Vector3 v = dir * speed + player.Velocity * r.inheritShooterVelocity;
+                float m = v.magnitude;
+                if (m > 1f) { dir = v / m; speed = m; }
             }
-            Destroy(p.gameObject);
-            Explode(to, w, true);
+            float size = explosive ? 1.2f + w.radius * 0.05f : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
+            float trail = explosive ? 0.18f : Mathf.Max(0.01f, r.bulletTrail);
+            var p = Projectile(from, explosive ? ShellColor : c, size, trail);
+            Destroy(p.gameObject, w.range / Mathf.Max(1f, speed) + trail + 1f);   // 念のため(コルーチンが止まっても残らない)
+            List<DuelEnemy> pierced = w.pierce && !explosive ? new List<DuelEnemy>() : null;
+            Vector3 pos = from;
+            float flown = 0f;
+            while (true)
+            {
+                yield return null;
+                if (p == null) yield break;
+                float step = speed * Time.deltaTime;
+                if (step <= 0f) continue;   // ヒットストップ・止まった時間の中
+                bool last = flown + step >= w.range;
+                if (last) step = Mathf.Max(0f, w.range - flown);
+                bool wall = Physics.Raycast(pos, dir, out var hit, step, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                float len = wall ? hit.distance : step;
+                if (pierced != null)
+                {
+                    if (PierceSegment(pos, dir, len, w, c, pierced) && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
+                }
+                else if (RayHitsEnemy(pos, dir, len, out var e, out float d))
+                {
+                    Vector3 at = pos + dir * d;
+                    if (explosive) Explode(at, w, true);
+                    else
+                    {
+                        e.TakeRangedHit(w.damage, w.stagger, Flat(dir) * w.knock, 0.3f);
+                        DuelSpark.Burst(at, -dir, c, pellet ? 2 : 3, 0.6f);
+                        NoteHit(e);
+                    }
+                    EndProjectile(p, at, trail);
+                    yield break;
+                }
+                pos += dir * len;
+                flown += len;
+                p.position = pos;
+                if (wall)
+                {
+                    if (explosive) Explode(hit.point, w, true);
+                    else DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
+                    EndProjectile(p, hit.point, trail);
+                    yield break;
+                }
+                if (last)
+                {
+                    if (explosive) Explode(pos, w, true);   // 射程の端で爆発(前と同じ)
+                    EndProjectile(p, pos, trail);
+                    yield break;
+                }
+            }
+        }
+
+        /// <summary>弾が止まった:その所まで動かしてから球を隠し、尾が消えるのを待って消す(当たった所まで筋が届いて見えるように)。</summary>
+        static void EndProjectile(Transform p, Vector3 at, float trail)
+        {
+            if (p == null) return;
+            p.position = at;
+            var rend = p.GetComponent<MeshRenderer>();
+            if (rend != null) rend.enabled = false;
+            var tr = p.GetComponent<TrailRenderer>();
+            if (tr != null) tr.emitting = false;
+            Destroy(p.gameObject, trail + 0.05f);
+        }
+
+        /// <summary>
+        /// 貫く弾が from から len 進む間に、線から(敵の半径 + 太さ)の内にいる敵に当てる(1発で同じ敵には1回。pierced に覚える)。当たったら true。
+        /// </summary>
+        bool PierceSegment(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c, List<DuelEnemy> pierced)
+        {
+            if (len <= 0f) return false;
+            Vector3 to = from + dir * len;
+            bool any = false;
+            var list = game.Enemies;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var e = list[i];
+                if (e == null || e.Dead || pierced.Contains(e)) continue;
+                float r = e.Radius, h = game.mechHeight * e.Size;
+                Vector3 a = e.transform.position + Vector3.up * r, b = e.transform.position + Vector3.up * Mathf.Max(r, h - r);
+                if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
+                pierced.Add(e);
+                e.TakeRangedHit(w.damage, w.stagger, Flat(dir) * w.knock, 0.3f);
+                DuelSpark.Burst(from + dir * (s * len), -dir, c, 3, 0.6f + w.beamWidth * 0.2f);
+                NoteHit(e);
+                any = true;
+            }
+            return any;
         }
 
         /// <summary>ミサイル1発:上へ打ち上げてから、狙った敵へ曲がって飛ぶ(敵が動いても追いかける)。着いたら小さく爆発する。</summary>
@@ -1098,6 +2254,7 @@ namespace MeleeDuel
                 if (d.magnitude - e.Radius > w.radius) continue;
                 if (dy < -w.radius || dy > game.mechHeight * e.Size + w.radius) continue;
                 e.TakeRangedHit(w.damage, w.stagger, (d.sqrMagnitude > 0.01f ? d.normalized : player.transform.forward) * w.knock, 0.6f);
+                if (shell) NoteHit(e);   // 砲だけヒットマーカー(ミサイルは自動で飛ぶので出さない)
                 any = true;
             }
             if (any && shell) game.HitStop(0.05f);   // 砲だけ。ミサイルは何発も当たるので止めない

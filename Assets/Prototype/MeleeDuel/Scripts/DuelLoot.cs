@@ -6,7 +6,8 @@ namespace MeleeDuel
 {
     /// <summary>
     /// 落ちている武装(ステージだけ)。倒した敵が落とし、真下の床まで落ちて、レア度の色の光の柱を立てる。時間では消えない。
-    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で付ける(手・肩は付け先を R1/L1・R2/L2 で選ぶ。DuelArms)。無視すれば残る。
+    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で付ける(手・肩は付け先を R1/L1・R2/L2 で選ぶ。DuelArms)、
+    /// 十字下(G)で所持品へ、十字上(F)で分解(弾か回復)。無視すれば残る。
     /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。ボスを倒したら全部消える。
     /// </summary>
     public class DuelLoot : MonoBehaviour
@@ -17,8 +18,11 @@ namespace MeleeDuel
         const float Hover = 1.5f;
 
         public DuelWeapon Weapon { get; private set; }
-        /// <summary>弾倉の残り(-1=満タン。捨てた・付け替えで外した銃は、撃ちかけの残りを覚えておく。拾い直しで満タンにならないように)。</summary>
-        public int Mag { get; set; } = -1;
+        /// <summary>
+        /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした武装はまっさら(弾倉は満タン)。捨てた・付け替えで外した武装は、撃ちかけの残りと装填待ちを覚えておく
+        /// (拾い直しで満タン・待ちなしにならないように)。
+        /// </summary>
+        public DuelArms.Memo Memo { get; set; } = DuelArms.Memo.Fresh;
 
         static readonly List<DuelLoot> all = new();
         Transform visual;

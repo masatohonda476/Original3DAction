@@ -82,15 +82,31 @@ namespace MeleeDuel
         [Tooltip("最後に当てられてから、ゲージが減り始めるまでの秒数")]
         public float staggerDecayDelay = 2f;
 
+        [Header("ロックオンのオン・オフ(電脳斬禅の PlayerTargeting と同じ作り。値は仮)")]
+        [Tooltip("始めたときにロックオンをオンにするか(電脳斬禅は新しいデータではオフ)。やり直し(F1)・撃墜のあとは、最後に切り替えた状態のまま(Play を止めるまで覚えている)")]
+        public bool lockOnAtStart = true;
+        [Tooltip("ロックオン中の敵が、壁・床ごし、またはロックオンできる距離(DuelStage.lockRange)の1.5倍より遠い状態がこの秒数続いたら外して、次の敵を探す(電脳斬禅は 1.5 秒)")]
+        public float lockLoseAfter = 1.5f;
+        [Tooltip("自動で選ぶ敵の点数 = 画面の中央からのずれ(0=中央〜0.7=角)× 10 + 距離(m)× この値。小さいほど先に選ぶ。" +
+                 "電脳斬禅は人間の大きさで 0.5/m(機体は約4.3倍なので 0.12/m)。0 なら画面の中央に近い敵、大きくするほど近い敵を選ぶ")]
+        public float lockPickDistanceWeight = 0.12f;
+        [Tooltip("自動で選ぶのは、画面の端からこの割合より内側に映っている敵だけ(電脳斬禅は 0.06)。切り替え先は画面の中ならよい")]
+        [Range(0f, 0.3f)] public float lockPickScreenMargin = 0.06f;
+
         public enum State { Free, Attack, Dodge, Guard, GuardStun, Hurt, GuardBroken, Dead }
         public State Current { get; private set; }
         public float Guard { get; private set; }
-        /// <summary>EN。回避で足りない分はマイナスになる。</summary>
+        /// <summary>EN。回避・攻撃・エネルギー武器の射撃で足りない分はマイナスになる。</summary>
         public float Energy { get; private set; }
         public float Stagger { get; private set; }
-        /// <summary>ENが0以下(回復待ち)。この間は回避も攻撃もできない。</summary>
+        /// <summary>ENが0以下(回復待ち)。この間は回避も攻撃も、エネルギー武器の射撃もできない。</summary>
         public bool Overheated => Energy <= 0f;
         public DuelEnemy Target { get; private set; }
+        /// <summary>
+        /// ロックオンのオン・オフ(電脳斬禅のオートロックオン)。オンの間は、狙う敵がいなければ自動で選び、倒した・見失ったら次へ移る。
+        /// オフの間は敵を狙わない(カメラは自由に回せる)。表示は DuelGame の照準枠(オン・オフの切り替わりで動く)。
+        /// </summary>
+        public bool LockOn { get; private set; }
         public bool Guarding => Current is State.Guard or State.GuardStun;
         /// <summary>ブーストがオン(○で切り替え。ENが0以下になると自動でオフ)。</summary>
         public bool BoostOn { get; private set; }
@@ -108,7 +124,8 @@ namespace MeleeDuel
         /// </summary>
         public float MaxGuard => Arms != null ? Arms.GuardMax : maxGuard;
 
-        // 背中の武装(スラスター)を掛けた値。素の値はインスペクターの値のまま
+        // 背中の武装(スラスター)・盾・重さを掛けた値。素の値はインスペクターの値のまま
+        // 重さ(DuelArms.Mobility)はENを使う移動(ブースト移動・回避の距離・飛ぶときの上昇)だけに掛かり、歩き・走り(RunMul)には掛からない
         float RunMul => Arms != null ? Arms.RunMul : 1f;
         float DashMul => Arms != null ? Arms.DashMul : 1f;
         float EnCostMul => Arms != null ? Arms.EnCostMul : 1f;
@@ -147,6 +164,7 @@ namespace MeleeDuel
             Setup(g, 100f);
             Guard = maxGuard;
             Energy = maxEnergy;
+            LockOn = lockOnMemory ?? lockOnAtStart;
             gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中の噴射炎
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
             if (g.stage != null)
@@ -203,10 +221,29 @@ namespace MeleeDuel
             BoostOn = false;
             combo = 0;
             airVel = Vector3.zero;
-            Target = null;
+            Target = null;   // ロックオンのオン・オフはそのまま(オンなら、出し直した所で次の敵を探す)
+            lockLostFor = 0f;
             stepTravel = 0f;
             FootstepRadius = 0f;
             Enter(State.Free);
+        }
+
+        /// <summary>
+        /// ENを使う(エネルギー武器の射撃。DuelArms から)。残りが0以下かは呼ぶ側が Overheated で確かめる。
+        /// 足りない分はマイナスになり、回避・攻撃と同じく回復を待つ。
+        /// </summary>
+        public void SpendEnergy(float amount)
+        {
+            if (amount <= 0f) return;
+            Energy -= amount;
+            energyUsedAt = Time.time;
+        }
+
+        /// <summary>HP を amount だけ回復する(武装の分解。最大まで)。撃墜中は何もしない。</summary>
+        public void Heal(float amount)
+        {
+            if (Dead || amount <= 0f) return;
+            HP = Mathf.Min(MaxHP, HP + amount);
         }
 
         /// <summary>HPとガードを満タンにする(セーブポイント)。</summary>
@@ -320,8 +357,19 @@ namespace MeleeDuel
                         Energy -= dashCost * EnCostMul * dt;
                         energyUsedAt = now;
                     }
+                    // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
-                    if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
+                    if (Arms != null && Arms.Aiming && DuelArmsRules.Current.aimByFacing && !DuelArmsRules.Current.cursorMovable)
+                    {
+                        // 弾は自機の向いている方へ飛ぶ:構えの間は、ロックオン中なら相手、していなければカメラの向きを向く(向いた方へ撃つ)
+                        Face(Target != null ? Target.transform.position - transform.position : camFwd, 14f, dt);
+                    }
+                    else if (Arms != null && Arms.Aiming)
+                    {
+                        Vector3 af = Arms.AimFacing;
+                        Face(af != Vector3.zero ? af : camFwd, 14f, dt);
+                    }
+                    else if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
                     else if (Dashing) Face(worldMove, 14f, dt);
                     else if (worldMove.sqrMagnitude > 0.01f) Face(worldMove, 12f, dt);
                     break;
@@ -426,37 +474,101 @@ namespace MeleeDuel
         float GuardMoveMul => guardShield != null ? guardShield.guardMoveMul : guardMoveMul;
         float GuardStunMul => guardShield != null ? guardShield.guardStunMul : 1f;
 
+        /// <summary>最後に近接(剣・両手の近接・回避斬り)か回避を始めた時刻。射撃の構え(DuelArms.Aiming)はこれで終わる。</summary>
+        public float MeleeOrDodgeAt { get; private set; } = -10f;
+
         void Enter(State s, float dur = 0f)
         {
+            if (s is State.Attack or State.Dodge) MeleeOrDodgeAt = Time.time;
             Current = s;
             stateT = 0f;
             stateDur = dur;
         }
 
         // ───────── ロックオン ─────────
+        // 作者「ロックオンのオンオフをを電脳斬禅と同じ作りで作ってください」:電脳斬禅の PlayerTargeting と同じ作り。
+        //   ロックオンのボタン(Q・中クリック / 十字左)はオン・オフを切り替える(敵に付ける・外すのではなく、自動で狙うかどうかの切り替え)。
+        //   オンの間:狙う敵がいなければ、画面に映り・遮られず・距離の内の敵を自動で選ぶ(画面の中央に近く、近い敵ほど先)。
+        //     狙っている敵を倒したらすぐ次へ。遮られる・遠ざかるが lockLoseAfter 秒続いたら外して選び直す。
+        //   オフの間:敵を狙わない(自動でも付かない)。切り替えのボタン(Tab / R3)を押すとオンに戻る。
+        //   オン・オフの合図は DuelGame の照準枠(画面の縁寄りの四つの角。オンで外から締まり、オフで広がって消える)。
+        // この試作で残したもの:自動で選ぶ距離(DuelStage.autoLockRange)とボタンで付ける距離(lockRange)の2段、
+        // 銃の構えの間は自動で選ばない、撃っていないロックオン中の右スティック・マウスの左右の弾きでの切り替え(SwitchSide)。
 
         /// <summary>ロックオンできる距離(ステージだけ。0 なら制限なし)。</summary>
         float LockRange => game.stage != null ? game.stage.lockRange : 0f;
+        float AutoLockRange => game.stage != null ? game.stage.autoLockRange : 0f;
 
-        /// <summary>ロックオンしてよい敵か(ステージでは、ロックオンできる距離の内側で、壁・床ごしでない敵だけ)。</summary>
-        bool Lockable(DuelEnemy e)
+        /// <summary>やり直し(シーンの読み直し)・部屋とステージの行き来でも、最後に切り替えたオン・オフを覚えておく(電脳斬禅はセーブデータに持つ)。Play を始めるたびに忘れる。</summary>
+        static bool? lockOnMemory;
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetLockOnMemory() => lockOnMemory = null;
+
+        /// <summary>狙っている敵が見えない(遮られる・遠すぎる)まま続いている秒数。</summary>
+        float lockLostFor;
+
+        /// <summary>
+        /// ロックオンしてよい敵か。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
+        /// 画面に映っていること(margin はビューポートの端から内側へ空ける割合)、ステージではロックオンできる距離の内側で、壁・床ごしでないこと。
+        /// 自動で選ぶ相手・オンにしたときの相手・切り替え先のどれもこの条件で選ぶ。
+        /// </summary>
+        bool Lockable(DuelEnemy e, float margin = 0f)
         {
             if (e == null || e.Dead) return false;
+            var cam = Camera.main;
+            if (cam != null)
+            {
+                Vector3 v = cam.WorldToViewportPoint(e.LockPoint);
+                if (v.z <= 0f || v.x < margin || v.x > 1f - margin || v.y < margin || v.y > 1f - margin) return false;
+            }
             float r = LockRange;
             if (r <= 0f) return true;
             return (e.transform.position - transform.position).sqrMagnitude <= r * r && DuelSenses.ClearSight(LockPoint, e.LockPoint);
         }
 
+        /// <summary>ロックオンのオン・オフを切り替える(電脳斬禅の SetAutoLock)。オンにしたらその場で選び(ボタンなので lockRange まで)、オフにしたら外す。</summary>
+        void SetLockOn(bool on)
+        {
+            if (LockOn == on) return;
+            LockOn = on;
+            lockOnMemory = on;
+            lockLostFor = 0f;
+            Target = on ? PickBest(LockRange) : null;
+        }
+
         void UpdateLock()
         {
-            // ステージ:ロックオンできる距離の1.5倍より離れたら外す
-            if (Target != null && LockRange > 0f && (Target.transform.position - transform.position).sqrMagnitude > LockRange * LockRange * 2.25f) Target = null;
-            if (Target != null && Target.Dead) Target = Nearest();   // 倒したら、残っている一番近い敵へ
-            if (ProtoInput.LockToggle) Target = Target == null ? Nearest() : null;
-            if (ProtoInput.SwitchTarget) Target = Nearest(Target);
-            if (Target == null) { stickArmed = true; mouseFlick = 0f; return; }
-
-            // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
+            // ロックオンのボタン:オン・オフを切り替える。切り替えのボタンは、オフならオンに戻す(電脳斬禅の Cycle)
+            bool turnedOn = false;
+            if (ProtoInput.LockToggle) SetLockOn(!LockOn);
+            else if (ProtoInput.SwitchTarget && !LockOn) { SetLockOn(true); turnedOn = true; }
+            if (!LockOn)
+            {
+                Target = null;
+                lockLostFor = 0f;
+                stickArmed = false;
+                mouseFlick = 0f;
+                return;
+            }
+            // 狙っている敵が、壁・床ごし、またはロックオンできる距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。倒したらすぐ外す
+            if (Target != null)
+            {
+                bool seen = !Target.Dead;
+                if (seen && LockRange > 0f)
+                    seen = (Target.transform.position - transform.position).sqrMagnitude <= LockRange * LockRange * 2.25f &&
+                           DuelSenses.ClearSight(LockPoint, Target.LockPoint);
+                lockLostFor = seen ? 0f : lockLostFor + Time.deltaTime;
+                if (Target.Dead || lockLostFor >= lockLoseAfter) { Target = null; lockLostFor = 0f; }
+            }
+            // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」:
+            // 画面に映り・遮られず・autoLockRange の内。敵が気づいたかは見ない)。銃を構えている間は選ばない
+            if (Target == null && !(Arms != null && Arms.Aiming)) Target = PickBest(AutoLockRange);
+            if (ProtoInput.SwitchTarget && !turnedOn) Target = Target == null ? PickBest(LockRange) : NearestToView(Target);
+            // ロックオン中で、銃を構えていないとき:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)。
+            // 構えの間は右スティック・マウスで画面の上の照準を動かす(DuelArms。カメラは回さない)ので切り替えない
+            // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
+            // 構えの間は自動でも選ばない(撃っている最中に、相手が替わってカメラが回り出さないように。構えが終わってから選ぶ)
+            if (Target == null || (Arms != null && Arms.CursorActive)) { stickArmed = false; mouseFlick = 0f; return; }   // 照準を動かしている間だけ切り替えない
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }
@@ -465,7 +577,8 @@ namespace MeleeDuel
             if (Mathf.Abs(mouseFlick) > 160f) { SwitchSide(Mathf.Sign(mouseFlick)); mouseFlick = 0f; }
         }
 
-        bool stickArmed = true;
+        // 構え・ロックオンの始まりでスティックが倒れたままなら、一度戻すまで切り替えない(構えの終わりに勝手に切り替わらないように)
+        bool stickArmed;
         float mouseFlick;
 
         /// <summary>今の敵から見て side(+1=右 / -1=左)の側にいる、向きの一番近い敵へ切り替える(いなければそのまま)。</summary>
@@ -484,6 +597,26 @@ namespace MeleeDuel
             if (best != null) Target = best;
         }
 
+        /// <summary>
+        /// 切り替え先:今の敵のほかで、画面の中央に一番近い(向きの角度が小さい)敵。角度が同じくらいなら近い敵。
+        /// カメラで狙いをずらしてから押せば、その方の敵へ移れる。ほかにいなければ今の敵のまま。
+        /// </summary>
+        DuelEnemy NearestToView(DuelEnemy current)
+        {
+            var cam = Camera.main;
+            if (cam == null) return Nearest(current);
+            Vector3 o = cam.transform.position, f = cam.transform.forward;
+            DuelEnemy best = null;
+            float bestScore = float.MaxValue;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead || e == current || !Lockable(e)) continue;
+                float score = Vector3.Angle(f, e.LockPoint - o) + (e.transform.position - transform.position).magnitude * 0.05f;
+                if (score < bestScore) { bestScore = score; best = e; }
+            }
+            return best != null ? best : current;
+        }
+
         /// <summary>一番近い敵(except は除く。ほかにいなければ except のまま)。</summary>
         DuelEnemy Nearest(DuelEnemy except = null)
         {
@@ -498,10 +631,35 @@ namespace MeleeDuel
             return best != null ? best : except != null && !except.Dead ? except : null;
         }
 
-        /// <summary>敵が出てきた・こちらに気づいたとき、ロックオンしていなければその敵に合わせる。</summary>
-        public void AutoLock(DuelEnemy e)
+        /// <summary>敵が出てきた・こちらに気づいたときに呼ばれる。気づいたことでは付けない(自動で選ぶのは UpdateLock で、画面内・距離で決める)。</summary>
+        public void AutoLock(DuelEnemy e) { }
+
+        /// <summary>
+        /// 自動で狙う敵を選ぶ(電脳斬禅の PickBest)。条件:画面の端から lockPickScreenMargin より内側に映り、遮られず、range の内(0 なら距離を見ない。部屋)。
+        /// 点数 = 画面の中央からのずれ × 10 + 距離 × lockPickDistanceWeight で、小さいほど先。いなければ null。
+        /// 電脳斬禅の「こちらを狙っている敵を少し優先する」は入れない(作者「気づいたかどうかじゃなくて」)。
+        /// </summary>
+        DuelEnemy PickBest(float range)
         {
-            if ((Target == null || Target.Dead) && Lockable(e)) Target = e;
+            var cam = Camera.main;
+            DuelEnemy best = null;
+            float bestScore = float.MaxValue;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead) continue;
+                float d = Vector3.Distance(e.transform.position, transform.position);
+                if (range > 0f && d > range) continue;
+                if (!Lockable(e, lockPickScreenMargin)) continue;
+                float centerOff = 0f;
+                if (cam != null)
+                {
+                    Vector3 v = cam.WorldToViewportPoint(e.LockPoint);
+                    centerOff = Vector2.Distance(new Vector2(v.x, v.y), new Vector2(0.5f, 0.5f));   // 0(中央)〜0.7(角)
+                }
+                float score = centerOff * 10f + d * lockPickDistanceWeight;
+                if (score < bestScore) { bestScore = score; best = e; }
+            }
+            return best;
         }
 
         // ───────── 回避 ─────────
@@ -696,7 +854,7 @@ namespace MeleeDuel
         /// <summary>振り抜いた瞬間:扇の中の敵に当てる。</summary>
         void Strike()
         {
-            bool any = false;
+            bool any = false, big = false;
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
@@ -705,14 +863,19 @@ namespace MeleeDuel
                 to.y = 0f;
                 if (GapTo(e) > cur.reach) continue;
                 if (to.magnitude > Radius + e.Radius + 0.5f && Vector3.Angle(transform.forward, to) > cur.arc) continue;
+                bool wasBroken = e.Flinching;   // 崩れた敵を斬る(大ダメージ)
                 e.TakeHit(cur.damage, cur.stagger, Flat(to) * cur.knock, cur.flinch);
-                // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく
+                bool broke = !wasBroken && e.Flinching;   // この一太刀で崩した
+                // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく。崩した・崩れた敵を斬ったときはさらに多く大きく
                 Vector3 hitAt = e.Chest - Flat(to) * e.Radius;
-                DuelSpark.Burst(hitAt, -Flat(to), new Color(1f, 0.88f, 0.55f), cur.heavy ? 26 : 14, cur.heavy ? 1.4f : 1f);
-                ProtoFx.Blast(hitAt, cur.heavy ? 2f : 1.2f, Color.white, 0.08f);
+                float fx = wasBroken || broke ? 1.6f : 1f;
+                DuelSpark.Burst(hitAt, -Flat(to), new Color(1f, 0.88f, 0.55f), Mathf.RoundToInt((cur.heavy ? 26 : 14) * fx), (cur.heavy ? 1.4f : 1f) * fx);
+                ProtoFx.Blast(hitAt, (cur.heavy ? 2f : 1.2f) * fx, Color.white, 0.08f);
                 any = true;
+                big |= wasBroken || broke;
             }
-            if (any) game.HitStop(cur.heavy ? 0.12f : 0.06f);
+            // ヒットストップ(画面は揺らさない)。崩した・崩れた敵を斬ったときは少し長く
+            if (any) game.HitStop((cur.heavy ? 0.12f : 0.06f) + (big ? 0.04f : 0f));
         }
 
         // ───────── 被弾 ─────────

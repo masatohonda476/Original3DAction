@@ -14,6 +14,8 @@ namespace MeleeDuel
     /// ステージ(武装あり、DuelArms):R1 / L1 はその手の武装を使う(剣なら攻撃、盾なら押している間ガード、手の銃なら撃つ)。
     ///   技は剣ごとの表(DuelWeapon.moves → DuelMoveSet)。強攻撃(△+R1/L1)・回避斬りは押したボタンの手の剣で出す。
     ///   ガードの値は構えている盾のもの。盾がなければガードできない。近接攻撃の間と回避の間は撃てない(CanShoot)。
+    ///   両手の近接:R1 で連撃、L1 で別の技(回避の後も R1 は回避斬り、L1 は別の技)、△+R1/L1 で強攻撃。右手のクリップで振り、左右反転しない。
+    ///   両手の銃・砲は DuelArms が撃つ(R1 が主の撃ち方、L1 が別の撃ち方)。両手持ちには盾がないのでガードできない。
     /// </summary>
     public class DuelPlayer : DuelFighter
     {
@@ -119,6 +121,8 @@ namespace MeleeDuel
         DuelSwing cur;
         /// <summary>今の攻撃を振っている手(0=右 / 1=左)と、攻撃ボタンを押した手。</summary>
         int atkHand, pressHand;
+        /// <summary>今の攻撃を左右反転して振るか(左手の片手の剣。両手の近接は反転しない)。</summary>
+        bool atkMirror;
         /// <summary>構えている盾(部屋のモードは null で、素のガードの値)と、その手(0=右 / 1=左)。</summary>
         DuelWeapon guardShield;
         int guardHand = 1;
@@ -513,13 +517,16 @@ namespace MeleeDuel
         {
             if (Arms == null) return hand == 0 ? DuelWeapon.BaseSword : null;
             var w = Arms.Hand(hand);
-            return w != null && w.kind == DuelKind.Sword ? w : null;
+            return w != null && w.IsBlade ? w : null;   // 両手の近接は R1 でも L1 でも振る
         }
 
-        /// <summary>その手の剣の技の表(剣がなければ素の剣の表)。</summary>
-        DuelSwing[] LightOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).LightMoves;
+        /// <summary>
+        /// その手(ボタン)の剣の技の表(剣がなければ素の剣の表)。両手の近接は、R1 が連撃、L1 が別の技(回避の後の L1 も別の技)。
+        /// 強攻撃(△+R1/L1)はどちらのボタンでも同じ表。
+        /// </summary>
+        DuelSwing[] LightOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).LightFor(hand);
         DuelSwing[] HeavyOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).HeavyMoves;
-        DuelSwing DodgeOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).DodgeMove;
+        DuelSwing DodgeOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).DodgeFor(hand);
 
         bool TryAttack(float now)
         {
@@ -601,6 +608,8 @@ namespace MeleeDuel
 
         void StartAttack(DuelSwing m)
         {
+            // 左手の片手の剣だけ左右反転して振る(両手の近接は L1 の技も右手のクリップのまま、両手で振る)
+            atkMirror = atkHand == 1 && SwordIn(1) is not { IsTwoHand: true };
             m = Armed(m, atkHand);
             Energy -= m.cost;   // 足りなければマイナスになり、その分だけ回復を待つ
             energyUsedAt = Time.time;
@@ -654,10 +663,13 @@ namespace MeleeDuel
                     {
                         // 押した手で次を振る(両手に剣なら、R1/L1 を交互に押すと左右の剣で交互に振る)
                         bool sameHand = pressHand == atkHand;
+                        // 両手の近接は R1/L1 で同じ武装(強攻撃の段は、ボタンが替わっても続ける)
+                        bool sameBlade = sameHand || (SwordIn(atkHand) is { IsTwoHand: true } tw && SwordIn(pressHand) == tw);
                         atkHand = pressHand;
-                        // △+攻撃:強攻撃。同じ手の強攻撃の後なら次の段、それ以外は1段目
-                        if (pressHeavy) { StartHeavy(cur.heavy && sameHand ? heavyStep + 1 : 0); return Vector3.zero; }
+                        // △+攻撃:強攻撃。同じ剣の強攻撃の後なら次の段、それ以外は1段目
+                        if (pressHeavy) { StartHeavy(cur.heavy && sameBlade ? heavyStep + 1 : 0); return Vector3.zero; }
                         // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後・手が替わったら、その剣の1段目から
+                        // (両手の近接は R1 の連撃と L1 の技が別の表なので、ボタンが替われば替えた側の1段目から)
                         var light = LightOf(atkHand);
                         if (!sameHand) combo = 0;
                         combo = combo % light.Length + 1;
@@ -793,7 +805,7 @@ namespace MeleeDuel
                 {
                     // 技ごとの横のひねり・前傾・沈み(武器ごとの振り方の違い)。戻りで0へ。左手で振るときはひねりを左右反転
                     float a = phase == 0 ? Mathf.Clamp01(stateT / cur.windup) : phase == 1 ? Mathf.Clamp01(stateT / cur.active) : Mathf.Clamp01(stateT / cur.recover);
-                    float side = atkHand == 1 ? -1f : 1f;
+                    float side = atkMirror ? -1f : 1f;
                     tTwist = side * (phase == 0 ? Mathf.Lerp(cur.twist0, cur.twist1, a) : phase == 1 ? Mathf.Lerp(cur.twist1, cur.twist2, a) : Mathf.Lerp(cur.twist2, 0f, a));
                     tLean += phase == 0 ? Mathf.Lerp(cur.lean0, cur.lean1, a) : phase == 1 ? Mathf.Lerp(cur.lean1, cur.lean2, a) : Mathf.Lerp(cur.lean2, 0f, a);
                     tLift = phase == 0 ? 0f : phase == 1 ? -cur.drop * a : -cur.drop * (1f - a);
@@ -822,7 +834,7 @@ namespace MeleeDuel
             BodyOffset(tLean, tTwist, tLift, rate, dt, tRoll);
 
             // 斬撃クリップ:左手で振るときは左右反転のクリップ(あれば)
-            string clip = atkHand == 1 && rig != null && rig.Has(MechRig.AttackL) ? MechRig.AttackL : MechRig.Attack;
+            string clip = atkMirror && rig != null && rig.Has(MechRig.AttackL) ? MechRig.AttackL : MechRig.Attack;
             switch (Current)
             {
                 case State.Attack:
@@ -848,8 +860,8 @@ namespace MeleeDuel
             }
             float sp = new Vector3(vel.x, 0f, vel.z).magnitude;
             if (Dashing || Altitude > 1.5f) { Pose(MechRig.Dash, 0f, 12f); return; }   // ブースト移動中・空中
-            // 右手の銃を撃った直後で止まっていれば、右腕を前に出した射撃の構え(左手用の構えのクリップはないので右手だけ)
-            if (sp <= 0.5f && Arms != null && Arms.Hand(0) is { kind: DuelKind.HandGun } && Arms.ShotRecently(DuelSlot.RightHand, 0.4f) && rig != null && rig.Has(MechRig.Aim))
+            // 右手の銃(両手の銃・砲も)を撃った直後・L1 を溜めている間に止まっていれば、右腕を前に出した射撃の構え(左手用の構えのクリップはないので右手だけ)
+            if (sp <= 0.5f && Arms != null && Arms.AimPose(0.4f) && rig != null && rig.Has(MechRig.Aim))
             {
                 Pose(MechRig.Aim, 0f, 20f);
                 return;

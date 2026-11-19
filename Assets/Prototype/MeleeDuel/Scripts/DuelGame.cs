@@ -338,6 +338,9 @@ namespace MeleeDuel
             {
                 DrawArms(player.Arms, x, SH - 118f - ArmRows * 21f - 10f);
                 if (!equipOpen) DrawPickup(player.Arms);
+                // 両手の銃・砲の溜め撃ち:画面の中央の少し下に溜まり具合(溜まったら白)
+                float c = player.Arms.Charge01;
+                if (c > 0f && !equipOpen) Bar(new Rect(SW / 2f - 60f, SH * 0.5f + 46f, 120f, 6f), c, c >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
             }
 
             // ロックオンの印:敵の胸の上のほうに、目立ちすぎない細い白の十字
@@ -493,9 +496,9 @@ namespace MeleeDuel
         readonly string[] armsHead = new string[ArmRows], armsBody = new string[ArmRows];
         readonly (DuelWeapon w, int mag, int reload, ProtoInput.Device dev, bool set)[] armsKey = new (DuelWeapon, int, int, ProtoInput.Device, bool)[ArmRows];
         (DuelLoot loot, DuelLoot choosing, DuelWeapon a, DuelWeapon b, ProtoInput.Device dev) pickupKey;
-        readonly string[] pickupLines = new string[3];
+        readonly string[] pickupLines = new string[4];
         int pickupLineCount;
-        (ProtoInput.Device dev, bool arms, bool set) helpKey;
+        (ProtoInput.Device dev, bool arms, DuelWeapon two) helpKey;
         string helpText;
 
         /// <summary>その所を使うボタンの名前(背中はなし)。</summary>
@@ -511,6 +514,16 @@ namespace MeleeDuel
         /// <summary>その所の今の武装の名前(空きは「なし」)。</summary>
         static string CurName(DuelWeapon w) => w == null ? "なし" : w.name + "〈" + w.RarityName + "〉";
 
+        /// <summary>両手持ちの技の一行:「R1 連撃3段  L1 突進斬り  △+R1/L1 強攻撃」(射撃は R1 と L1 の撃ち方)。</summary>
+        static string TwoHandMoves(DuelWeapon w)
+        {
+            string r1 = SlotButton(DuelSlot.RightHand), l1 = SlotButton(DuelSlot.LeftHand);
+            if (w.IsBlade)
+                return $"{r1} {w.MainMoveName}  {l1} {w.altMove}  {ProtoInput.L(ProtoInput.Btn.Aim)}+{r1}/{l1} 強攻撃  回避の後に {r1} 回避斬り・{l1} {w.altMove}  (ガードなし)";
+            string alt = w.alt is { charge: > 0f } ? $"{w.altMove}(押して溜め、離して撃つ)" : w.altMove;
+            return $"{r1} {w.MainMoveName}  {l1} {alt}  (ガードなし)";
+        }
+
         /// <summary>
         /// 左下(HP の上):付けている武装。右手・左手・背中・右肩・左肩の5行(使うボタンつき)。空きは灰色。
         /// 銃は弾倉・リロード、砲・ミサイルは装填の残りも出す。
@@ -522,7 +535,9 @@ namespace MeleeDuel
             {
                 var slot = (DuelSlot)i;
                 var w = arms.Get(slot);
-                bool gun = w != null && w.IsGun;
+                // 両手持ちの左手の行:右手の行と同じ武装の続き(L1 の技を出す。弾倉・装填は右手の行)
+                bool twoL = slot == DuelSlot.LeftHand && w is { IsTwoHand: true };
+                bool gun = w != null && w.IsGun && !twoL;
                 int mag = gun ? arms.MagLeft(slot) : 0;
                 int reload = gun ? Mathf.CeilToInt(arms.ReloadLeft(slot) * 10f) : 0;
                 var key = (w, mag, reload, dev, true);
@@ -531,7 +546,8 @@ namespace MeleeDuel
                     armsKey[i] = key;
                     string btn = SlotButton(slot);
                     armsHead[i] = DuelWeapon.SlotName(slot) + (btn.Length > 0 ? " " + btn : "");
-                    string body = w == null ? "なし" : w == DuelWeapon.BaseSword ? "素の剣" : w.name + "〈" + w.RarityName + "〉";
+                    string body = w == null ? "なし" : w == DuelWeapon.BaseSword ? "素の剣" : twoL ? "└ 両手持ち  L1 " + w.altMove
+                        : (w.IsTwoHand ? "┌ " : "") + w.name + "〈" + w.RarityName + "〉";
                     if (gun) body += reload > 0 ? $"  リロード {reload / 10f:0.0}秒" : mag >= 0 ? $"  {mag}/{w.magazine}" : "  弾数∞";
                     armsBody[i] = body;
                 }
@@ -540,11 +556,19 @@ namespace MeleeDuel
                 GUI.color = w == null ? new Color(0.6f, 0.6f, 0.6f) : w.Color;
                 GUI.Label(new Rect(x + 120f, y + i * 21f, 330f, 22f), armsBody[i], small);
                 GUI.color = Color.white;
-                if (w != null && w.kind == DuelKind.ShoulderHeavy)
+                if (w != null && w.Explosive && !twoL)
                 {
                     // 装填:撃てるまでの残りを短いバーで
                     float k = arms.Cooldown01(slot);
                     Bar(new Rect(x + 370f, y + i * 21f + 8f, 60f, 6f), 1f - k, k > 0f ? new Color(0.6f, 0.6f, 0.6f) : w.Color);
+                }
+                else if (twoL && arms.AltFire != null)
+                {
+                    // L1 の撃ち方:溜めている間は溜まり具合(溜まったら白)、それ以外は次に撃てるまで
+                    float c = arms.Charge01;
+                    float k = arms.AltCooldown01;
+                    if (c > 0f) Bar(new Rect(x + 370f, y + i * 21f + 8f, 60f, 6f), c, c >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
+                    else Bar(new Rect(x + 370f, y + i * 21f + 8f, 60f, 6f), 1f - k, k > 0f ? new Color(0.6f, 0.6f, 0.6f) : w.Color);
                 }
             }
         }
@@ -569,7 +593,31 @@ namespace MeleeDuel
                 string name = "<color=#" + col + ">" + w.name + "〈" + w.RarityName + "〉</color>";
                 string mode = w.FireMode.Length > 0 ? "・" + w.FireMode : "";
                 string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
-                if (to.Length == 1)
+                bool curTwo = a is { IsTwoHand: true };   // 今、両手持ちを付けている(右手と左手に同じ武装)
+                if (w.IsTwoHand)
+                {
+                    // 両手持ち:付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、今の右手・左手の武装は両方とも置かれる
+                    string r1 = SlotButton(DuelSlot.RightHand), l1 = SlotButton(DuelSlot.LeftHand);
+                    var cmp = DuelWeapon.SameFamily(a, w) ? a : DuelWeapon.SameFamily(b, w) ? b : null;
+                    if (arms.Choosing == null)
+                    {
+                        pickupLines[0] = equip + " 拾う:" + name + "(" + DuelWeapon.KindName(w.kind) + "・両手持ち)  ― " + w.feel;
+                        pickupLines[1] = TwoHandMoves(w);
+                        pickupLines[2] = DuelWeapon.CompareText(w, cmp);
+                        pickupLineCount = 3;
+                    }
+                    else
+                    {
+                        string off = curTwo ? "両手の" + a.name : "右手の" + (a != null ? a.name : "なし") + "・左手の" + (b != null ? b.name : "なし");
+                        pickupLines[0] = name + " を両手に付ける?  [" + r1 + "] / [" + l1 + "] どちらでも両手に付く    " + equip + " やめる";
+                        pickupLines[1] = (a == null && b == null ? "<color=#AAAAAA>両手とも空いている</color>"
+                                             : "<color=#FFB070>" + off + " は足もとに置かれる(拾い直せる)</color>");
+                        pickupLines[2] = (cmp != null ? (cmp == a ? (curTwo ? "両手の" : "右手の") : "左手の") + cmp.name + "と比べて  " : "") + DuelWeapon.CompareText(w, cmp);
+                        pickupLines[3] = TwoHandMoves(w);
+                        pickupLineCount = 4;
+                    }
+                }
+                else if (to.Length == 1)
                 {
                     pickupLines[0] = equip + " " + DuelWeapon.SlotName(to[0]) + "に付ける:" + name + "  ― " + w.feel + "(今:" + CurName(a) + ")";
                     pickupLines[1] = DuelWeapon.CompareText(w, a);
@@ -588,10 +636,17 @@ namespace MeleeDuel
                     pickupLines[1] = "[" + SlotButton(to[0]) + "] " + DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
                     pickupLines[2] = "[" + SlotButton(to[1]) + "] " + DuelWeapon.SlotName(to[1]) + "と比べて  " + DuelWeapon.CompareText(w, b);
                     pickupLineCount = 3;
+                    if (curTwo && w.IsHand)
+                    {
+                        // 両手持ちのまま片手の武装を付ける:両手持ちは外れて置かれ、もう片方の手は空になる
+                        pickupLines[3] = "<color=#FFB070>両手の" + a.name + " は外れて足もとに置かれ、もう片方の手は空になる</color>";
+                        pickupLineCount = 4;
+                    }
                 }
             }
-            // 左下の武装の欄(5行)に重ならない高さ
-            float h = 6f + 26f * pickupLineCount, wd = 1200f, bx = (SW - wd) / 2f, by = SH * 0.56f;
+            // 左下の武装の欄(5行)に重ならない高さ(行が多いときは上へずらす)
+            float h = 6f + 26f * pickupLineCount, wd = 1200f, bx = (SW - wd) / 2f;
+            float by = Mathf.Min(SH * 0.56f, SH - 118f - ArmRows * 21f - 10f - h);
             GUI.color = new Color(0f, 0f, 0f, arms.Choosing != null ? 0.7f : 0.55f);
             GUI.DrawTexture(new Rect(bx, by, wd, h), Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -604,7 +659,8 @@ namespace MeleeDuel
         {
             var dev = ProtoInput.Current;
             bool arms = player != null && player.Arms != null;
-            var key = (dev, arms, true);
+            var two = arms && player.Arms.TwoHanded ? player.Arms.Get(DuelSlot.RightHand) : null;
+            var key = (dev, arms, two);
             if (helpKey == key && helpText != null) return helpText;
             helpKey = key;
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
@@ -612,9 +668,19 @@ namespace MeleeDuel
             var sb = new System.Text.StringBuilder();
             if (arms)
             {
-                // ステージ:手のボタンはその手の武装(剣=攻撃 / 盾=ガード / 銃=射撃)
-                sb.Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 右手/左手の武装");
-                sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 強攻撃");
+                if (two != null)
+                {
+                    // 両手持ち:R1 が主の技、L1 が別の技
+                    sb.Append(B(ProtoInput.Btn.R1)).Append(' ').Append(two.MainMoveName);
+                    sb.Append("  ").Append(B(ProtoInput.Btn.L1)).Append(' ').Append(two.altMove).Append(two.alt is { charge: > 0f } ? "(溜めて離す)" : "");
+                    if (two.IsBlade) sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 強攻撃");
+                }
+                else
+                {
+                    // ステージ:手のボタンはその手の武装(剣=攻撃 / 盾=ガード / 銃=射撃)
+                    sb.Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 右手/左手の武装");
+                    sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 強攻撃");
+                }
                 sb.Append("  ").Append(B(ProtoInput.Btn.R2)).Append('/').Append(B(ProtoInput.Btn.L2)).Append(" 右肩/左肩");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
@@ -645,7 +711,7 @@ namespace MeleeDuel
         ProtoInput.Device viewKeyDev;
         int viewKeyBlock;
         bool viewBuilt;
-        string viewFoot, viewDropHint, viewDropConfirm;
+        string viewFoot, viewDropHint, viewDropConfirm, viewDropConfirm2;
 
         /// <summary>
         /// 画面の中央:5つの所それぞれの武装(名前・レア度の色・種類・一言)、主な性能(拾うときの比較と同じ値)、使うボタン。空きは「なし」。
@@ -672,11 +738,15 @@ namespace MeleeDuel
 
             float y = by + pad + titleH;
             float tx = bx + pad + headW, tw = wd - pad * 2f - headW;
+            // 両手持ちは右手・左手の2行で1つ:どちらを選んでも2行とも選んでいる帯にし、捨てる確認も2行とも
+            bool two = arms.TwoHanded;
+            bool selTwo = two && viewSel <= (int)DuelSlot.LeftHand;
             for (int i = 0; i < ArmRows; i++)
             {
                 var w = arms.Get((DuelSlot)i);
-                bool armed = i == viewSel && dropArmed && w != null;
-                if (i == viewSel)
+                bool sel = i == viewSel || (selTwo && i <= (int)DuelSlot.LeftHand);
+                bool armed = sel && dropArmed && w != null;
+                if (sel)
                 {
                     // 選んでいる所:帯と左の縦線(捨てる確認の途中は赤)
                     GUI.color = armed ? new Color(0.9f, 0.25f, 0.2f, 0.28f) : new Color(1f, 1f, 1f, 0.09f);
@@ -684,11 +754,11 @@ namespace MeleeDuel
                     GUI.color = armed ? new Color(1f, 0.4f, 0.3f) : new Color(0.45f, 0.8f, 1f);
                     GUI.DrawTexture(new Rect(bx + pad - 8f, y + 1f, 4f, rowH - 1f), Texture2D.whiteTexture);
                     GUI.color = Color.white;
-                    if (w != null && block == 0 && !armed) GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewDropHint, richRight);
+                    if (w != null && block == 0 && !armed && i == viewSel) GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewDropHint, richRight);
                 }
-                // 区切りの細い線
+                // 区切りの細い線(両手持ちの右手と左手の間は引かない)
                 GUI.color = new Color(1f, 1f, 1f, 0.12f);
-                GUI.DrawTexture(new Rect(bx + pad, y, wd - pad * 2f, 1f), Texture2D.whiteTexture);
+                if (!(two && i == (int)DuelSlot.LeftHand)) GUI.DrawTexture(new Rect(bx + pad, y, wd - pad * 2f, 1f), Texture2D.whiteTexture);
                 GUI.color = new Color(1f, 1f, 1f, 0.8f);
                 GUI.Label(new Rect(bx + pad, y + 6f, headW, 26f), viewHead[i], viewHeadStyle);
                 GUI.color = Color.white;
@@ -696,7 +766,7 @@ namespace MeleeDuel
                 if (w != null) GUI.Label(new Rect(tx, y + 29f, tw, 22f), viewStats[i], richSmall);
                 // 3行目:使うボタン(捨てる確認の途中は、その案内に替える)
                 GUI.color = armed ? Color.white : new Color(1f, 1f, 1f, 0.6f);
-                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? viewDropConfirm : viewUse[i], richSmall);
+                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? (selTwo ? viewDropConfirm2 : viewDropConfirm) : viewUse[i], richSmall);
                 GUI.color = Color.white;
                 y += rowH;
             }
@@ -735,12 +805,24 @@ namespace MeleeDuel
                 }
                 string col = ColorUtility.ToHtmlStringRGB(w.Color);
                 string name = w == DuelWeapon.BaseSword ? w.name : w.name + "〈" + w.RarityName + "〉";
-                viewName[i] = "<size=19><b><color=#" + col + ">" + name + "</color></b></size>   <color=#C8C8C8>" + DuelWeapon.KindName(w.kind)
+                if (w.IsTwoHand && slot == DuelSlot.LeftHand)
+                {
+                    // 両手持ちの左手:右手の行の武装の続き(1つの武装が2つの所にまたがる)。L1 の技を出す
+                    string r1 = SlotButton(DuelSlot.RightHand);
+                    viewName[i] = "<color=#" + col + ">┗ 両手持ち(" + r1 + " の " + name + " と合わせて1つ)</color>";
+                    viewStats[i] = AltStatLine(w);
+                    viewUse[i] = w.IsBlade ? $"{btn} {w.altMove}(回避の後も)  {aim}+{btn} 強攻撃  ガードはできない"
+                        : $"{btn} {w.altMove}" + (w.alt is { charge: > 0f } ? "(押して溜め、離して撃つ)" : "") + "  ガードはできない";
+                    continue;
+                }
+                viewName[i] = "<size=19><b><color=#" + col + ">" + (w.IsTwoHand ? "┏ " : "") + name + "</color></b></size>   <color=#C8C8C8>" + DuelWeapon.KindName(w.kind)
                               + (w.feel.Length > 0 ? " ― " + w.feel : "") + "</color>";
                 viewStats[i] = StatLine(w);
                 viewUse[i] = w.kind switch
                 {
                     DuelKind.Sword => $"{btn} 攻撃(連撃{w.LightMoves.Length}段)  {aim}+{btn} 強攻撃  回避の後に {btn} 回避斬り",
+                    DuelKind.TwoHandMelee => $"{btn} 連撃{w.LightMoves.Length}段  {aim}+{btn} 強攻撃  回避の後に {btn} 回避斬り",
+                    DuelKind.TwoHandGun => $"{btn} {w.MainMoveName}({w.FireMode})",
                     DuelKind.Shield => $"{btn} 押している間ガード",
                     DuelKind.Back => "ボタンなし(付けているだけで効く。倍率は素の性能に掛かる)",
                     _ => $"{btn} {w.FireMode}",
@@ -750,6 +832,7 @@ namespace MeleeDuel
             string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Esc" : ProtoInput.L(ProtoInput.Btn.Back);
             viewDropHint = $"<color=#AAAAAA>{drop} 床に捨てる</color>";
             viewDropConfirm = $"<color=#FF8A70><b>もう一度 {drop} で足もとに捨てる</b>  {back} やめる</color>";
+            viewDropConfirm2 = $"<color=#FF8A70><b>もう一度 {drop} で両手の武装を足もとに捨てる(両手が空く)</b>  {back} やめる</color>";
             string sel = kb ? "↑↓/W・S" : "↑↓";
             viewFoot = block switch
             {
@@ -759,12 +842,31 @@ namespace MeleeDuel
             };
         }
 
-        /// <summary>主な性能の1行。拾うときの比較(DuelWeapon.Stats)と同じ値に、銃は連射・リロードを足す。</summary>
+        /// <summary>両手持ちの L1 の技の1行(近接は一振りの威力・届く範囲・幅・EN、射撃は撃ち方)。</summary>
+        static string AltStatLine(DuelWeapon w)
+        {
+            if (!w.IsBlade) return "L1 " + w.altMove + ":" + w.AltShotText();
+            var alt = w.AltMoves;
+            if (alt == null) return "";
+            // 「L1 突き → 斬り上げ:威力 27(±30°・15.5m) → 31(±80°・14.7m)  EN 14」
+            var sb = new System.Text.StringBuilder("L1 ").Append(w.altMove).Append(":威力 ");
+            for (int k = 0; k < alt.Length; k++)
+            {
+                var m = alt[k];
+                if (k > 0) sb.Append(" → ");
+                sb.Append($"{m.damage * w.damageMul:0}(±{Mathf.Min(180f, m.arc + w.arcAdd):0}°・{m.reach * w.reachMul:0.#}m)");
+            }
+            sb.Append($"  EN {alt[0].cost:0}");
+            return sb.ToString();
+        }
+
+        /// <summary>主な性能の1行。拾うときの比較(DuelWeapon.Stats)と同じ値に、銃は連射・リロードを足す(両手持ちの L1 は左手の行に出すので除く)。</summary>
         static string StatLine(DuelWeapon w)
         {
             var sb = new System.Text.StringBuilder();
             foreach (var s in DuelWeapon.Stats(w))
             {
+                if (w.IsTwoHand && s.name is "L1" or "L1技") continue;
                 if (sb.Length > 0) sb.Append("    ");
                 if (s.name == "弾倉" && w.magazine <= 0) sb.Append("弾切れなし");
                 else sb.Append(s.name).Append(' ').Append(s.text);

@@ -814,7 +814,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// そのレア度の武装から1つ選ぶ(なければ近いレア度から)。空いている所に付けられる武装を出やすく(emptySlotWeight 倍)、
-        /// 今付けているのと同じ武装は出にくく(sameWeaponWeight 倍)する。
+        /// 今付けているのと同じ武装は出にくく(sameWeaponWeight 倍)する。武装ごとの出やすさ(DuelWeapon.dropWeight。両手持ちは少なめ)も掛ける。
         /// </summary>
         DuelWeapon PickWeapon(int rarity)
         {
@@ -838,7 +838,10 @@ namespace MeleeDuel
             return null;
         }
 
-        float Weight(DuelWeapon w, DuelArms arms)
+        float Weight(DuelWeapon w, DuelArms arms) => Mathf.Max(0f, w.dropWeight) * SlotWeight(w, arms);
+
+        /// <summary>空いている所に付けられるなら出やすく、今付けているのと同じなら出にくく(両手持ちは、どちらかの手が空いていれば空きとみなす)。</summary>
+        float SlotWeight(DuelWeapon w, DuelArms arms)
         {
             if (arms == null) return 1f;
             bool empty = false, same = false;

@@ -17,12 +17,19 @@ namespace MeleeDuel
     ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
     ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
     ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。在庫はない。装備の確認の画面から、足もとの床に捨てられる(Drop)。
-    /// 撃墜されても武装は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。右手は素の剣、左手は空に戻る)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
+    /// 撃墜されても武装は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。両手持ちも消え、右手は素の剣、左手は空に戻る)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
+    /// 両手持ち(両手の近接・両手の銃・砲):右手と左手の両方の所に同じ武装を入れる。R1 が主の技、L1 が別の技(近接は別の振り、射撃は別の撃ち方)。
+    ///   付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、それまでの右手・左手の武装は拾った所に置く(素の剣も)。
+    ///   両手持ちのまま片手の武装を付けると、両手持ちは外れて置かれ、もう片方の手は空になる。捨てると両手が空く。盾がないのでガードはできない。
+    ///   両手の銃・砲の撃つ状態は右手の所で持ち、L1 の撃ち方は別の状態(AltIndex)で持つ。溜め撃ちは L1 を押して溜め、溜まってから離すと撃つ。
     /// 毎フレームの処理は DuelPlayer.Update の始めに Tick() で呼ぶ(ボタンの横取りを、自機が読むより先に決めるため)。
     /// </summary>
     public class DuelArms : MonoBehaviour
     {
         const int SlotCount = 5;
+        /// <summary>撃つ状態の6つ目:両手の銃・砲の L1 の撃ち方。</summary>
+        const int AltIndex = 5, StateCount = 6;
+        const int R = (int)DuelSlot.RightHand, L = (int)DuelSlot.LeftHand;
         /// <summary>押すたびに撃つ武装で、撃てない間に押したのを覚えておく秒数。</summary>
         const float PressBuffer = 0.2f;
 
@@ -32,10 +39,12 @@ namespace MeleeDuel
         readonly DuelWeapon[] slots = new DuelWeapon[SlotCount];
         readonly Transform[] visuals = new Transform[SlotCount];
         Vector3 swordBaseScale = Vector3.one, swordLBaseScale = Vector3.one;
-        // 撃つ武装の、所ごとの状態
-        readonly float[] cd = new float[SlotCount], cdMax = new float[SlotCount], reload = new float[SlotCount];
-        readonly float[] lastFire = new float[SlotCount], pressedAt = new float[SlotCount];
-        readonly int[] mag = new int[SlotCount];
+        // 撃つ武装の、所ごとの状態(6つ目は両手の銃・砲の L1 の撃ち方)
+        readonly float[] cd = new float[StateCount], cdMax = new float[StateCount], reload = new float[StateCount];
+        readonly float[] lastFire = new float[StateCount], pressedAt = new float[StateCount];
+        readonly int[] mag = new int[StateCount];
+        /// <summary>L1 の溜め撃ちを溜めている秒数(0なら溜めていない)。</summary>
+        float charge;
         /// <summary>ボタン(0=R1 1=L1 2=R2 3=L2)を、離すまで使わない(付け先を決めたボタンが、そのまま攻撃・射撃にならないように)。</summary>
         readonly bool[] suppress = new bool[4];
 
@@ -51,7 +60,7 @@ namespace MeleeDuel
             rig = r;
             if (rig != null && rig.sword != null) swordBaseScale = rig.sword.localScale;
             if (rig != null && rig.swordL != null) swordLBaseScale = rig.swordL.localScale;
-            for (int i = 0; i < SlotCount; i++) lastFire[i] = pressedAt[i] = -10f;
+            for (int i = 0; i < StateCount; i++) lastFire[i] = pressedAt[i] = -10f;
             slots[(int)DuelSlot.RightHand] = DuelWeapon.BaseSword;
             for (int i = 0; i < SlotCount; i++) Refresh((DuelSlot)i);
         }
@@ -61,8 +70,24 @@ namespace MeleeDuel
         // ───────── 自機から見る値 ─────────
 
         /// <summary>その手(0=右 / 1=左)の武装(空なら null)。</summary>
-        public DuelWeapon Hand(int hand) => slots[hand == 0 ? (int)DuelSlot.RightHand : (int)DuelSlot.LeftHand];
-        public bool IsSword(int hand) => Hand(hand) is { kind: DuelKind.Sword };
+        public DuelWeapon Hand(int hand) => slots[hand == 0 ? R : L];
+        /// <summary>その手で振れる(片手の剣、または両手の近接。両手の近接は R1 も L1 も振る)。</summary>
+        public bool IsSword(int hand) => Hand(hand) is { IsBlade: true };
+        /// <summary>両手持ちを付けている(右手と左手に同じ武装)。</summary>
+        public bool TwoHanded => slots[R] is { IsTwoHand: true };
+        /// <summary>付けている両手の銃・砲(なければ null)。</summary>
+        DuelWeapon TwoHandGun => slots[R] is { kind: DuelKind.TwoHandGun } w ? w : null;
+        /// <summary>両手の銃・砲の L1 の撃ち方(なければ null)。</summary>
+        public DuelWeapon AltFire => TwoHandGun?.alt;
+        /// <summary>撃つ状態の番号の武装(0〜4 は所、5 は両手の銃・砲の L1 の撃ち方)。</summary>
+        DuelWeapon StateWeapon(int i) => i < SlotCount ? slots[i] : AltFire;
+        /// <summary>L1 の溜め撃ちの溜まり具合(0〜1。溜め撃ちでなければ 0)。</summary>
+        public float Charge01 => AltFire is { charge: > 0f } a ? Mathf.Clamp01(charge / a.charge) : 0f;
+        /// <summary>L1 の撃ち方が次に撃てるまでの残り(0〜1。0で撃てる)。</summary>
+        public float AltCooldown01 => AltFire != null && cd[AltIndex] > 0f ? Mathf.Clamp01(cd[AltIndex] / Mathf.Max(0.01f, cdMax[AltIndex])) : 0f;
+        /// <summary>右手の銃(手の銃・両手の銃・砲)を最近撃ったか、L1 を溜めている(射撃の構えの見た目用)。</summary>
+        public bool AimPose(float sec) => slots[R] is { kind: DuelKind.HandGun or DuelKind.TwoHandGun }
+                                           && (ShotRecently(DuelSlot.RightHand, sec) || (TwoHandGun != null && (Time.time - lastFire[AltIndex] < sec || charge > 0f)));
 
         public DuelWeapon BackW => slots[(int)DuelSlot.Back];
         /// <summary>走りの倍率:スラスター × 持っている盾の重さ。</summary>
@@ -169,11 +194,12 @@ namespace MeleeDuel
         public void Tick()
         {
             float dt = Time.deltaTime, now = Time.time;
-            for (int i = 0; i < SlotCount; i++)
+            bool two = TwoHanded;
+            for (int i = 0; i < StateCount; i++)
             {
                 cd[i] -= dt;
-                var w = slots[i];
-                if (w == null || !w.IsGun) continue;
+                var w = StateWeapon(i);
+                if (w == null || !w.IsGun || (i == L && two)) continue;   // 両手持ちの状態は右手の所で持つ
                 if (reload[i] > 0f)
                 {
                     reload[i] -= dt;
@@ -188,6 +214,7 @@ namespace MeleeDuel
             if (player == null || player.Dead)
             {
                 Nearby = null;
+                charge = 0f;
                 if (Choosing != null) EndChoice();
                 return;
             }
@@ -200,25 +227,75 @@ namespace MeleeDuel
             {
                 var w = slots[i];
                 if (w == null || !w.IsShooter) continue;
+                if (i == L && w.IsTwoHand) continue;   // 両手の銃・砲の L1 は別の撃ち方(TickAlt)
                 var s = (DuelSlot)i;
                 if (Pressed(s)) pressedAt[i] = now;
                 if (!can) pressedAt[i] = -10f;   // 斬っている間・回避の間に押したのは覚えておかない
-                bool want = can && (w.hold ? Held(s) : now - pressedAt[i] <= PressBuffer);
+                // 両手の銃・砲は、L1 を溜めている間は主の撃ち方を撃たない
+                bool want = can && !(w.IsTwoHand && charge > 0f) && (w.hold ? Held(s) : now - pressedAt[i] <= PressBuffer);
                 if (!want)
                 {
                     cd[i] = Mathf.Max(cd[i], 0f);   // 撃っていない間に端数を溜めない(押し始めにまとめて出ないように)
                     continue;
                 }
-                bool fired = w.kind == DuelKind.ShoulderHeavy ? FireHeavy(w, s) : FireGun(w, s);
-                if (fired) pressedAt[i] = -10f;
+                if (Fire(w, i, s)) pressedAt[i] = -10f;
             }
+            TickAlt(can, now, dt);
+        }
+
+        /// <summary>撃つ(爆発なら砲・ミサイル、それ以外は銃)。i は撃つ状態の番号、at は撃ち出す所。撃ったら true。</summary>
+        bool Fire(DuelWeapon w, int i, DuelSlot at) => w.Explosive ? FireHeavy(w, i, at) : FireGun(w, i, at);
+
+        /// <summary>
+        /// 両手の銃・砲の L1 の撃ち方。溜め撃ち(charge > 0)は、撃てる間に L1 を押している間溜め、溜まってから離すと撃つ
+        /// (溜まる前に離す・撃てない状態になると溜めをやめる。撃った後の間隔の間は溜め始めない)。溜め撃ちでなければ主の撃ち方と同じ決まり。
+        /// </summary>
+        void TickAlt(bool can, float now, float dt)
+        {
+            var a = AltFire;
+            const int i = AltIndex;
+            if (a == null)
+            {
+                charge = 0f;
+                return;
+            }
+            if (a.charge > 0f)
+            {
+                if (!can || Choosing != null)   // 付け先を選び始めたら溜めをやめる(ボタンが選ぶ側に回り、離したことになって撃たないように)
+                {
+                    charge = 0f;
+                    return;
+                }
+                if (Held(DuelSlot.LeftHand))
+                {
+                    if (charge <= 0f && cd[i] > 0f) return;
+                    float before = charge;
+                    charge += dt;
+                    // 溜まった合図:銃口に小さな火花(画面は揺らさない)
+                    if (before < a.charge && charge >= a.charge) DuelSpark.Burst(Muzzle(DuelSlot.RightHand), player.transform.forward, new Color(1f, 0.9f, 0.6f), 10, 0.7f);
+                    return;
+                }
+                if (charge >= a.charge) Fire(a, i, DuelSlot.RightHand);
+                charge = 0f;
+                return;
+            }
+            charge = 0f;
+            if (Pressed(DuelSlot.LeftHand)) pressedAt[i] = now;
+            if (!can) pressedAt[i] = -10f;
+            bool want = can && (a.hold ? Held(DuelSlot.LeftHand) : now - pressedAt[i] <= PressBuffer);
+            if (!want)
+            {
+                cd[i] = Mathf.Max(cd[i], 0f);
+                return;
+            }
+            if (Fire(a, i, DuelSlot.RightHand)) pressedAt[i] = -10f;
         }
 
         // ───────── 付ける・外す ─────────
 
         /// <summary>
-        /// 十字右:背中の武装はそのまま付ける。手・肩の武装は付け先を選ぶ表示にする。
-        /// 選んでいる間は R1/L1(手)・R2/L2(肩)で決める。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
+        /// 十字右:背中の武装はそのまま付ける。手・肩の武装は付け先を選ぶ表示にする(両手持ちも手の武装と同じ流れ)。
+        /// 選んでいる間は R1/L1(手)・R2/L2(肩)で決める。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
         /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
         /// </summary>
         void UpdateChoice()
@@ -259,9 +336,10 @@ namespace MeleeDuel
                 if (RawHeld(b) || RawPressed(b)) suppress[b] = true;
         }
 
-        /// <summary>付け先を選ぶ表示の途中なら取り消す(装備の確認を開いたとき)。</summary>
+        /// <summary>付け先を選ぶ表示の途中なら取り消す(装備の確認を開いたとき)。L1 の溜めもやめる(閉じた後に、離したことになって撃たないように)。</summary>
         public void CancelChoice()
         {
+            charge = 0f;
             if (Choosing != null) EndChoice();
         }
 
@@ -276,37 +354,111 @@ namespace MeleeDuel
             int i = (int)slot;
             var w = slots[i];
             if (w == null || player == null || player.Dead || (game.stage != null && game.stage.Cleared)) return false;
-            slots[i] = null;
-            mag[i] = 0;
-            reload[i] = cd[i] = cdMax[i] = 0f;
-            pressedAt[i] = -10f;
-            Refresh(slot);
+            bool two = w.IsTwoHand && (i == R || i == L);
+            if (two)
+            {
+                // 両手持ち:右手・左手の両方を空ける
+                slots[R] = slots[L] = null;
+                ResetState(R);
+                ResetState(L);
+                ResetState(AltIndex);
+                charge = 0f;
+                Refresh(DuelSlot.RightHand);
+                Refresh(DuelSlot.LeftHand);
+            }
+            else
+            {
+                slots[i] = null;
+                ResetState(i);
+                Refresh(slot);
+            }
             float ang = (i - 2) * 50f;
             Vector3 off = Quaternion.Euler(0f, ang, 0f) * player.transform.forward * (player.Radius * 0.6f);
             DuelLoot.Place(w, player.transform.position + off + Vector3.up * 2f);
             if (w.kind == DuelKind.Shield) player.OnShieldsChanged(false);
-            if (w.kind == DuelKind.Sword) player.OnSwordDropped(slot == DuelSlot.RightHand ? 0 : 1);
-            game.Log($"{DuelWeapon.SlotName(slot)}の{w.name}を床に捨てた");
+            if (two && w.IsBlade)
+            {
+                player.OnSwordDropped(0);
+                player.OnSwordDropped(1);
+            }
+            else if (w.IsBlade) player.OnSwordDropped(slot == DuelSlot.RightHand ? 0 : 1);
+            game.Log(two ? $"両手の{w.name}を床に捨てた" : $"{DuelWeapon.SlotName(slot)}の{w.name}を床に捨てた");
             return true;
         }
 
-        /// <summary>落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。</summary>
+        /// <summary>撃つ状態を空に戻す(弾倉・リロード・間隔・押したことの記憶)。</summary>
+        void ResetState(int i)
+        {
+            mag[i] = 0;
+            reload[i] = cd[i] = cdMax[i] = 0f;
+            pressedAt[i] = -10f;
+        }
+
+        /// <summary>付けたばかりの撃つ状態(弾倉を満タンに、撃てるまで少し待つ)。</summary>
+        void ArmState(int i, DuelWeapon w)
+        {
+            ResetState(i);
+            if (w == null) return;
+            mag[i] = w.magazine;
+            cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
+        }
+
+        /// <summary>
+        /// 落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。
+        /// 両手持ちを付けるときは(R1/L1 のどちらで決めても)両手に付け、右手・左手の今の武装を両方置く(素の剣も。同じ武装を2つ持っていれば2つとも)。
+        /// 両手持ちのまま片手の武装を付けるときは、両手持ちを外して置き、選んだ手に付ける(もう片方の手は空になる)。
+        /// </summary>
         void Equip(DuelLoot loot, DuelSlot slot)
         {
             var w = loot.Weapon;
             int i = (int)slot;
-            var old = slots[i];
-            slots[i] = w;
+            bool hand = i == R || i == L;
+            bool shieldBefore = Hand(0) is { kind: DuelKind.Shield } || Hand(1) is { kind: DuelKind.Shield };
             Vector3 at = loot.transform.position;
             loot.Take();
-            if (old != null) DuelLoot.Place(old, at);
-            mag[i] = w.magazine;
-            reload[i] = 0f;
-            pressedAt[i] = -10f;
-            cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
-            Refresh(slot);
-            if (w.kind == DuelKind.Shield || old is { kind: DuelKind.Shield }) player.OnShieldsChanged(w.kind == DuelKind.Shield);
-            game.Log($"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");
+            charge = 0f;
+            if (hand && (w.IsTwoHand || TwoHanded))
+            {
+                var oldR = slots[R];
+                var oldL = slots[L];
+                bool oldTwo = oldR is { IsTwoHand: true };
+                slots[R] = slots[L] = null;
+                if (w.IsTwoHand) slots[R] = slots[L] = w;
+                else slots[i] = w;
+                // 外した武装を置く:1つ目は拾った所、2つ目は自機の側へ少し寄せて(重ならないように)
+                if (oldR != null) DuelLoot.Place(oldR, at);
+                if (oldL != null && !oldTwo) DuelLoot.Place(oldL, oldR != null ? Beside(at) : at);
+                ArmState(R, slots[R]);
+                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L]);
+                ArmState(AltIndex, AltFire);
+                Refresh(DuelSlot.RightHand);
+                Refresh(DuelSlot.LeftHand);
+                // 振っている途中ではない(付けるのは Free・ガードの間だけ)が、押して覚えている攻撃は忘れる
+                if (oldR is { IsBlade: true }) player.OnSwordDropped(0);
+                if (oldL is { IsBlade: true }) player.OnSwordDropped(1);
+                game.Log(w.IsTwoHand ? $"両手に{w.name}({w.RarityName})を付けた"
+                                     : $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた(両手の{oldR?.name}は外した)");
+            }
+            else
+            {
+                var old = slots[i];
+                slots[i] = w;
+                if (old != null) DuelLoot.Place(old, at);
+                ArmState(i, w);
+                Refresh(slot);
+                game.Log($"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");
+            }
+            // 盾を付けた・盾を持っていた(外れたかもしれない):ゲージと構えている盾を引き直す
+            if (w.kind == DuelKind.Shield || shieldBefore) player.OnShieldsChanged(w.kind == DuelKind.Shield);
+        }
+
+        /// <summary>at から自機の方へ少し寄せた所(2つ目の武装を置く。壁の外に出ないよう、拾えた=見通せる向きへ寄せる)。</summary>
+        Vector3 Beside(Vector3 at)
+        {
+            Vector3 d = player.transform.position - at;
+            d.y = 0f;
+            float len = d.magnitude;
+            return len < 0.5f ? at + Vector3.up * 0.5f : at + d / len * Mathf.Min(4f, len * 0.5f);
         }
 
         /// <summary>
@@ -316,15 +468,21 @@ namespace MeleeDuel
         public int LoseAll()
         {
             int n = 0;
+            var twoHand = TwoHanded ? slots[R] : null;   // 両手持ちは1つとして数える(左手の所は右手と同じ武装)
             for (int i = 0; i < SlotCount; i++)
             {
                 var w = slots[i];
                 if (w == null) continue;
                 bool baseSword = w == DuelWeapon.BaseSword;
                 if (baseSword && i == (int)DuelSlot.RightHand) continue;   // 右手の素の剣はそのまま(下で入れ直す)
+                if (i == L && w == twoHand)
+                {
+                    slots[i] = null;
+                    continue;
+                }
                 if (!baseSword) n++;
                 slots[i] = null;
-                var blade = rig == null || w.kind != DuelKind.Sword ? null : i == (int)DuelSlot.RightHand ? rig.sword : rig.swordL;
+                var blade = rig == null || !w.IsBlade ? null : i == (int)DuelSlot.RightHand ? rig.sword : rig.swordL;
                 if (blade != null)
                 {
                     // 手の剣:機体の剣は素に戻し(左手は隠し)、同じ形の刃を吹き飛ばす
@@ -334,7 +492,8 @@ namespace MeleeDuel
                 }
                 var v = visuals[i];
                 visuals[i] = null;
-                if (v != null) Fling(v);
+                if (v != null && blade != null) Destroy(v.gameObject);   // 機体の剣の柄(吹き飛ばす刃の写しに柄も入っている)
+                else if (v != null) Fling(v);
             }
             if (rig != null && rig.sword != null && n > 0)
             {
@@ -342,13 +501,9 @@ namespace MeleeDuel
                 ProtoFx.Blast(rig.sword.position, 3f, new Color(1f, 0.7f, 0.3f), 0.25f);
             }
             slots[(int)DuelSlot.RightHand] = DuelWeapon.BaseSword;
-            for (int i = 0; i < SlotCount; i++)
-            {
-                Refresh((DuelSlot)i);
-                mag[i] = 0;
-                reload[i] = cd[i] = 0f;
-                pressedAt[i] = -10f;
-            }
+            for (int i = 0; i < SlotCount; i++) Refresh((DuelSlot)i);
+            for (int i = 0; i < StateCount; i++) ResetState(i);
+            charge = 0f;
             if (Choosing != null) EndChoice();
             player.OnShieldsChanged(false);
             return n;
@@ -407,16 +562,24 @@ namespace MeleeDuel
             if (s is DuelSlot.RightHand or DuelSlot.LeftHand)
             {
                 bool right = s == DuelSlot.RightHand;
-                bool sword = w is { kind: DuelKind.Sword };
                 var blade = rig == null ? null : right ? rig.sword : rig.swordL;
+                if (!right && w is { IsTwoHand: true })
+                {
+                    // 両手持ちの左手:見た目は右手の側でまとめて出す(左手の剣は隠す)
+                    if (blade != null) blade.gameObject.SetActive(false);
+                    return;
+                }
+                bool sword = w is { IsBlade: true };
                 if (blade != null)
                 {
-                    // 剣:機体の剣を出し、握りはそのままで長さを届く範囲に合わせ、レア以上はレア度の色に塗る
+                    // 剣:機体の剣を出し、握りはそのままで長さを届く範囲に、太さを武装の太さに合わせ、レア以上はレア度の色に塗る
+                    // (両手の近接は太く・長く、握りの後ろに柄を伸ばして両手で持つ感じを出す)
                     blade.gameObject.SetActive(sword);
                     if (sword)
                     {
                         Vector3 bs = right ? swordBaseScale : swordLBaseScale;
-                        blade.localScale = new Vector3(bs.x, bs.y * w.reachMul, bs.z);
+                        float th = Mathf.Max(0.1f, w.thickMul);
+                        blade.localScale = new Vector3(bs.x * th, bs.y * w.reachMul, bs.z * th);
                         MaterialPropertyBlock block = null;
                         if (w.rarity >= 1)
                         {
@@ -424,6 +587,7 @@ namespace MeleeDuel
                             block.SetColor("_BaseColor", w.Color);
                         }
                         foreach (var r in blade.GetComponentsInChildren<Renderer>(true)) r.SetPropertyBlock(block);
+                        if (w.haft > 0f) visuals[i] = Haft(blade, w.haft * k, 0.35f * k);
                         return;
                     }
                 }
@@ -434,7 +598,9 @@ namespace MeleeDuel
                 if (mount != null)
                 {
                     visuals[i] = CreateVisual(w, mount);
-                    visuals[i].localPosition = w.kind == DuelKind.Shield ? new Vector3(0.75f * side, 0f, 0.2f) * k : new Vector3(0f, -0.45f, 1.2f) * k;
+                    visuals[i].localPosition = w.kind == DuelKind.Shield ? new Vector3(0.75f * side, 0f, 0.2f) * k
+                        : w.kind == DuelKind.TwoHandGun ? new Vector3(-0.3f, -0.45f, 1.8f) * k   // 両手の銃・砲:大きく、少し体の内側へ(両手で抱える感じ)
+                        : new Vector3(0f, -0.45f, 1.2f) * k;
                 }
                 else
                 {
@@ -461,18 +627,53 @@ namespace MeleeDuel
             }
         }
 
-        /// <summary>武装の仮の見た目(レア度の色)。剣は細長い刃(長さは届く範囲に合わせる)、盾は板、手の銃は細長い箱。parent が null なら親なし。</summary>
+        /// <summary>
+        /// 武装の仮の見た目(レア度の色)。剣は細長い刃(長さは届く範囲、太さは武装の太さに合わせ、柄があれば後ろに伸ばす)、盾は板、手の銃は細長い箱。
+        /// parent が null なら親なし。
+        /// </summary>
         public static Transform CreateVisual(DuelWeapon w, Transform parent)
         {
             var root = new GameObject(w.name).transform;
             if (parent != null) root.SetParent(parent, false);
-            bool blade = w.kind == DuelKind.Sword;
+            bool blade = w.IsBlade;
             var prim = GameObject.CreatePrimitive(blade ? PrimitiveType.Cube : w.shape);
             Object.DestroyImmediate(prim.GetComponent<Collider>());
             prim.transform.SetParent(root, false);
-            prim.transform.localScale = blade ? new Vector3(0.4f, 1f, 4.5f * w.reachMul) : w.scale;
+            float th = Mathf.Max(0.1f, w.thickMul), len = 4.5f * w.reachMul;
+            prim.transform.localScale = blade ? new Vector3(0.4f * th, 1f * th, len) : w.scale;
             prim.transform.localRotation = Quaternion.Euler(blade ? Vector3.zero : w.euler);
             prim.GetComponent<Renderer>().sharedMaterial = ProtoFx.Lit(w.Color);
+            if (blade && w.haft > 0f)
+            {
+                var haft = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                Object.DestroyImmediate(haft.GetComponent<Collider>());
+                haft.transform.SetParent(root, false);
+                haft.transform.localScale = new Vector3(0.35f, 0.35f, w.haft);
+                haft.transform.localPosition = new Vector3(0f, 0f, -(len + w.haft) * 0.5f);
+                haft.GetComponent<Renderer>().sharedMaterial = ProtoFx.Lit(HaftColor);
+            }
+            return root;
+        }
+
+        static readonly Color HaftColor = new(0.25f, 0.25f, 0.28f);
+
+        /// <summary>
+        /// 機体の剣の握りの後ろ(剣の -Y)へ伸びる柄(両手の近接)。剣の拡大に引きずられないよう、世界の大きさから逆算して付ける。
+        /// 機体と同じ層に置く(カメラの壁よけ・敵の見通しのレイに当たらないように)。
+        /// </summary>
+        static Transform Haft(Transform blade, float length, float thick)
+        {
+            var root = new GameObject("Haft").transform;
+            root.SetParent(blade, false);
+            var prim = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(prim.GetComponent<Collider>());
+            prim.transform.SetParent(root, false);
+            Vector3 ls = blade.lossyScale;
+            float sx = Mathf.Max(0.0001f, Mathf.Abs(ls.x)), sy = Mathf.Max(0.0001f, Mathf.Abs(ls.y)), sz = Mathf.Max(0.0001f, Mathf.Abs(ls.z));
+            prim.transform.localScale = new Vector3(thick / sx, length / sy, thick / sz);
+            prim.transform.localPosition = new Vector3(0f, -length * 0.5f / sy, 0f);
+            prim.GetComponent<Renderer>().sharedMaterial = ProtoFx.Lit(HaftColor);
+            root.gameObject.layer = prim.layer = blade.gameObject.layer;
             return root;
         }
 
@@ -483,7 +684,7 @@ namespace MeleeDuel
         {
             var v = visuals[(int)s];
             Vector3 f = player.transform.forward;
-            if (v != null) return v.position + f * 1.5f;
+            if (v != null) return v.position + f * (slots[(int)s] is { kind: DuelKind.TwoHandGun } ? 3.5f : 1.5f);   // 両手の銃・砲は長いので先まで
             bool hand = s is DuelSlot.RightHand or DuelSlot.LeftHand;
             float side = s is DuelSlot.RightShoulder or DuelSlot.RightHand ? 2f : -2f;
             return player.transform.position + Vector3.up * game.mechHeight * (hand ? 0.55f : 0.85f) + player.transform.right * side + f * 1.5f;
@@ -594,10 +795,9 @@ namespace MeleeDuel
 
         static readonly Color BulletColor = new(1f, 0.85f, 0.35f), BeamColor = new(1f, 0.45f, 0.95f);
 
-        /// <summary>銃を撃つ(撃てる間隔・弾倉の残りがあれば)。撃ったら true。</summary>
-        bool FireGun(DuelWeapon w, DuelSlot s)
+        /// <summary>銃を撃つ(撃てる間隔・弾倉の残りがあれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。</summary>
+        bool FireGun(DuelWeapon w, int i, DuelSlot s)
         {
-            int i = (int)s;
             if (cd[i] > 0f || reload[i] > 0f) return false;
             if (w.magazine > 0 && mag[i] <= 0) { reload[i] = w.reload; return false; }
             lastFire[i] = Time.time;
@@ -619,12 +819,17 @@ namespace MeleeDuel
             return true;
         }
 
-        /// <summary>銃の1発:まっすぐ飛び、最初に当たった地形・敵で止まる。</summary>
+        /// <summary>銃の1発:まっすぐ飛び、最初に当たった地形・敵で止まる(貫く弾は地形まで飛び、線の上の敵みんなに当たる)。</summary>
         void Shot(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet)
         {
             float len = w.range;
             if (Physics.Raycast(from, dir, out var hit, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) len = hit.distance;
             Vector3 end = from + dir * len;
+            if (w.pierce)
+            {
+                PierceShot(from, dir, len, w, c);
+                return;
+            }
             if (RayHitsEnemy(from, dir, len, out var e, out float d))
             {
                 end = from + dir * d;
@@ -634,14 +839,32 @@ namespace MeleeDuel
             ProtoFx.Tracer(from, end, c, pellet ? 0.15f : 0.25f, 0.05f);
         }
 
+        /// <summary>貫く弾:from から len まで、線から(敵の半径 + 太さ)の内にいる敵みんなに当てる。太いほど光線も太く長く残る。</summary>
+        void PierceShot(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c)
+        {
+            Vector3 to = from + dir * len;
+            bool any = false;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead) continue;
+                float r = e.Radius, h = game.mechHeight * e.Size;
+                Vector3 a = e.transform.position + Vector3.up * r, b = e.transform.position + Vector3.up * Mathf.Max(r, h - r);
+                if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
+                e.TakeRangedHit(w.damage, w.stagger, Flat(dir) * w.knock, 0.3f);
+                DuelSpark.Burst(from + dir * (s * len), -dir, c, 3, 0.6f + w.beamWidth * 0.2f);
+                any = true;
+            }
+            ProtoFx.Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, w.beamWidth >= 1f ? 0.18f : 0.05f);
+            if (any && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
+        }
+
         // ───────── 砲・ミサイル(肩) ─────────
 
         static readonly Color ShellColor = new(0.8f, 1f, 0.35f), MissileColor = new(1f, 0.6f, 0.25f), BlastColor = new(1f, 0.6f, 0.25f);
 
-        /// <summary>砲・ミサイルを撃つ(次に撃てるまでの時間がたっていれば)。撃ったら true。</summary>
-        bool FireHeavy(DuelWeapon w, DuelSlot s)
+        /// <summary>砲・ミサイルを撃つ(次に撃てるまでの時間がたっていれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。</summary>
+        bool FireHeavy(DuelWeapon w, int i, DuelSlot s)
         {
-            int i = (int)s;
             if (cd[i] > 0f) return false;
             cd[i] = cdMax[i] = w.interval;
             lastFire[i] = Time.time;

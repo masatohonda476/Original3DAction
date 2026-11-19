@@ -209,6 +209,13 @@ namespace MeleeDuel
             Enter(State.Free);
         }
 
+        /// <summary>HP を amount だけ回復する(武装の分解。最大まで)。撃墜中は何もしない。</summary>
+        public void Heal(float amount)
+        {
+            if (Dead || amount <= 0f) return;
+            HP = Mathf.Min(MaxHP, HP + amount);
+        }
+
         /// <summary>HPとガードを満タンにする(セーブポイント)。</summary>
         public void RestoreHP()
         {

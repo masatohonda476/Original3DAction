@@ -13,7 +13,9 @@ namespace HuntProto
     ///   ブースト  : ○・B で入/切 / 左Shift
     ///   飛行      : ×・A 長押しで上昇 / Space 長押し
     ///   ロックオン: Q・中クリック / 十字キー左(切り替え:Tab / R3、ロックオン中は右スティックを左右に弾く)
-    ///   装備の確認: SHARE・View を押して離す / I(近接の試作だけ。時間が止まる。↑↓で選び、□・X / X を2回で床に捨てる。○・B / Backspace でも閉じる。Esc はカメラのマウスの固定を外すので使わない)
+    ///   装備の確認: SHARE・View を押して離す / I(近接の試作だけ。時間が止まる。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
+    ///               □・X / X で処分(もう一度で床に捨てる・← で弾・→ で回復)。○・B / Backspace でも閉じる。Esc はカメラのマウスの固定を外すので使わない)
+    ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(近接の試作だけ)
     ///   やり直し  : F1 / SHARE を押しながら△(電脳斬禅のデバッグメニューと同じ)
     ///   モード切替: F2 / SHARE を押しながら□
     /// </summary>
@@ -84,7 +86,8 @@ namespace HuntProto
             if (Ms != null && (Ms.leftButton.isPressed || Ms.rightButton.isPressed || Ms.middleButton.isPressed)) return true;
             var k = Kb;
             return k != null && (k.spaceKey.isPressed || k.leftCtrlKey.isPressed || k.leftShiftKey.isPressed || k.cKey.isPressed || k.vKey.isPressed ||
-                                 k.rKey.isPressed || k.eKey.isPressed || k.qKey.isPressed || k.tabKey.isPressed || k.hKey.isPressed);
+                                 k.rKey.isPressed || k.eKey.isPressed || k.qKey.isPressed || k.tabKey.isPressed || k.hKey.isPressed ||
+                                 k.fKey.isPressed || k.gKey.isPressed);
         }
 
         static bool selectCombo;
@@ -178,18 +181,23 @@ namespace HuntProto
         /// <summary>SHARE(View)を押している間は、△□をデバッグ用に回す。</summary>
         static bool DebugMod => Pad != null && Pad.selectButton.isPressed;
         // メニュー内:↑↓(十字キー・左スティック・W/S) で選ぶ / × 決定 / ○ 戻る
-        static bool stickUpHeld, stickDownHeld;
+        static bool stickUpHeld, stickDownHeld, stickLeftHeld, stickRightHeld;
         static int stickFrame = -1;
-        static bool stickUp, stickDown;
+        static bool stickUp, stickDown, stickLeft, stickRight;
         static void ReadStick()
         {
             if (stickFrame == Time.frameCount) return;
             stickFrame = Time.frameCount;
-            float y = Pad != null ? Pad.leftStick.ReadValue().y : 0f;
+            Vector2 v = Pad != null ? Pad.leftStick.ReadValue() : Vector2.zero;
+            float y = v.y;
             stickUp = y > 0.6f && !stickUpHeld;
             stickDown = y < -0.6f && !stickDownHeld;
             stickUpHeld = y > 0.6f;
             stickDownHeld = y < -0.6f;
+            stickLeft = v.x < -0.6f && !stickLeftHeld;
+            stickRight = v.x > 0.6f && !stickRightHeld;
+            stickLeftHeld = v.x < -0.6f;
+            stickRightHeld = v.x > 0.6f;
         }
         public static bool MenuUp { get { ReadStick(); return stickUp || K(k => k.upArrowKey) || K(k => k.wKey) || P(p => p.dpad.up); } }
         public static bool MenuDown { get { ReadStick(); return stickDown || K(k => k.downArrowKey) || K(k => k.sKey) || P(p => p.dpad.down); } }
@@ -197,6 +205,25 @@ namespace HuntProto
         public static bool MenuBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
         /// <summary>メニュー内:選んでいる武装を捨てる(□ / X)。</summary>
         public static bool MenuDiscard => K(k => k.xKey) || (!DebugMod && P(p => p.buttonWest));
+        /// <summary>近接の試作のメニュー内:←(十字左・左スティック・← / A)。分解して弾にする。</summary>
+        public static bool MenuLeft { get { ReadStick(); return stickLeft || K(k => k.leftArrowKey) || K(k => k.aKey) || P(p => p.dpad.left); } }
+        /// <summary>近接の試作のメニュー内:→(十字右・左スティック・→ / D)。分解して回復にする。</summary>
+        public static bool MenuRight { get { ReadStick(); return stickRight || K(k => k.rightArrowKey) || K(k => k.dKey) || P(p => p.dpad.right); } }
+        /// <summary>近接の試作のメニュー内:付けている武装を外して所持品にする(△ / C)。</summary>
+        public static bool MenuStore => K(k => k.cKey) || (!DebugMod && P(p => p.buttonNorth));
+
+        /// <summary>
+        /// 近接の試作のメニュー内:所持品を付ける所のボタンを押した瞬間(0=R1・左クリック / 1=L1・右クリック / 2=R2・R / 3=L2・E / 4=×・Space(背中))。
+        /// メニューの間は戦闘のボタンが止まっている(Paused)ので、ここだけ止めずに読む。
+        /// </summary>
+        public static bool MenuSlotPressed(int b) => b switch
+        {
+            0 => (Ms != null && MouseLocked && Ms.leftButton.wasPressedThisFrame) || P(p => p.rightShoulder),
+            1 => (Ms != null && MouseLocked && Ms.rightButton.wasPressedThisFrame) || P(p => p.leftShoulder),
+            2 => K(k => k.rKey) || P(p => p.rightTrigger),
+            3 => K(k => k.eKey) || P(p => p.leftTrigger),
+            _ => K(k => k.spaceKey) || P(p => p.buttonSouth),
+        };
 
         public static bool Dodge => !BtnBlocked && (K(k => k.leftCtrlKey) || (!DebugMod && P(p => p.buttonWest)));
         public static bool BoostToggle => !BtnBlocked && (K(k => k.leftShiftKey) || P(p => p.buttonEast));
@@ -210,7 +237,8 @@ namespace HuntProto
         // ───────── 表示するボタン名(最後に触った機器に合わせる) ─────────
 
         public enum Device { Keyboard, PlayStation, Xbox }
-        public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim, Discard, PickUp, EquipNow, Delete, EquipView }
+        public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim, Discard, PickUp, EquipNow, Delete, EquipView,
+                          Stash, Break, MenuLeft, MenuRight }
 
         /// <summary>今使っている機器。パッドに触ればパッド、キーかマウスに触ればキーボードに切り替わる。</summary>
         public static Device Current { get; private set; } = Gamepad.current != null ? PadKind() : Device.Keyboard;
@@ -265,6 +293,10 @@ namespace HuntProto
                 Btn.EquipNow => new[] { "V", "十字右", "十字右" },
                 Btn.Delete => new[] { "C長押し", "△長押し", "Y長押し" },
                 Btn.EquipView => new[] { "I", "SHARE", "View(−)" },
+                Btn.Stash => new[] { "G", "十字下", "十字下" },
+                Btn.Break => new[] { "F", "十字上", "十字上" },
+                Btn.MenuLeft => new[] { "←", "←", "←" },
+                Btn.MenuRight => new[] { "→", "→", "→" },
                 _ => new[] { "WASD", "左スティック", "左スティック" },
             };
             return n[i];
@@ -281,6 +313,12 @@ namespace HuntProto
         /// 近接の試作(MeleeDuel)のステージでは、落ちている武装を拾って付けるのに使う。
         /// </summary>
         public static bool EquipNow => !BtnBlocked && (K(k => k.vKey) || P(p => p.dpad.right));
+
+        /// <summary>近接の試作:落ちている武装を所持品に入れる(十字キー下 / G)。分解を選ぶ表示の間は「回復にする」。</summary>
+        public static bool StashNow => !BtnBlocked && (K(k => k.gKey) || P(p => p.dpad.down));
+
+        /// <summary>近接の試作:落ちている武装を分解する(十字キー上 / F)。分解を選ぶ表示の間は「弾にする」。</summary>
+        public static bool BreakNow => !BtnBlocked && (K(k => k.fKey) || P(p => p.dpad.up));
 
         /// <summary>メニュー内:選んでいる在庫を完全に削除する(△ / C 長押し)。</summary>
         public static bool MenuDeleteHeld => (Kb != null && Kb.cKey.isPressed) || (Pad != null && !DebugMod && Pad.buttonNorth.isPressed);

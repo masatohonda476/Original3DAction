@@ -210,8 +210,10 @@ namespace MeleeDuel
         /// 左のメニューボタン(SHARE・View・− を離す / I)で装備の確認を開く・閉じる。○・B / Backspace でも閉じる(Esc はカメラのマウスの固定を外すので使わない)。
         /// ステージ(武装がある)だけ。開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
         /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
-        /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所を選び、捨てるボタン(□・X / X キー)を2回押すと、その武装を足もとの床に捨てる
-        /// (1回目で「もう一度押すと捨てる」になり、選び直す・○/Backspace で取り消し)。撃墜中・ボスを倒した後・真下に床がない所は捨てられない。
+        /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所と所持品を選ぶ(5つの所の下に所持品が続く)。
+        ///   付けている武装:△ / C で外して所持品へ。所持品:その所のボタン(R1/L1・R2/L2・背中は ×)で付ける(今の武装は所持品へ)。
+        ///   どちらも □・X / X キーで処分の選択になり、もう一度 □ で足もとの床に捨てる、← で分解して弾、→ で分解して回復(○/Backspace・選び直すでやめる)。
+        ///   撃墜中・ボスを倒した後・真下に床がない所は捨てられない(分解はできる。回復は撃墜中はできない)。
         /// </summary>
         void UpdateEquipView()
         {
@@ -241,7 +243,7 @@ namespace MeleeDuel
                 player.ClearBufferedInput();
                 player.Arms.ClearBufferedInput();
                 // 捨てた武装を置く所の真下に床があるか(止まっている間は動かないので、開いたときに1回だけ測る)
-                for (int i = 0; i < ArmRows; i++) dropFloor[i] = player.Arms.HasFloorBelow((DuelSlot)i);
+                for (int i = 0; i < ArmRows; i++) dropFloor[i] = player.Arms.HasFloorBelow((DuelSlot)i);   // 所持品は背中と同じ所に置く
                 // 武装が付いている最初の所を選ぶ
                 viewSel = 0;
                 for (int i = 0; i < ArmRows; i++)
@@ -253,32 +255,89 @@ namespace MeleeDuel
             viewBuilt = false;
         }
 
-        /// <summary>選んでいる所(0〜4 = DuelSlot)と、捨てる確認の途中か。</summary>
+        /// <summary>選んでいる行(0〜4 = DuelSlot、5〜 = 所持品の番号 + 5)と、処分(捨てる・分解)を選んでいる途中か。</summary>
         int viewSel;
         bool dropArmed;
+        /// <summary>所持品の行を選んでいる。</summary>
+        bool StashSelected => viewSel >= ArmRows;
+        int StashSel => viewSel - ArmRows;
+        /// <summary>選んでいる行の武装(空き・範囲外なら null)。</summary>
+        DuelWeapon SelectedWeapon(DuelArms arms) => StashSelected
+            ? (StashSel < arms.Stash.Count ? arms.Stash[StashSel].w : null)
+            : arms.Get((DuelSlot)viewSel);
 
         /// <summary>選んでいる所の武装を置く所の真下に床があるか(開いたときに測る)。</summary>
         readonly bool[] dropFloor = new bool[ArmRows];
 
         /// <summary>今は捨てられない理由(0 = 捨てられる / 1 = 撃墜中 / 2 = ボスを倒した後で拾えない / 3 = 真下に床がない(穴の上・空中。落ちて消えるので))。</summary>
-        int DropBlock() => player == null || player.Dead ? 1 : stage != null && stage.Cleared ? 2 : !dropFloor[viewSel] ? 3 : 0;
+        int DropBlock() => player == null || player.Dead ? 1 : stage != null && stage.Cleared ? 2
+            : !dropFloor[StashSelected ? (int)DuelSlot.Back : Mathf.Clamp(viewSel, 0, ArmRows - 1)] ? 3 : 0;
+
+        /// <summary>所持品を付けるときに押すボタンの番号(ProtoInput.MenuSlotPressed。手・肩はその所のボタン、背中は ×)。</summary>
+        static int MenuSlotBtn(DuelSlot s) => s switch
+        {
+            DuelSlot.RightHand => 0,
+            DuelSlot.LeftHand => 1,
+            DuelSlot.RightShoulder => 2,
+            DuelSlot.LeftShoulder => 3,
+            _ => 4,
+        };
 
         void EquipViewInput(DuelArms arms, bool up, bool down)
         {
+            int rows = ArmRows + arms.Stash.Count;
+            viewSel = Mathf.Clamp(viewSel, 0, rows - 1);   // 所持品が減った
             int d = (down ? 1 : 0) - (up ? 1 : 0);
             if (d != 0)
             {
-                viewSel = (viewSel + d + ArmRows) % ArmRows;
+                viewSel = (viewSel + d + rows) % rows;
                 dropArmed = false;
             }
-            if (!ProtoInput.MenuDiscard) return;
-            var slot = (DuelSlot)viewSel;
-            if (arms.Get(slot) == null || DropBlock() != 0) dropArmed = false;
-            else if (!dropArmed) dropArmed = true;   // 1回目:確認
-            else
+            var w = SelectedWeapon(arms);
+            if (w == null)
             {
                 dropArmed = false;
-                arms.Drop(slot);   // 2回目:捨てる
+                return;
+            }
+            bool stashRow = StashSelected;
+            int si = StashSel;
+            var slot = (DuelSlot)Mathf.Clamp(viewSel, 0, ArmRows - 1);
+            if (dropArmed)
+            {
+                // 処分:もう一度 □ で捨てる / ← で弾 / → で回復
+                if (ProtoInput.MenuDiscard)
+                {
+                    if (DropBlock() != 0) return;
+                    dropArmed = false;
+                    if (stashRow) arms.DropStash(si);
+                    else arms.Drop(slot);
+                }
+                else if (ProtoInput.MenuLeft || ProtoInput.MenuRight)
+                {
+                    bool heal = !ProtoInput.MenuLeft;
+                    if (heal && player.Dead) return;
+                    dropArmed = false;
+                    if (stashRow) arms.SalvageStash(si, heal);
+                    else arms.SalvageSlot(slot, heal);
+                }
+                return;
+            }
+            if (ProtoInput.MenuDiscard)
+            {
+                dropArmed = true;   // 1回目:処分を選ぶ
+                return;
+            }
+            if (!stashRow)
+            {
+                if (ProtoInput.MenuStore) arms.StoreSlot(slot);
+                return;
+            }
+            // 所持品:付ける所のボタンで付ける(R1/L1・R2/L2・背中は ×)
+            foreach (var s in DuelWeapon.SlotsFor(w.kind))
+            {
+                if (!ProtoInput.MenuSlotPressed(MenuSlotBtn(s))) continue;
+                arms.EquipFromStash(si, s);
+                return;
             }
         }
 
@@ -346,6 +405,7 @@ namespace MeleeDuel
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
             ProtoDamageText.Draw(cam, uiScale, SH);
             if (player == null) return;
+            if (player.Arms != null && !equipOpen) DrawAimFrames(player.Arms, cam);   // 照準の枠は、ほかの表示より奥に描く
 
             // 左下:自機のHP・EN・ガード、その下に操作説明。操作説明は右下の武装の欄の手前で折り返し、
             // 3行以上になるときは全体を上へずらす(2行までなら今までと同じ高さ)
@@ -438,6 +498,74 @@ namespace MeleeDuel
             if (stage != null) DrawStage();
             if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― セーブポイントから再開します" : "撃墜 ― やり直します", big);
             if (equipOpen && player.Arms != null) DrawEquipView(player.Arms);
+        }
+
+        // ───────── 照準の枠(射撃だけ) ─────────
+
+        static readonly Color FrameIdle = new(0.85f, 0.92f, 1f), FrameLocked = new(1f, 0.72f, 0.3f);
+        // 枠に添えるボタン名(ボタンの組と機器が変わったときだけ作る)
+        readonly Dictionary<(int, ProtoInput.Device), string> frameLabels = new();
+
+        /// <summary>
+        /// 画面の中央に、撃つ武装の照準の枠を角の鉤(かぎ)だけで出す(アーマード・コアの FCS の枠)。大きさの違う枠は入れ子で全部出し、
+        /// 同じ大きさの枠は1つにまとめる。左上の角の上に使うボタン名。ふだんは薄く、その武装を撃っている・撃ったばかり・溜めている間は濃く。
+        /// 枠の中に当てる相手がいれば枠を橙にし、相手の胸に小さな橙の鉤の印(ミサイルは当てる相手みんな)。画面は揺らさない。
+        /// </summary>
+        void DrawAimFrames(DuelArms arms, Camera cam)
+        {
+            if (Event.current.type != EventType.Repaint || cam == null || player.Dead) return;
+            if (arms.Frames.Count == 0 && arms.Marks.Count == 0) return;
+            float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
+            float cx = SW * 0.5f, cy = SH * 0.5f;
+            var dev = ProtoInput.Current;
+            foreach (var f in arms.Frames)
+            {
+                float hw = Mathf.Min(f.halfW * k, SW * 0.48f), hh = Mathf.Min(f.halfH * k, SH * 0.45f);
+                var c = f.locked ? FrameLocked : FrameIdle;
+                c.a = f.hot ? 0.9f : 0.38f;
+                Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, c);
+                if (!frameLabels.TryGetValue((f.buttons, dev), out var label))
+                {
+                    var sb = new System.Text.StringBuilder();
+                    for (int b = 0; b < 4; b++)
+                    {
+                        if ((f.buttons & (1 << b)) == 0) continue;
+                        if (sb.Length > 0) sb.Append('/');
+                        sb.Append(SlotButton((DuelSlot)(b switch { 0 => 0, 1 => 1, 2 => 3, _ => 4 })));
+                    }
+                    label = sb.ToString();
+                    frameLabels[(f.buttons, dev)] = label;
+                }
+                GUI.color = c;
+                GUI.Label(new Rect(cx - hw, cy - hh - 16f, 200f, 16f), label, cellTiny);
+            }
+            var mc = FrameLocked;
+            mc.a = 0.95f;
+            foreach (var e in arms.Marks)
+            {
+                if (e == null || e.Dead) continue;
+                Vector3 sp = cam.WorldToScreenPoint(e.Chest);
+                if (sp.z <= 0f) continue;
+                float x = sp.x / uiScale, y = SH - sp.y / uiScale;
+                Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, mc);
+            }
+            GUI.color = Color.white;
+        }
+
+        /// <summary>四角の4つの角に鉤(長さ len・太さ th)を描く。</summary>
+        static void Brackets(Rect r, float len, float th, Color c)
+        {
+            GUI.color = c;
+            var t = Texture2D.whiteTexture;
+            GUI.DrawTexture(new Rect(r.x, r.y, len, th), t);
+            GUI.DrawTexture(new Rect(r.x, r.y, th, len), t);
+            GUI.DrawTexture(new Rect(r.xMax - len, r.y, len, th), t);
+            GUI.DrawTexture(new Rect(r.xMax - th, r.y, th, len), t);
+            GUI.DrawTexture(new Rect(r.x, r.yMax - th, len, th), t);
+            GUI.DrawTexture(new Rect(r.x, r.yMax - len, th, len), t);
+            GUI.DrawTexture(new Rect(r.xMax - len, r.yMax - th, len, th), t);
+            GUI.DrawTexture(new Rect(r.xMax - th, r.yMax - len, th, len), t);
+            GUI.color = Color.white;
         }
 
         /// <summary>
@@ -548,7 +676,7 @@ namespace MeleeDuel
         // 武装の表示の文字列は、中身が変わったときだけ作り直す(OnGUI は1フレームに何度も呼ばれる)
         /// <summary>付ける所の数(DuelSlot の数。装備の確認の行数も同じ)。</summary>
         const int ArmRows = 5;
-        (DuelLoot loot, DuelLoot choosing, DuelWeapon a, DuelWeapon b, ProtoInput.Device dev) pickupKey;
+        (DuelLoot loot, DuelLoot choosing, DuelLoot breaking, DuelWeapon a, DuelWeapon b, ProtoInput.Device dev, int ammo, int hp, int weight) pickupKey;
         readonly string[] pickupLines = new string[4];
         int pickupLineCount;
         (ProtoInput.Device dev, bool arms, DuelWeapon two, bool reload) helpKey;
@@ -596,14 +724,14 @@ namespace MeleeDuel
 
         // ───────── 右下の武装の欄(武装ハントの DrawWeapons / WeaponCell と同じ見せ方) ─────────
 
-        const float CellW = 200f, CellH = 44f, CellGap = 8f, BackRowH = 24f, ArmsMargin = 20f;
-        /// <summary>右下の武装の欄の上端(拾う案内をこれより上に出す)。</summary>
-        float ArmsTop => SH - ArmsMargin - BackRowH - 6f - CellH * 2f - CellGap;
+        const float CellW = 200f, CellH = 44f, CellGap = 8f, BackRowH = 24f, ArmsMargin = 20f, WeightRowH = 20f;
+        /// <summary>右下の武装の欄の上端(重さの1行を含む。拾う案内をこれより上に出す)。</summary>
+        float ArmsTop => SH - ArmsMargin - BackRowH - 6f - CellH * 2f - CellGap - WeightRowH;
         /// <summary>右下の武装の欄の左端(操作説明をこれより左で折り返す)。</summary>
         float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap;
 
         /// <summary>セルの右上に出す状態。</summary>
-        enum CellState { None, Ammo, Infinite, Reload, Loading, Charging, Charged, TwoHand }
+        enum CellState { None, Ammo, Infinite, Reload, Loading, Charging, Charged, TwoHand, Starved }
 
         // セルの文字列(添字は DuelSlot)。名前・ボタンは武装か機器が、状態は武装・状態・残り(弾数か0.1秒単位)が変わったときだけ作り直す
         readonly string[] cellBtn = new string[ArmRows], cellName = new string[ArmRows], cellStatus = new string[ArmRows];
@@ -650,7 +778,39 @@ namespace MeleeDuel
             GUI.color = back != null ? Color.white : new Color(1f, 1f, 1f, 0.4f);
             GUI.Label(new Rect(br.x + 24f, br.y + 2f, CellW - 30f, 20f), cellName[b], cellBack);
             GUI.color = Color.white;
+
+            // 一番下の右:共通の弾(足りなくて撃てなかった直後は赤く光る。残りが上限の2割以下で橙)
+            var r = arms.Rules;
+            int ammo = Mathf.FloorToInt(arms.Ammo + 0.0001f);
+            if (ammoKey != (ammo, true))
+            {
+                ammoKey = (ammo, true);
+                ammoText = $"弾 {ammo}/{r.ammoMax:0}";
+            }
+            var ar = new Rect(x1, yBack, CellW, BackRowH);
+            bool starve = Time.time - arms.NoAmmoAt < 1f;
+            Chip(ar, starve ? new Color(0.6f, 0.1f, 0.08f, 0.6f) : new Color(0f, 0f, 0f, 0.5f));
+            Chip(new Rect(ar.x + 8f, ar.y + 9f, 10f, 6f), new Color(1f, 0.85f, 0.35f));
+            GUI.color = starve ? new Color(1f, 0.55f, 0.45f) : ammo <= r.ammoMax * 0.2f ? StatusOrange : Color.white;
+            GUI.Label(new Rect(ar.x + 24f, ar.y + 2f, CellW - 30f, 20f), ammoText, cellBack);
+
+            // 武装の欄の上:所持品の数と重さ・速さ(重すぎて持てなかった直後は赤く光る。上限の9割を超えたら橙)
+            float total = arms.TotalWeight, max = arms.CarryMax;
+            var wk = (arms.Stash.Count, Mathf.RoundToInt(total), Mathf.RoundToInt(max), Mathf.RoundToInt(arms.Mobility * 100f));
+            if (weightKey != wk || weightText == null)
+            {
+                weightKey = wk;
+                weightText = $"所持 {wk.Item1}   重さ {wk.Item2}/{wk.Item3}   速さ ×{wk.Item4 / 100f:0.00}";
+            }
+            bool heavyFlash = Time.unscaledTime - arms.TooHeavyAt < 1.2f;
+            GUI.color = heavyFlash ? new Color(1f, 0.45f, 0.35f) : total > max * 0.9f ? StatusOrange : new Color(1f, 1f, 1f, 0.8f);
+            GUI.Label(new Rect(x0, yRow2 - WeightRowH, CellW * 2f + CellGap - 4f, 18f), weightText, cellTinyRight);
+            GUI.color = Color.white;
         }
+
+        (int, bool) ammoKey;
+        string ammoText, weightText;
+        (int, int, int, int) weightKey;
 
         void ArmCell(DuelArms arms, Rect r, DuelSlot slot)
         {
@@ -674,7 +834,8 @@ namespace MeleeDuel
             Color gaugeColor = GaugeOrange;
             if (w != null && !twoL)
             {
-                if (w.IsGun)
+                if (arms.Starved(slot)) st = CellState.Starved;   // 共通の弾が足りなくて撃てない
+                else if (w.IsGun)
                 {
                     float left = arms.ReloadLeft(slot);
                     int mag = arms.MagLeft(slot);
@@ -702,7 +863,8 @@ namespace MeleeDuel
             {
                 // L1 の撃ち方:溜めている間は溜まり具合(溜まったら白)、撃った後は次に撃てるまで
                 float c = arms.Charge01;
-                if (c > 0f)
+                if (arms.AltStarved && c <= 0f) st = CellState.Starved;
+                else if (c > 0f)
                 {
                     st = c >= 1f ? CellState.Charged : CellState.Charging;
                     gauge = c;
@@ -731,6 +893,7 @@ namespace MeleeDuel
                         CellState.Loading => $"装填 {val / 10f:0.0}秒",
                         CellState.Charging => "溜め中",
                         CellState.Charged => "溜まった・離して撃つ",
+                        CellState.Starved => w.IsGun && w.magazine > 0 && !twoL ? "弾 0 ・弾切れ" : "弾切れ",
                         _ => "両手持ち",
                     };
                 }
@@ -741,6 +904,7 @@ namespace MeleeDuel
                     CellState.Reload or CellState.Loading => StatusOrange,
                     CellState.Charging => new Color(1f, 0.85f, 0.5f),
                     CellState.Charged => Color.white,
+                    CellState.Starved => new Color(1f, 0.45f, 0.35f),
                     _ => new Color(1f, 1f, 1f, 0.5f),
                 };
                 // 武装ハントは中央寄せ。キーボードのボタン名(「右クリック」など)と重ならないよう右に寄せる
@@ -769,13 +933,14 @@ namespace MeleeDuel
         /// </summary>
         void DrawPickup(DuelArms arms)
         {
-            var loot = arms.Choosing != null ? arms.Choosing : arms.Nearby;
+            var loot = arms.Choosing != null ? arms.Choosing : arms.Breaking != null ? arms.Breaking : arms.Nearby;
             if (loot == null || player.Dead) return;
             var w = loot.Weapon;
             var to = DuelWeapon.SlotsFor(w.kind);
             var a = arms.Get(to[0]);
             var b = to.Length > 1 ? arms.Get(to[1]) : null;
-            var key = (loot, arms.Choosing, a, b, ProtoInput.Current);
+            var key = (loot, arms.Choosing, arms.Breaking, a, b, ProtoInput.Current, Mathf.FloorToInt(arms.Ammo + 0.0001f), Mathf.CeilToInt(player.HP),
+                       Mathf.RoundToInt(arms.TotalWeight * 10f));
             if (pickupKey != key || pickupLines[0] == null)
             {
                 pickupKey = key;
@@ -783,15 +948,28 @@ namespace MeleeDuel
                 string name = "<color=#" + col + ">" + w.name + "〈" + w.RarityName + "〉</color>";
                 string mode = w.FireMode.Length > 0 ? "・" + w.FireMode : "";
                 string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
+                string keepBtn = "[" + ProtoInput.L(ProtoInput.Btn.Stash) + "]", breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "]";
                 bool curTwo = a is { IsTwoHand: true };   // 今、両手持ちを付けている(右手と左手に同じ武装)
-                if (w.IsTwoHand)
+                int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
+                if (arms.Breaking != null)
+                {
+                    // 分解を選ぶ:十字上で弾、十字下で回復、十字右でやめる
+                    var rules = arms.Rules;
+                    float a1 = Mathf.Min(rules.ammoMax, arms.Ammo + salAmmo), h1 = Mathf.Min(player.MaxHP, player.HP + salHeal);
+                    pickupLines[0] = name + " を分解する?   " + breakBtn + " 弾にする +" + salAmmo + "(弾 " + Mathf.FloorToInt(arms.Ammo + 0.0001f) + "→" + Mathf.FloorToInt(a1 + 0.0001f)
+                                     + "/" + rules.ammoMax.ToString("0") + ")    " + keepBtn + " 回復にする +" + salHeal + "(HP " + Mathf.CeilToInt(player.HP) + "→" + Mathf.CeilToInt(h1)
+                                     + "/" + player.MaxHP.ToString("0") + ")    " + equip + " やめる";
+                    pickupLines[1] = "<color=#AAAAAA>分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)</color>";
+                    pickupLineCount = 2;
+                }
+                else if (w.IsTwoHand)
                 {
                     // 両手持ち:付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、今の右手・左手の武装は両方とも置かれる
                     string r1 = SlotButton(DuelSlot.RightHand), l1 = SlotButton(DuelSlot.LeftHand);
                     var cmp = DuelWeapon.SameFamily(a, w) ? a : DuelWeapon.SameFamily(b, w) ? b : null;
                     if (arms.Choosing == null)
                     {
-                        pickupLines[0] = equip + " 拾う:" + name + "(" + DuelWeapon.KindName(w.kind) + "・両手持ち)  ― " + w.feel;
+                        pickupLines[0] = "拾える:" + name + "(" + DuelWeapon.KindName(w.kind) + "・両手持ち)  ― " + w.feel;
                         pickupLines[1] = TwoHandMoves(w);
                         pickupLines[2] = DuelWeapon.CompareText(w, cmp);
                         pickupLineCount = 3;
@@ -813,7 +991,7 @@ namespace MeleeDuel
                     string fly = "[" + ProtoInput.L(ProtoInput.Btn.Fly) + "]";
                     if (arms.Choosing == null)
                     {
-                        pickupLines[0] = equip + " 拾う:" + name + "(" + DuelWeapon.KindName(w.kind) + ")  ― " + w.feel + "(今:" + CurName(a) + ")";
+                        pickupLines[0] = "拾える:" + name + "(" + DuelWeapon.KindName(w.kind) + ")  ― " + w.feel + "(今:" + CurName(a) + ")";
                         pickupLines[1] = DuelWeapon.CompareText(w, a);
                         pickupLineCount = 2;
                     }
@@ -827,7 +1005,7 @@ namespace MeleeDuel
                 }
                 else if (arms.Choosing == null)
                 {
-                    pickupLines[0] = equip + " 拾う:" + name + "(" + DuelWeapon.KindName(w.kind) + mode + ")  ― " + w.feel;
+                    pickupLines[0] = "拾える:" + name + "(" + DuelWeapon.KindName(w.kind) + mode + ")  ― " + w.feel;
                     pickupLines[1] = DuelWeapon.CompareText(w, null);
                     pickupLineCount = 2;
                 }
@@ -845,12 +1023,21 @@ namespace MeleeDuel
                         pickupLineCount = 4;
                     }
                 }
+                if (arms.Choosing == null && arms.Breaking == null && pickupLineCount < pickupLines.Length)
+                {
+                    // 拾う案内の操作:付ける(付け先を選ぶ)/ 持つ(所持品へ。重さの上限を超えるなら持てない)/ 分解(弾か回復を選ぶ)
+                    float after = arms.WeightIfStashed(w), max = arms.CarryMax;
+                    string keep = after <= max + 0.001f
+                        ? keepBtn + " 持つ(重さ " + arms.TotalWeight.ToString("0") + "→" + after.ToString("0") + "/" + max.ToString("0") + ")"
+                        : "<color=#FF7A6A>" + keepBtn + " 持つ:重すぎる(" + after.ToString("0") + "/" + max.ToString("0") + ")</color>";
+                    pickupLines[pickupLineCount++] = equip + " 付ける    " + keep + "    " + breakBtn + " 分解(弾 +" + salAmmo + " / 回復 +" + salHeal + ")";
+                }
                 BuildPickCharts(arms.Choosing != null ? w : null, to, a, b, curTwo);
             }
             // 右下の武装の欄と左下の HP・操作説明に重ならない高さ(行が多いときは上へずらす)
             float h = 6f + 26f * pickupLineCount, wd = 1200f, bx = (SW - wd) / 2f;
             float by = Mathf.Min(SH * 0.56f, Mathf.Min(ArmsTop, leftTop) - 8f - h);
-            GUI.color = new Color(0f, 0f, 0f, arms.Choosing != null ? 0.7f : 0.55f);
+            GUI.color = new Color(0f, 0f, 0f, arms.Choosing != null || arms.Breaking != null ? 0.7f : 0.55f);
             GUI.DrawTexture(new Rect(bx, by, wd, h), Texture2D.whiteTexture);
             GUI.color = Color.white;
             for (int i = 0; i < pickupLineCount; i++)
@@ -989,9 +1176,10 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
-                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 拾う→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 付ける→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
+                sb.Append("  ").Append(B(ProtoInput.Btn.Stash)).Append(" 持つ  ").Append(B(ProtoInput.Btn.Break)).Append(" 分解(弾か回復)");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
-                sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・捨てる");
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・所持品");
                 helpText = sb.ToString();
                 return helpText;
             }
@@ -1015,11 +1203,12 @@ namespace MeleeDuel
         ProtoInput.Device viewKeyDev;
         int viewKeyBlock;
         bool viewBuilt;
-        string viewFoot, viewDropHint, viewDropConfirm, viewDropConfirm2;
+        string viewFoot, viewDropHint;
 
         /// <summary>
         /// 画面の中央:5つの所それぞれの武装(名前・レア度の色・種類・一言)、主な性能(拾うときの比較と同じ値)、使うボタン。空きは「なし」。
-        /// 選んでいる所は明るい帯と左の縦線で目立たせ、右上に捨てるボタンを出す(確認の途中は赤い帯と「もう一度押すと捨てる」)。
+        /// 選んでいる所は明るい帯と左の縦線で目立たせ、右上に操作(△ 外して持つ・□ 処分)を出す(処分の途中は赤い帯と、捨てる・弾・回復の選び方)。
+        /// 右に所持品の欄(重さ・弾・所持品の一覧)。下に選んでいる武装の性能のグラフ。
         /// </summary>
         void DrawEquipView(DuelArms arms)
         {
@@ -1029,10 +1218,10 @@ namespace MeleeDuel
             for (int i = 0; i < ArmRows && !changed; i++) changed = viewKeyW[i] != arms.Get((DuelSlot)i);
             if (changed) BuildEquipView(arms, dev, block);
 
-            const float wd = 940f, rowH = 76f, headW = 130f, pad = 18f, titleH = 46f, footH = 34f;
+            const float wd = 900f, sideW = 330f, gapX = 10f, rowH = 76f, headW = 130f, pad = 18f, titleH = 46f, footH = 34f;
             float h = pad + titleH + rowH * ArmRows + footH + 6f;
-            // 下に性能のグラフの枠(EquipChartH)を足した全体を、画面の中央に
-            float bx = (SW - wd) / 2f, by = Mathf.Max(4f, (SH - h - EquipChartGap - EquipChartH) / 2f);
+            // 右の所持品の欄と、下の性能のグラフの枠(EquipChartH)を足した全体を、画面の中央に
+            float bx = Mathf.Max(4f, (SW - wd - gapX - sideW) / 2f), by = Mathf.Max(4f, (SH - h - EquipChartGap - EquipChartH) / 2f);
             // 画面全体を少し暗くし、その上にパネル
             GUI.color = new Color(0f, 0f, 0f, 0.35f);
             GUI.DrawTexture(new Rect(0f, 0f, SW, SH), Texture2D.whiteTexture);
@@ -1043,23 +1232,24 @@ namespace MeleeDuel
 
             float y = by + pad + titleH;
             float tx = bx + pad + headW, tw = wd - pad * 2f - headW;
-            // 両手持ちは右手・左手の2行で1つ:どちらを選んでも2行とも選んでいる帯にし、捨てる確認も2行とも
+            // 両手持ちは右手・左手の2行で1つ:どちらを選んでも2行とも選んでいる帯にし、処分の選択も2行とも
             bool two = arms.TwoHanded;
-            bool selTwo = two && viewSel <= (int)DuelSlot.LeftHand;
+            bool onSlots = !StashSelected;
+            bool selTwo = onSlots && two && viewSel <= (int)DuelSlot.LeftHand;
             for (int i = 0; i < ArmRows; i++)
             {
                 var w = arms.Get((DuelSlot)i);
-                bool sel = i == viewSel || (selTwo && i <= (int)DuelSlot.LeftHand);
+                bool sel = onSlots && (i == viewSel || (selTwo && i <= (int)DuelSlot.LeftHand));
                 bool armed = sel && dropArmed && w != null;
                 if (sel)
                 {
-                    // 選んでいる所:帯と左の縦線(捨てる確認の途中は赤)
+                    // 選んでいる所:帯と左の縦線(処分の途中は赤)
                     GUI.color = armed ? new Color(0.9f, 0.25f, 0.2f, 0.28f) : new Color(1f, 1f, 1f, 0.09f);
                     GUI.DrawTexture(new Rect(bx + pad - 8f, y + 1f, wd - pad * 2f + 16f, rowH - 1f), Texture2D.whiteTexture);
                     GUI.color = armed ? new Color(1f, 0.4f, 0.3f) : new Color(0.45f, 0.8f, 1f);
                     GUI.DrawTexture(new Rect(bx + pad - 8f, y + 1f, 4f, rowH - 1f), Texture2D.whiteTexture);
                     GUI.color = Color.white;
-                    if (w != null && block == 0 && !armed && i == viewSel) GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewDropHint, richRight);
+                    if (w != null && !armed && i == viewSel) GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewDropHint, richRight);
                 }
                 // 区切りの細い線(両手持ちの右手と左手の間は引かない)
                 GUI.color = new Color(1f, 1f, 1f, 0.12f);
@@ -1069,9 +1259,9 @@ namespace MeleeDuel
                 GUI.color = Color.white;
                 GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewName[i], richSmall);
                 if (w != null) GUI.Label(new Rect(tx, y + 29f, tw, 22f), viewStats[i], richSmall);
-                // 3行目:使うボタン(捨てる確認の途中は、その案内に替える)
+                // 3行目:使うボタン(処分の途中は、その選び方に替える)
                 GUI.color = armed ? Color.white : new Color(1f, 1f, 1f, 0.6f);
-                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? (selTwo ? viewDropConfirm2 : viewDropConfirm) : viewUse[i], richSmall);
+                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? DisposeLine(arms, w, block, selTwo) : viewUse[i], richSmall);
                 GUI.color = Color.white;
                 y += rowH;
             }
@@ -1081,11 +1271,161 @@ namespace MeleeDuel
             GUI.Label(new Rect(bx, y + 6f, wd, 24f), viewFoot, center);
             GUI.color = Color.white;
 
-            DrawEquipChart(arms, bx, by + h + EquipChartGap, wd);
+            DrawStashPanel(arms, bx + wd + gapX, by, sideW, h, block);
+            DrawEquipChart(arms, bx, by + h + EquipChartGap, wd + gapX + sideW);
+        }
+
+        // 処分の1行(捨てる・弾にする・回復にする・やめる)。武装・捨てられない理由・機器が変わったときだけ作る
+        (DuelWeapon w, int block, bool two, ProtoInput.Device dev) disposeKey;
+        string disposeText;
+
+        /// <summary>処分の選び方:「処分  [□] 床に捨てる  [←] 弾にする +24  [→] 回復にする +13  [○] やめる」(捨てられない・回復できないときは灰色で理由)。</summary>
+        string DisposeLine(DuelArms arms, DuelWeapon w, int block, bool two)
+        {
+            var key = (w, block, two, ProtoInput.Current);
+            if (disposeText != null && disposeKey == key) return disposeText;
+            disposeKey = key;
+            bool kb = ProtoInput.Current == ProtoInput.Device.Keyboard;
+            string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Backspace" : ProtoInput.L(ProtoInput.Btn.Back);
+            string why = block switch { 1 => "撃墜中は捨てられない", 2 => "ボスの後は捨てられない", 3 => "真下に床がない", _ => "" };
+            string dropPart = block == 0 ? $"[{drop}] {(two ? "両手の武装を" : "")}床に捨てる" : $"<color=#888888>[{drop}] {why}</color>";
+            string healPart = block == 1 ? "<color=#888888>回復は撃墜中はできない</color>"
+                : $"[{ProtoInput.L(ProtoInput.Btn.MenuRight)}] 回復にする +{arms.SalvageHeal(w)}";
+            disposeText = $"<color=#FF8A70><b>処分</b></color>  {dropPart}   [{ProtoInput.L(ProtoInput.Btn.MenuLeft)}] 弾にする +{arms.SalvageAmmo(w)}   {healPart}   [{back}] やめる";
+            return disposeText;
+        }
+
+        // 所持品の欄の文字列(所持品の中身・機器が変わったときだけ作る)
+        readonly List<DuelArms.Carried> stashRowKey = new();
+        readonly List<string> stashRowName = new(), stashRowWeight = new();
+        ProtoInput.Device stashRowDev;
+        (DuelWeapon w, bool armed, int block, ProtoInput.Device dev) stashHintKey;
+        string stashHint, stashHead;
+        (int n, int total, int max, int mob, int ammo, int ammoMax) stashHeadKey;
+
+        /// <summary>
+        /// 右の所持品の欄:重さ(上限)と速さ・共通の弾、その下に所持品の一覧(レア度の色・名前・種類・重さ)。選んでいる所持品は帯と縦線。
+        /// 一番下に、選んでいる所持品の操作(付ける所のボタン・処分)か、処分の選び方。
+        /// </summary>
+        void DrawStashPanel(DuelArms arms, float x, float y, float w, float h, int block)
+        {
+            const float pad = 14f, rowH = 28f, hintH = 92f, listTop = 78f;
+            GUI.color = new Color(0.03f, 0.04f, 0.06f, 0.88f);
+            GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            var stash = arms.Stash;
+            var r = arms.Rules;
+            var hk = (stash.Count, Mathf.RoundToInt(arms.TotalWeight), Mathf.RoundToInt(arms.CarryMax), Mathf.RoundToInt(arms.Mobility * 100f),
+                      Mathf.FloorToInt(arms.Ammo + 0.0001f), Mathf.RoundToInt(r.ammoMax));
+            if (stashHead == null || stashHeadKey != hk)
+            {
+                stashHeadKey = hk;
+                stashHead = $"重さ {hk.Item2}/{hk.Item3}   速さ ×{hk.Item4 / 100f:0.00}\n弾 {hk.Item5}/{hk.Item6}";
+            }
+            GUI.Label(new Rect(x + pad, y + 10f, w - pad * 2f, 26f), $"所持品  {stash.Count}", viewHeadStyle);
+            GUI.color = new Color(1f, 1f, 1f, 0.75f);
+            GUI.Label(new Rect(x + pad, y + 36f, w - pad * 2f, 40f), stashHead, small);
+            GUI.color = Color.white;
+
+            // 一覧の文字列
+            bool rebuild = stashRowKey.Count != stash.Count || stashRowDev != ProtoInput.Current;
+            for (int i = 0; i < stash.Count && !rebuild; i++) rebuild = stashRowKey[i] != stash[i];
+            if (rebuild)
+            {
+                stashRowKey.Clear();
+                stashRowName.Clear();
+                stashRowWeight.Clear();
+                stashRowDev = ProtoInput.Current;
+                foreach (var c in stash)
+                {
+                    stashRowKey.Add(c);
+                    string kind = DuelWeapon.KindName(c.w.kind);
+                    string ammo = c.w.IsGun && c.w.magazine > 0 && c.mag >= 0 && c.mag < c.w.magazine ? $" 弾{c.mag}/{c.w.magazine}" : "";
+                    stashRowName.Add($"<color=#{ColorUtility.ToHtmlStringRGB(c.w.Color)}>{c.w.name}</color> <color=#9A9A9A>{kind}{ammo}</color>");
+                    stashRowWeight.Add($"重 {c.w.weight:0.#}");
+                }
+            }
+
+            float listY = y + listTop, listH = h - listTop - hintH;
+            int visible = Mathf.Max(1, Mathf.FloorToInt(listH / rowH));
+            int sel = StashSelected ? StashSel : -1;
+            if (stash.Count == 0)
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.5f);
+                GUI.Label(new Rect(x + pad, listY + 4f, w - pad * 2f, 60f),
+                    $"なし ― 落ちている武装の近くで {ProtoInput.L(ProtoInput.Btn.Stash)} で持つ。装備の行で {ProtoInput.L(ProtoInput.Btn.PickUp)} で外して持つ", chartNoteStyle);
+                GUI.color = Color.white;
+            }
+            else
+            {
+                // 選んでいる行が見えるように送る
+                int first = Mathf.Clamp((sel >= 0 ? sel : 0) - visible / 2, 0, Mathf.Max(0, stash.Count - visible));
+                for (int k = 0; k < visible && first + k < stash.Count; k++)
+                {
+                    int i = first + k;
+                    float ry = listY + k * rowH;
+                    bool isSel = i == sel;
+                    if (isSel)
+                    {
+                        bool armed = dropArmed;
+                        GUI.color = armed ? new Color(0.9f, 0.25f, 0.2f, 0.28f) : new Color(1f, 1f, 1f, 0.09f);
+                        GUI.DrawTexture(new Rect(x + 6f, ry, w - 12f, rowH - 2f), Texture2D.whiteTexture);
+                        GUI.color = armed ? new Color(1f, 0.4f, 0.3f) : new Color(0.45f, 0.8f, 1f);
+                        GUI.DrawTexture(new Rect(x + 6f, ry, 4f, rowH - 2f), Texture2D.whiteTexture);
+                        GUI.color = Color.white;
+                    }
+                    Chip(new Rect(x + pad + 2f, ry + 9f, 10f, 10f), stash[i].w.Color);
+                    GUI.Label(new Rect(x + pad + 18f, ry + 3f, w - pad * 2f - 70f, 22f), stashRowName[i], richSmall);
+                    GUI.color = new Color(1f, 1f, 1f, 0.7f);
+                    GUI.Label(new Rect(x + w - pad - 60f, ry + 3f, 60f, 22f), stashRowWeight[i], rightSmall);
+                    GUI.color = Color.white;
+                }
+                if (stash.Count > visible)
+                {
+                    GUI.color = new Color(1f, 1f, 1f, 0.5f);
+                    GUI.Label(new Rect(x + pad, listY + visible * rowH - 4f, w - pad * 2f, 18f), $"{first + 1}〜{Mathf.Min(stash.Count, first + visible)} / {stash.Count}", cellTinyRight);
+                    GUI.color = Color.white;
+                }
+            }
+
+            // 一番下:選んでいる所持品の操作
+            GUI.color = new Color(1f, 1f, 1f, 0.12f);
+            GUI.DrawTexture(new Rect(x + pad, y + h - hintH, w - pad * 2f, 1f), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            var sw = sel >= 0 && sel < stash.Count ? stash[sel].w : null;
+            var key = (sw, dropArmed, block, ProtoInput.Current);
+            if (stashHint == null || stashHintKey != key)
+            {
+                stashHintKey = key;
+                if (sw == null) stashHint = $"<color=#999999>{(ProtoInput.Current == ProtoInput.Device.Keyboard ? "↓/S" : "↓")} で所持品を選ぶ</color>";
+                else if (dropArmed) stashHint = DisposeLine(arms, sw, block, false);
+                else
+                {
+                    var sb = new System.Text.StringBuilder();
+                    if (block == 1) sb.Append("<color=#888888>撃墜中は付けられない</color>");
+                    else if (sw.IsTwoHand)
+                        sb.Append('[').Append(SlotButton(DuelSlot.RightHand)).Append("]/[").Append(SlotButton(DuelSlot.LeftHand)).Append("] 両手に付ける");
+                    else
+                    {
+                        var to = DuelWeapon.SlotsFor(sw.kind);
+                        for (int k = 0; k < to.Length; k++)
+                        {
+                            if (k > 0) sb.Append(" / ");
+                            string b = to[k] == DuelSlot.Back ? ProtoInput.L(ProtoInput.Btn.Fly) : SlotButton(to[k]);
+                            sb.Append('[').Append(b).Append("] ").Append(DuelWeapon.SlotName(to[k]));
+                        }
+                        sb.Append(" に付ける");
+                    }
+                    if (block != 1) sb.Append("<color=#AAAAAA>(今の武装は所持品へ)</color>");
+                    sb.Append("\n[").Append(ProtoInput.L(ProtoInput.Btn.Discard)).Append("] 処分(捨てる・分解して弾か回復)");
+                    stashHint = sb.ToString();
+                }
+            }
+            GUI.Label(new Rect(x + pad, y + h - hintH + 6f, w - pad * 2f, hintH - 10f), stashHint, chartNoteStyle);
         }
 
         const float EquipChartH = 196f, EquipChartGap = 8f;
-        // 装備の確認のグラフ:選んでいる所・その武装・比べる相手が変わったときだけ作り直す
+        // 装備の確認のグラフ:選んでいる行・その武装・比べる相手が変わったときだけ作り直す
         (int sel, DuelWeapon w, DuelWeapon other) viewChartKey = (-1, null, null);
         DuelRadar.Pair viewChartPair;
         string viewChartNote;
@@ -1101,16 +1441,38 @@ namespace MeleeDuel
         };
 
         /// <summary>
-        /// 装備の確認の下の枠:選んでいる所の武装のレーダーチャートと帯グラフ。比べる相手は同じ仲間のもう片方の所(右手⇔左手、右肩⇔左肩)。
-        /// 相手が空き・背中・両手持ちなら単独で出す。相手の仲間が違えば(剣と盾など)レーダーは出さず、帯グラフも選んでいる武装だけ。
-        /// 右の欄に凡例と読み方。選んでいる所が空きなら、その旨だけ。
+        /// 装備の確認の下の枠:選んでいる武装のレーダーチャートと帯グラフ。
+        /// 付けている所なら、比べる相手は同じ仲間のもう片方の所(右手⇔左手、右肩⇔左肩)。相手が空き・背中・両手持ちなら単独で出す。
+        /// 所持品なら、付けられる所の今の武装(同じ仲間がいればそれ、なければ1つ目の所)と比べる。
+        /// 相手の仲間が違えば(剣と盾など)レーダーは出さず、帯グラフも選んでいる武装だけ。右の欄に凡例と読み方。選んでいる所が空きなら、その旨だけ。
         /// </summary>
         void DrawEquipChart(DuelArms arms, float bx, float y, float wd)
         {
-            var slot = (DuelSlot)viewSel;
-            var w = arms.Get(slot);
-            int ps = PartnerSlot(slot);
-            var other = w == null || w.IsTwoHand || ps < 0 ? null : arms.Get((DuelSlot)ps);
+            var w = SelectedWeapon(arms);
+            DuelWeapon other = null;
+            string me = "", them = "", why = "";
+            if (w != null && StashSelected)
+            {
+                var to = DuelWeapon.SlotsFor(w.kind);
+                var os = to[0];
+                foreach (var s in to)
+                    if (DuelWeapon.SameFamily(arms.Get(s), w)) { os = s; break; }
+                other = arms.Get(os);
+                me = "所持品";
+                them = other is { IsTwoHand: true } && os is DuelSlot.RightHand or DuelSlot.LeftHand ? "両手" : DuelWeapon.SlotName(os);
+                why = other == null ? them + "は空き" : "";
+            }
+            else if (w != null)
+            {
+                var slot = (DuelSlot)viewSel;
+                int ps = PartnerSlot(slot);
+                other = w.IsTwoHand || ps < 0 ? null : arms.Get((DuelSlot)ps);
+                me = w.IsTwoHand ? "両手" : DuelWeapon.SlotName(slot);
+                them = ps >= 0 ? DuelWeapon.SlotName((DuelSlot)ps) : "";
+                why = w.IsTwoHand ? "両手持ちなので、比べる相手はない"
+                    : ps < 0 ? "背中は1つだけなので、比べる相手はない"
+                    : other == null ? them + "は空き" : "";
+            }
             var key = (viewSel, w, other);
             if (viewChartKey != key)
             {
@@ -1118,13 +1480,8 @@ namespace MeleeDuel
                 viewChartPair = DuelRadar.Get(w, other);
                 if (w != null)
                 {
-                    string me = w.IsTwoHand ? "両手" : DuelWeapon.SlotName(slot);
-                    string them = ps >= 0 ? DuelWeapon.SlotName((DuelSlot)ps) : "";
-                    string why = w.IsTwoHand ? "両手持ちなので、比べる相手はない"
-                        : ps < 0 ? "背中は1つだけなので、比べる相手はない"
-                        : other == null ? them + "は空き"
-                        : viewChartPair.otherDifferent ? them + "の" + other.name + "は" + DuelWeapon.KindName(other.kind) + "で、仲間が違うので比べない"
-                        : "";
+                    if (other != null && viewChartPair.otherDifferent)
+                        why = them + "の" + other.name + "は" + DuelWeapon.KindName(other.kind) + "で、仲間が違うので比べない";
                     var sb = new System.Text.StringBuilder();
                     sb.Append("<color=").Append(DuelRadar.MainHex).Append(">■ ").Append(me).Append(":").Append(w.name).Append("</color>\n");
                     if (viewChartPair.Same)
@@ -1219,17 +1576,16 @@ namespace MeleeDuel
             }
             string close = kb ? "I / Backspace" : ProtoInput.L(ProtoInput.Btn.EquipView) + " / " + ProtoInput.L(ProtoInput.Btn.Back);
             string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Backspace" : ProtoInput.L(ProtoInput.Btn.Back);
-            viewDropHint = $"<color=#AAAAAA>{drop} 床に捨てる</color>";
-            viewDropConfirm = $"<color=#FF8A70><b>もう一度 {drop} で足もとに捨てる</b>  {back} やめる</color>";
-            viewDropConfirm2 = $"<color=#FF8A70><b>もう一度 {drop} で両手の武装を足もとに捨てる(両手が空く)</b>  {back} やめる</color>";
+            viewDropHint = $"<color=#AAAAAA>{ProtoInput.L(ProtoInput.Btn.PickUp)} 外して持つ   {drop} 処分(捨てる・分解)</color>";
             string sel = kb ? "↑↓/W・S" : "↑↓";
-            viewFoot = block switch
+            string note = block switch
             {
-                1 => $"一時停止中 ― {sel} 選ぶ  撃墜中は捨てられない  {close} 閉じる",
-                2 => $"一時停止中 ― {sel} 選ぶ  ボスを倒した後は拾い直せないので、捨てられない  {close} 閉じる",
-                3 => $"一時停止中 ― {sel} 選ぶ  真下に床がない(穴の上・空中)ので、ここでは捨てられない  {close} 閉じる",
-                _ => $"一時停止中 ― {sel} 選ぶ  {drop} 床に捨てる(もう一度押して決める。拾い直せる)  {close} 閉じる",
+                1 => "(撃墜中は捨てられない)",
+                2 => "(ボスの後は捨てられない)",
+                3 => "(真下に床がないので、ここでは捨てられない)",
+                _ => "",
             };
+            viewFoot = $"一時停止中 ― {sel} 選ぶ(下に所持品)  {drop} 処分:もう一度 {drop} 捨てる・← 弾・→ 回復{note}  {close} 閉じる";
         }
 
         /// <summary>両手持ちの L1 の技の1行(近接は一振りの威力・届く範囲・幅・EN、射撃は撃ち方)。</summary>
@@ -1257,14 +1613,14 @@ namespace MeleeDuel
             foreach (var s in DuelWeapon.Stats(w))
             {
                 if (w.IsTwoHand && s.name is "L1" or "L1技") continue;
-                if (sb.Length > 0) sb.Append("    ");
+                if (sb.Length > 0) sb.Append("   ");
                 if (s.name == "弾倉" && w.magazine <= 0) sb.Append("弾切れなし");
                 else sb.Append(s.name).Append(' ').Append(s.text);
             }
             if (w.IsGun)
             {
-                sb.Append("    連射 ").Append((1f / Mathf.Max(0.01f, w.interval)).ToString("0.#")).Append("発/秒");
-                if (w.magazine > 0) sb.Append("    リロード ").Append(w.reload.ToString("0.0")).Append("秒");
+                sb.Append("   連射 ").Append((1f / Mathf.Max(0.01f, w.interval)).ToString("0.#")).Append("発/秒");
+                if (w.magazine > 0) sb.Append("   リロード ").Append(w.reload.ToString("0.0")).Append("秒");
             }
             return sb.ToString();
         }

@@ -1292,8 +1292,8 @@ namespace MeleeDuel
             helpKey = key;
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
             bool kb = dev == ProtoInput.Device.Keyboard;
-            // ロックオンの相手の切り替えは R3 / Tab だけ(ロックオン中の右スティック・マウスはカメラで狙いをずらす)
-            string lockSwitch = kb ? "  Tab 切替" : dev == ProtoInput.Device.Xbox ? "  RS押し込み 切替" : "  R3 切替";
+            // ロックオンの相手の切り替え:撃っていないときに右スティック(マウスは左右に振る)を左右に弾く。R3 / Tab でも切り替わる
+            string lockSwitch = kb ? "  マウスを左右に振る/Tab 切替" : "  右スティックを左右に弾く 切替";
             var sb = new System.Text.StringBuilder();
             if (arms)
             {

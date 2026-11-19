@@ -478,8 +478,36 @@ namespace MeleeDuel
             if (Target != null && LockRange > 0f && (Target.transform.position - transform.position).sqrMagnitude > LockRange * LockRange * 2.25f) Target = null;
             if (Target != null && Target.Dead) Target = Nearest();   // 倒したら、残っている一番近い敵へ
             if (ProtoInput.LockToggle) Target = Target == null ? Nearest() : null;
-            // 切り替えは R3 / Tab だけ(ロックオン中の右スティック・マウスはカメラで狙いをずらすのに使う。DuelCamera)
             if (ProtoInput.SwitchTarget) Target = Target == null ? Nearest() : NearestToView(Target);
+            // ロックオン中で、銃を構えていないとき:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)。
+            // 構えの間は右スティック・マウスで狙う(DuelCamera)ので切り替えない(作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)
+            if (Target == null || (Arms != null && Arms.Aiming)) { stickArmed = false; mouseFlick = 0f; return; }
+            float sx = ProtoInput.RightStick.x;
+            if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
+            else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }
+            // マウス:左右に大きく振ると同じように切り替える
+            mouseFlick = mouseFlick * Mathf.Exp(-6f * Time.unscaledDeltaTime) + ProtoInput.MouseDelta.x;
+            if (Mathf.Abs(mouseFlick) > 160f) { SwitchSide(Mathf.Sign(mouseFlick)); mouseFlick = 0f; }
+        }
+
+        // 構え・ロックオンの始まりでスティックが倒れたままなら、一度戻すまで切り替えない(構えの終わりに勝手に切り替わらないように)
+        bool stickArmed;
+        float mouseFlick;
+
+        /// <summary>今の敵から見て side(+1=右 / -1=左)の側にいる、向きの一番近い敵へ切り替える(いなければそのまま)。</summary>
+        void SwitchSide(float side)
+        {
+            Vector3 toCur = Flat(Target.transform.position - transform.position);
+            DuelEnemy best = null;
+            float bestAngle = float.MaxValue;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead || e == Target || !Lockable(e)) continue;
+                float a = Vector3.SignedAngle(toCur, Flat(e.transform.position - transform.position), Vector3.up);
+                if (a * side <= 0f) continue;
+                if (Mathf.Abs(a) < bestAngle) { bestAngle = Mathf.Abs(a); best = e; }
+            }
+            if (best != null) Target = best;
         }
 
         /// <summary>

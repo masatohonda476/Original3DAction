@@ -57,6 +57,8 @@ namespace MeleeDuel
         public float edgePull = 8f;
 
         [Header("ロックオン中の右スティック・マウス(狙いをずらす)")]
+        [Tooltip("オンなら、ロックオン中(撃っていないとき)も右スティック・マウスで狙いをずらせる。オフ(既定)ならずらせず、右スティックを左右に弾くとロックオンの相手を切り替える(DuelPlayer)。オンにすると両方が効いてしまうので、比べるときだけ")]
+        public bool lockStickAims = false;
         [Tooltip("右スティックを倒しきったときの、左右・上下にずらす速さ(度/秒)。ロックオンしていないときは今までどおり 320 / 190")]
         public float lockStickYawSpeed = 140f, lockStickPitchSpeed = 90f;
         [Tooltip("マウスの1画素あたりにずらす角度(度)。ロックオンしていないときは 0.24")]
@@ -349,7 +351,7 @@ namespace MeleeDuel
         /// </summary>
         void UpdateLockAim(float dt, bool readInput)
         {
-            if (readInput)
+            if (readInput && lockStickAims)   // 既定はオフ:撃っていないロックオン中は右スティックで相手を切り替える(作者「ロックオン中に銃を撃たずに動かせるのは消して」)
             {
                 Vector2 stick = ProtoInput.RightStick;
                 Vector2 m = ProtoInput.MouseDelta;

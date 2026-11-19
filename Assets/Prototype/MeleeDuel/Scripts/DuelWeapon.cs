@@ -89,11 +89,14 @@ namespace MeleeDuel
         [Tooltip("弾が敵を貫いて、線の上の敵みんなに当たる")] public bool pierce;
         [Tooltip("貫く弾の太さ(敵の半径に足す m)")] public float beamWidth;
 
-        [Header("重さ・共通の弾・照準の枠(DuelArmsRules で効き方を決める)")]
-        [Tooltip("重さ。付けている武装と所持品の合計で、持てる量(上限)と走り・ブースト・回避・上昇の速さが決まる")]
+        [Header("重さ・共通の弾・EN・照準の枠(DuelArmsRules で効き方を決める)")]
+        [Tooltip("重さ。付けている武装と所持品の合計で、持てる量(上限)と、ENを使う移動(ブースト移動・回避の距離・飛ぶときの上昇)の速さが決まる。歩き・走りには効かない")]
         public float weight = 5f;
         [Tooltip("共通の弾の使う量。弾倉のある銃:弾倉へ1発詰めるごと(リロードのとき) / 弾倉のない砲・ミサイル・L1の撃ち方:撃つたび(1回分)。0 なら使わない(エネルギー武器)")]
         public float ammoCost;
+        [Tooltip("ENの使う量(エネルギー武器。0 なら使わない)。押している間撃ち続ける武装(hold オン)は1秒あたり、押すたびに撃つ・溜め撃ちは1回あたり。" +
+                 "ENが0以下の間は撃てず、残りが少しでもあれば撃てて足りない分はマイナスになる(回避・攻撃と同じ決まり)。溜め撃ちは溜め始めにENが残っていれば、離したときに使う")]
+        public float enCost;
         [Tooltip("照準の枠の大きさ(画面の中央からの角度。横の半分。縦は DuelArmsRules.frameAspect 倍)。0 なら DuelArmsRules.defaultFrame。両手の銃・砲の L1 は 0 なら主の撃ち方の枠")]
         public float aimFrame;
 
@@ -124,14 +127,22 @@ namespace MeleeDuel
         /// <summary>最初から右手に持っている素の剣(落ちる一覧には入らない。手から外すと床に置かれ、拾い直せる)。</summary>
         public static readonly DuelWeapon BaseSword = new() { name = "素の剣", kind = DuelKind.Sword, rarity = 0, feel = "最初から持っている剣", weight = 4f };
 
-        /// <summary>重さ・共通の弾の使う量・照準の枠をまとめて入れる(一覧を読みやすくするため。this を返す)。</summary>
-        DuelWeapon Spec(float weight, float ammo = 0f, float frame = 0f)
+        /// <summary>重さ・共通の弾の使う量・照準の枠・ENの使う量をまとめて入れる(一覧を読みやすくするため。this を返す)。</summary>
+        DuelWeapon Spec(float weight, float ammo = 0f, float frame = 0f, float en = 0f)
         {
             this.weight = weight;
             ammoCost = ammo;
             aimFrame = frame;
+            enCost = en;
             return this;
         }
+
+        /// <summary>撃つたびにENを使うか(エネルギー武器)。</summary>
+        public bool UsesEnergy => enCost > 0f;
+        /// <summary>1回撃つ(1発・1回分)ごとに使うEN。押している間撃ち続ける武装は enCost が1秒あたりなので、発射の間隔を掛ける。</summary>
+        public float EnPerShot => hold && charge <= 0f ? enCost * Mathf.Max(0.01f, interval) : enCost;
+        /// <summary>ENの使う量の表示(「EN 20/秒」「EN 12/発」「EN 40/回」)。使わなければ空。</summary>
+        public string EnText => !UsesEnergy ? "" : hold && charge <= 0f ? $"EN {enCost:0.#}/秒" : charge > 0f ? $"EN {enCost:0.#}/回" : $"EN {enCost:0.#}/発";
 
         /// <summary>撃つたびに共通の弾を使うか(弾倉のない、実弾の撃ち方)。弾倉のある銃はリロードのときに使う。</summary>
         public bool PaysPerShot => ammoCost > 0f && !(IsGun && magazine > 0);
@@ -197,7 +208,8 @@ namespace MeleeDuel
             string body = a.Explosive
                 ? (a.salvo > 1 ? $"{a.damage:0.#}×{a.salvo}発 爆風{a.radius:0.#}m" : $"{a.damage:0.#} 爆風{a.radius:0.#}m")
                 : (a.pellets > 1 ? $"{a.damage:0.#}×{a.pellets}粒" : $"{a.damage:0.#}");
-            return (a.charge > 0f ? $"溜め{a.charge:0.0}秒 " : "") + body + (a.pierce ? " 貫通" : "") + (a.charge > 0f ? "" : $" 間隔{a.interval:0.0}秒");
+            return (a.charge > 0f ? $"溜め{a.charge:0.0}秒 " : "") + body + (a.pierce ? " 貫通" : "") + (a.charge > 0f ? "" : $" 間隔{a.interval:0.0}秒")
+                   + (a.UsesEnergy ? " " + a.EnText : "");
         }
 
         /// <summary>比べられる仲間(振る武装 / 盾 / 背中 / 弾の銃 / 爆発)。同じ仲間なら、同じ名前の項目どうしで比べる。</summary>
@@ -277,7 +289,7 @@ namespace MeleeDuel
                     list.Add(("1発", shot, w.pellets > 1 ? $"{w.damage:0.#}×{w.pellets}粒" : $"{w.damage:0.#}", true));
                     list.Add(("怯ませ", w.stagger * Mathf.Max(1, w.pellets), $"{w.stagger * Mathf.Max(1, w.pellets):0.#}", true));
                     list.Add(("射程", w.range, $"{w.range:0}m", true));
-                    list.Add(("弾倉", w.magazine <= 0 ? 9999f : w.magazine, w.magazine <= 0 ? "無限" : $"{w.magazine}", true));
+                    if (w.magazine > 0) list.Add(("弾倉", w.magazine, $"{w.magazine}", true));   // 弾倉のない銃(エネルギー武器)は下の「EN」で比べる
                     AddShooter(list, w);
                     AddAlt(list, w);
                     break;
@@ -298,13 +310,22 @@ namespace MeleeDuel
             return list;
         }
 
-        /// <summary>撃つ武装の照準の枠の大きさと、共通の弾の使う量(弾倉の銃は1発詰めるごと、ほかは撃つたび)。</summary>
+        /// <summary>
+        /// 撃つ武装の照準の枠の大きさと、共通の弾の使う量(弾倉の銃は1発詰めるごと、ほかは撃つたび)。
+        /// エネルギー武器は弾の代わりにENの使う量(押している間撃つ武装は1秒あたり、ほかは1発あたり)。
+        /// </summary>
         static void AddShooter(List<(string, float, string, bool)> list, DuelWeapon w)
         {
             float f = w.aimFrame > 0f ? w.aimFrame : DuelArmsRules.FallbackFrame;
             list.Add(("枠", f, $"±{f:0}°", true));
+            if (w.UsesEnergy && w.ammoCost <= 0f)
+            {
+                list.Add(("EN", w.enCost, w.EnText.Substring(3), false));   // 「EN 20/秒」の「20/秒」
+                return;
+            }
             list.Add(("弾", w.ammoCost > 0f ? w.ammoCost : 0.01f,
                 w.ammoCost <= 0f ? "使わない" : w.IsGun && w.magazine > 0 ? $"{w.ammoCost:0.#}/発" : $"{w.ammoCost:0.#}/回", false));
+            if (w.UsesEnergy) list.Add(("EN", w.enCost, w.EnText.Substring(3), false));
         }
 
         /// <summary>両手の銃・砲の L1 の撃ち方(1回の威力。粒・発の数を掛ける)。</summary>
@@ -465,7 +486,7 @@ namespace MeleeDuel
             HandGun("サブマシンガン", 0, "押している間ばらまく。近い敵向け", true, 1.4f, 0.07f, 35f, 4f, 1, 30, 1.8f, 0.3f, 2f, new Vector3(0.45f, 0.8f, 3f)).Spec(4f, 0.5f, 16f),
             HandGun("ライフル", 1, "一発が重く、遠くまで届く", false, 11f, 0.5f, 90f, 0.2f, 1, 6, 2f, 4f, 6f, new Vector3(0.45f, 0.8f, 4.6f)).Spec(6f, 3f, 6f),
             HandGun("散弾銃", 1, "近くで撃てば怯みを一気にため、押し返す", false, 2.4f, 0.75f, 28f, 8f, 8, 4, 2.2f, 0.9f, 10f, new Vector3(0.6f, 0.9f, 3.6f)).Spec(6f, 4f, 18f),
-            HandGun("ビームライフル", 2, "弾切れなし。一発が重く遠くまで届く", false, 16f, 0.45f, 110f, 0f, 1, 0, 0f, 5f, 8f, new Vector3(0.5f, 0.9f, 5f)).Spec(7f, 0f, 7f),
+            HandGun("ビームライフル", 2, "弾を使わずENで撃つ。一発が重く遠くまで届く", false, 16f, 0.45f, 110f, 0f, 1, 0, 0f, 5f, 8f, new Vector3(0.5f, 0.9f, 5f)).Spec(7f, 0f, 7f, en: 12f),
             // 背中
             Back("背部スラスター", 0, "速さと燃費のバランス型", 1.05f, 1.15f, 1.1f, 0.85f, new Vector3(2.4f, 2.8f, 1.3f)).Spec(5f),
             Back("省エネスラスター", 0, "速さは控えめだが、長く飛び続けられる", 1f, 1.05f, 1f, 0.6f, new Vector3(2f, 2.4f, 1.1f)).Spec(5f),
@@ -475,7 +496,7 @@ namespace MeleeDuel
             Gun("肩部機関銃", 0, "弱いが、離れた所から削れる", true, 1.2f, 0.12f, 55f, 2.5f, 1, 24, 2.2f, 0.4f, new Vector3(0.7f, 1.6f, 0.7f)).Spec(6f, 0.5f, 14f),
             Gun("重機関銃", 1, "一発が重く、よく削れる", true, 2f, 0.09f, 75f, 2f, 1, 45, 2.5f, 0.6f, new Vector3(1.2f, 2f, 1.2f)).Spec(12f, 0.5f, 10f),
             Gun("肩部散弾銃", 1, "近いほど多く当たる9粒の散弾", false, 2.2f, 0.6f, 35f, 7f, 9, 6, 2f, 0.8f, new Vector3(1f, 1.5f, 1f)).Spec(8f, 4f, 18f),
-            Gun("ビームガトリング", 2, "弾切れなし。撃ち続けて溶かす", true, 1.8f, 0.06f, 95f, 1.5f, 1, 0, 0f, 0.5f, new Vector3(1.1f, 2.4f, 1.1f)).Spec(11f, 0f, 10f),
+            Gun("ビームガトリング", 2, "弾を使わずENで撃ち続けて溶かす", true, 1.8f, 0.06f, 95f, 1.5f, 1, 0, 0f, 0.5f, new Vector3(1.1f, 2.4f, 1.1f)).Spec(11f, 0f, 10f, en: 20f),
             // 肩の砲・ミサイル(右肩・左肩のどちらにも)
             Heavy("速射砲", 0, "爆発は小さいが、すぐ次が撃てる", true, 8f, 1, 5f, 1.4f, 70f, 6f, 8f, PrimitiveType.Cylinder, new Vector3(0.6f, 1.4f, 0.6f)).Spec(8f, 2f, 10f),
             Heavy("重榴弾砲", 1, "装填は遅いが、大きな爆発で群れをまとめて削る", false, 22f, 1, 12f, 3.5f, 80f, 14f, 22f, PrimitiveType.Cylinder, new Vector3(1.3f, 2f, 1.3f)).Spec(20f, 6f, 8f),
@@ -508,7 +529,7 @@ namespace MeleeDuel
                    AltShot(34f, 1.2f, 70f, 0f, 1, 20f, 26f).Spec(0f, 6f, 7f)).Spec(13f, 6f, 16f),
             TwoGun("レーザー砲", 2, "押している間、敵を貫く光線を撃ち続ける。L1 を溜めて離すと極太の光線", "押している間照射(貫通)", "溜め撃ち(極太・貫通)",
                    true, 3.8f, 0.08f, 110f, 0f, 1, 0, 0f, 0.6f, 2f, new Vector3(0.8f, 1.1f, 6.5f),
-                   AltShot(90f, 1.5f, 130f, 0f, 1, 40f, 30f, charge: 1.5f, pierce: true, beamWidth: 3f).Spec(0f, 0f), pierce: true, beamWidth: 0.3f).Spec(15f, 0f, 7f),
+                   AltShot(90f, 1.5f, 130f, 0f, 1, 40f, 30f, charge: 1.5f, pierce: true, beamWidth: 3f).Spec(0f, 0f, en: 45f), pierce: true, beamWidth: 0.3f).Spec(15f, 0f, 7f, en: 25f),
             TwoCannon("多連装ロケット", 2, "8発のロケットが狙える敵を追う。L1 を溜めて離すと20発の一斉発射", "8発", "溜めて一斉発射",
                       false, 9f, 8, 5f, 2.5f, 110f, 5f, 8f, PrimitiveType.Cube, new Vector3(1.6f, 1.4f, 3.6f),
                       AltBlast(12f, 20, 6f, 5f, 120f, 6f, 10f, charge: 1.2f).Spec(0f, 30f)).Spec(18f, 12f, 24f),
@@ -517,7 +538,7 @@ namespace MeleeDuel
 
     /// <summary>
     /// 弧の試作の、照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)。ステージ(DuelStage.armsRules)のインスペクターで直せる。
-    /// 武装ごとの値(重さ・弾の使う量・枠の大きさ)は DuelWeapon.Defaults() の .Spec(...)。
+    /// 武装ごとの値(重さ・弾の使う量・枠の大きさ・ENの使う量)は DuelWeapon.Defaults() の .Spec(...)。
     /// </summary>
     [System.Serializable]
     public class DuelArmsRules
@@ -540,14 +561,14 @@ namespace MeleeDuel
         public float carryMax = 100f;
         [Tooltip("この重さまでは遅くならない(最初の素の剣だけなら軽いまま)")]
         public float freeWeight = 15f;
-        [Tooltip("それを超えた重さ1あたりに、走り・ブースト・回避の距離・上昇の速さが下がる割合")]
+        [Tooltip("それを超えた重さ1あたりに、ENを使う移動(ブースト移動・回避の距離・飛ぶときの上昇)の速さが下がる割合。歩き・走りには効かない")]
         public float slowPerWeight = 0.004f;
         [Tooltip("どれだけ重くても、この倍率より遅くはしない")]
         [Range(0.1f, 1f)] public float minMobility = 0.5f;
         [Tooltip("所持品(付けていない武装)の重さを何倍で数えるか(武装ハントは0.5。1 なら付けているのと同じ)")]
         [Range(0f, 1f)] public float stockWeightRate = 1f;
 
-        [Header("共通の弾(実弾の銃・砲・ミサイルが使う。エネルギー武器は使わない)")]
+        [Header("共通の弾(実弾の銃・砲・ミサイルが使う。エネルギー武器は弾の代わりにENを使う)")]
         public float ammoMax = 300f;
         [Tooltip("弧の始め(最初から・F1)の弾")]
         public float ammoStart = 30f;
@@ -561,7 +582,7 @@ namespace MeleeDuel
         public int BreakAmmo(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakAmmoBase + breakAmmoPerRarity * w.rarity + breakAmmoPerWeight * w.weight));
         public int BreakHeal(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakHealBase + breakHealPerRarity * w.rarity + breakHealPerWeight * w.weight));
 
-        /// <summary>重さによる走り・ブースト・回避・上昇の倍率。</summary>
+        /// <summary>重さによる推力の倍率(ENを使う移動:ブースト移動・回避の距離・飛ぶときの上昇。歩き・走りには掛けない)。</summary>
         public float MobilityAt(float weight) => Mathf.Clamp(1f - Mathf.Max(0f, weight - freeWeight) * slowPerWeight, minMobility, 1f);
     }
 

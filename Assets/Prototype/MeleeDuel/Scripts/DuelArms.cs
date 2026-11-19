@@ -16,7 +16,11 @@ namespace MeleeDuel
     ///   ロックオン中の敵は枠を DuelArmsRules.lockFrameMul 倍に広くみなす)。枠の中にいなければ画面の中央の先へまっすぐ撃つ。ミサイルは枠の中の敵に割り振る。
     /// 共通の弾:実弾の銃・砲・ミサイルは1種類の弾(Ammo)を使う。弾倉のある銃はリロードのときに詰めた分だけ、弾倉のない撃ち方は撃つたびに使う
     ///   (DuelWeapon.ammoCost。エネルギー武器は 0 で使わない)。弾は武装を分解して得る。
-    /// 所持:付けずに持っておける(Stash)。付けている武装と所持品の重さの合計で、持てる上限と走り・ブースト・回避・上昇の速さが決まる(Mobility)。
+    /// EN:エネルギー武器(ビーム・レーザー。DuelWeapon.enCost)は弾の代わりに自機のENを使う(回避・攻撃と同じEN)。ENが0以下の間は撃てず、
+    ///   少しでも残っていれば撃てて足りない分はマイナスになる。押している間撃ち続ける武装は1秒あたり、ほかは1発ごと。
+    ///   溜め撃ちは溜め始めにENが残っていれば溜められ、離して撃つときに使う(溜めている間に0以下になっても撃てる)。
+    /// 所持:付けずに持っておける(Stash)。付けている武装と所持品の重さの合計で、持てる上限と推力(ENを使う移動:ブースト移動・回避の距離・
+    ///   飛ぶときの上昇の速さ)が決まる(Mobility)。歩き・走りには効かない(作者「歩きには効かないようにして、ENを使った移動に効くようにします」)。
     /// 拾う:落ちている武装の近くで、十字下(G)で所持品へ、十字上(F)で分解(十字上で弾・十字下で回復)、十字右(V)で付ける。付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
     ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
     ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
@@ -88,9 +92,11 @@ namespace MeleeDuel
         static readonly DuelArmsRules FallbackRules = new();
         /// <summary>弾が足りなくて撃てなかった・リロードできなかった時刻(右下の弾の表示を赤く光らせる)。</summary>
         public float NoAmmoAt { get; private set; } = -10f;
+        /// <summary>ENが0以下でエネルギー武器を撃てなかった時刻(左下のENの表示を赤く光らせる)。</summary>
+        public float NoEnergyAt { get; private set; } = -10f;
         /// <summary>重すぎて持てなかった・付けられなかった時刻(実時間。重さの表示を赤く光らせる)。</summary>
         public float TooHeavyAt { get; private set; } = -10f;
-        float noAmmoLogAt = -10f;
+        float noAmmoLogAt = -10f, noEnergyLogAt = -10f;
 
         public void Init(DuelPlayer p, DuelGame g, MechRig r)
         {
@@ -137,7 +143,7 @@ namespace MeleeDuel
         /// <summary>重さの合計(付けている武装 + 所持品 × stockWeightRate)。持てる上限(CarryMax)と速さ(Mobility)はこれで決まる。</summary>
         public float TotalWeight => EquippedWeight + StashWeight * Rules.stockWeightRate;
         public float CarryMax => Rules.carryMax;
-        /// <summary>重さによる走り・ブースト・回避の距離・上昇の速さの倍率。</summary>
+        /// <summary>重さによる推力の倍率(ブースト移動・回避の距離・上昇の速さ。歩き・走りには掛けない)。</summary>
         public float Mobility => Rules.MobilityAt(TotalWeight);
         bool Fits(float total) => total <= CarryMax + 0.001f;
 
@@ -190,7 +196,7 @@ namespace MeleeDuel
                                            && (ShotRecently(DuelSlot.RightHand, sec) || (TwoHandGun != null && (Time.time - lastFire[AltIndex] < sec || charge > 0f)));
 
         public DuelWeapon BackW => slots[(int)DuelSlot.Back];
-        /// <summary>走りの倍率:スラスター × 持っている盾の重さ × 重さの合計による倍率(Mobility)。</summary>
+        /// <summary>走りの倍率:スラスター × 持っている盾の重さ。重さの合計による倍率(Mobility)は掛けない(ENを使わない移動なので)。</summary>
         public float RunMul
         {
             get
@@ -198,7 +204,7 @@ namespace MeleeDuel
                 float m = BackW != null ? BackW.runMul : 1f;
                 for (int h = 0; h < 2; h++)
                     if (Hand(h) is { kind: DuelKind.Shield } s) m *= s.runMul;
-                return m * Mobility;
+                return m;
             }
         }
         /// <summary>ブースト移動と飛ぶときの上昇の速さの倍率(スラスター × 重さ)。</summary>
@@ -335,6 +341,13 @@ namespace MeleeDuel
         /// <summary>両手の銃・砲の L1 の撃ち方が、共通の弾が足りなくて撃てない。</summary>
         public bool AltStarved => AltFire is { } a && a.PaysPerShot && Ammo < a.ammoCost - 0.0001f;
 
+        /// <summary>その所のエネルギー武器が、ENが0以下で撃てない(右下の武装の欄に「EN切れ」を出す)。</summary>
+        public bool EnergyStarved(DuelSlot s) => slots[(int)s] is { IsShooter: true, UsesEnergy: true } && player != null && player.Overheated;
+        /// <summary>両手の銃・砲の L1 の撃ち方がエネルギー武器で、ENが0以下で撃てない(溜めている途中は撃てるので数えない)。</summary>
+        public bool AltEnergyStarved => AltFire is { UsesEnergy: true } && charge <= 0f && player != null && player.Overheated;
+        /// <summary>撃ち方 w がENを使うのに、ENが0以下で撃てない。</summary>
+        bool NoEnergy(DuelWeapon w) => w.UsesEnergy && player.Overheated;
+
         /// <summary>弾倉へ詰められる数(必要な数 need と、共通の弾で足りる数の少ないほう。弾を使わない銃は need)。</summary>
         int Loadable(DuelWeapon w, int need) =>
             need <= 0 ? 0 : w.ammoCost <= 0f ? need : Mathf.Min(need, Mathf.FloorToInt(Ammo / w.ammoCost + 0.0001f));
@@ -362,6 +375,15 @@ namespace MeleeDuel
             if (Time.unscaledTime - noAmmoLogAt < 2f) return;
             noAmmoLogAt = Time.unscaledTime;
             game.Log($"弾が足りない ― 落ちている武装を分解すると弾になる({ProtoInput.L(ProtoInput.Btn.Break)})");
+        }
+
+        /// <summary>ENが0以下でエネルギー武器を撃てなかった:左下のENの表示を光らせ、知らせを出す(続けて押しても2秒に1回)。</summary>
+        void OutOfEnergy()
+        {
+            NoEnergyAt = Time.time;
+            if (Time.unscaledTime - noEnergyLogAt < 2f) return;
+            noEnergyLogAt = Time.unscaledTime;
+            game.Log("ENが足りない ― ビーム・レーザーはENを使う。回復を待つ");
         }
 
         /// <summary>共通の弾を使う(足りていれば減らして true)。</summary>
@@ -442,8 +464,11 @@ namespace MeleeDuel
             UpdateFrames();
         }
 
-        /// <summary>撃つ(爆発なら砲・ミサイル、それ以外は銃)。i は撃つ状態の番号、at は撃ち出す所。撃ったら true。</summary>
-        bool Fire(DuelWeapon w, int i, DuelSlot at) => w.Explosive ? FireHeavy(w, i, at) : FireGun(w, i, at);
+        /// <summary>
+        /// 撃つ(爆発なら砲・ミサイル、それ以外は銃)。i は撃つ状態の番号、at は撃ち出す所。撃ったら true。
+        /// charged は溜め撃ちを離したとき(ENは溜め始めに確かめてあるので、0以下でも撃ってENを使う)。
+        /// </summary>
+        bool Fire(DuelWeapon w, int i, DuelSlot at, bool charged = false) => w.Explosive ? FireHeavy(w, i, at, charged) : FireGun(w, i, at, charged);
 
         /// <summary>
         /// 両手の銃・砲の L1 の撃ち方。溜め撃ち(charge > 0)は、撃てる間に L1 を押している間溜め、溜まってから離すと撃つ
@@ -474,13 +499,19 @@ namespace MeleeDuel
                         if (Pressed(DuelSlot.LeftHand)) OutOfAmmo();
                         return;
                     }
+                    // ENを使う溜め撃ちは、ENが0以下なら溜め始めない(溜め始めたら、溜めている間に0以下になっても離せば撃てる)
+                    if (charge <= 0f && NoEnergy(a))
+                    {
+                        if (Pressed(DuelSlot.LeftHand)) OutOfEnergy();
+                        return;
+                    }
                     float before = charge;
                     charge += dt;
                     // 溜まった合図:銃口に小さな火花(画面は揺らさない)
                     if (before < a.charge && charge >= a.charge) DuelSpark.Burst(Muzzle(DuelSlot.RightHand), player.transform.forward, new Color(1f, 0.9f, 0.6f), 10, 0.7f);
                     return;
                 }
-                if (charge >= a.charge) Fire(a, i, DuelSlot.RightHand);
+                if (charge >= a.charge) Fire(a, i, DuelSlot.RightHand, true);
                 charge = 0f;
                 return;
             }
@@ -1343,8 +1374,11 @@ namespace MeleeDuel
 
         static readonly Color BulletColor = new(1f, 0.85f, 0.35f), BeamColor = new(1f, 0.45f, 0.95f);
 
-        /// <summary>銃を撃つ(撃てる間隔・弾倉の残りがあれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。</summary>
-        bool FireGun(DuelWeapon w, int i, DuelSlot s)
+        /// <summary>
+        /// 銃を撃つ(撃てる間隔・弾倉の残り・共通の弾・ENがあれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。
+        /// エネルギー武器はENが0以下なら撃たない(charged の溜め撃ちは除く)。1発ごとにEN(EnPerShot)を使い、足りない分はマイナスになる。
+        /// </summary>
+        bool FireGun(DuelWeapon w, int i, DuelSlot s, bool charged = false)
         {
             if (cd[i] > 0f || reload[i] > 0f) return false;
             if (w.magazine > 0 && mag[i] <= 0)
@@ -1355,6 +1389,11 @@ namespace MeleeDuel
             if (w.PaysPerShot && Ammo < w.ammoCost - 0.0001f)
             {
                 OutOfAmmo();
+                return false;
+            }
+            if (!charged && NoEnergy(w))
+            {
+                OutOfEnergy();
                 return false;
             }
             lastFire[i] = Time.time;
@@ -1368,7 +1407,9 @@ namespace MeleeDuel
             int bursts = w.hold ? 4 : 1;
             for (int k = 0; k < bursts && cd[i] <= 0f; k++)
             {
+                if (k > 0 && NoEnergy(w)) break;   // 同じフレームの2発目からは、ENが0以下になったら止める
                 if (!PayAmmo(w)) break;   // 弾倉のない実弾の撃ち方は撃つたびに共通の弾を使う(1回目は上で確かめてある)
+                if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
                 cd[i] += Mathf.Max(0.01f, w.interval);
                 for (int p = 0; p < n; p++) Shot(from, Jitter(dir, w.spread), w, c, n > 1);
                 if (w.magazine > 0 && --mag[i] <= 0) { StartReload(i, w); break; }   // 撃ち切ったらリロード(共通の弾が足りれば)
@@ -1422,14 +1463,21 @@ namespace MeleeDuel
         static readonly Color ShellColor = new(0.8f, 1f, 0.35f), MissileColor = new(1f, 0.6f, 0.25f), BlastColor = new(1f, 0.6f, 0.25f);
 
         /// <summary>砲・ミサイルを撃つ(次に撃てるまでの時間がたっていれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。</summary>
-        bool FireHeavy(DuelWeapon w, int i, DuelSlot s)
+        /// 今の一覧に ENを使う砲・ミサイルはないが、enCost を入れれば銃と同じ決まりで ENを使う。
+        bool FireHeavy(DuelWeapon w, int i, DuelSlot s, bool charged = false)
         {
             if (cd[i] > 0f) return false;
+            if (!charged && NoEnergy(w))
+            {
+                OutOfEnergy();
+                return false;
+            }
             if (!PayAmmo(w))
             {
                 OutOfAmmo();
                 return false;
             }
+            if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
             cd[i] = cdMax[i] = w.interval;
             lastFire[i] = Time.time;
             Vector3 from = Muzzle(s);

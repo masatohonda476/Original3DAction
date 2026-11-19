@@ -85,10 +85,10 @@ namespace MeleeDuel
         public enum State { Free, Attack, Dodge, Guard, GuardStun, Hurt, GuardBroken, Dead }
         public State Current { get; private set; }
         public float Guard { get; private set; }
-        /// <summary>EN。回避で足りない分はマイナスになる。</summary>
+        /// <summary>EN。回避・攻撃・エネルギー武器の射撃で足りない分はマイナスになる。</summary>
         public float Energy { get; private set; }
         public float Stagger { get; private set; }
-        /// <summary>ENが0以下(回復待ち)。この間は回避も攻撃もできない。</summary>
+        /// <summary>ENが0以下(回復待ち)。この間は回避も攻撃も、エネルギー武器の射撃もできない。</summary>
         public bool Overheated => Energy <= 0f;
         public DuelEnemy Target { get; private set; }
         public bool Guarding => Current is State.Guard or State.GuardStun;
@@ -108,7 +108,8 @@ namespace MeleeDuel
         /// </summary>
         public float MaxGuard => Arms != null ? Arms.GuardMax : maxGuard;
 
-        // 背中の武装(スラスター)を掛けた値。素の値はインスペクターの値のまま
+        // 背中の武装(スラスター)・盾・重さを掛けた値。素の値はインスペクターの値のまま
+        // 重さ(DuelArms.Mobility)はENを使う移動(ブースト移動・回避の距離・飛ぶときの上昇)だけに掛かり、歩き・走り(RunMul)には掛からない
         float RunMul => Arms != null ? Arms.RunMul : 1f;
         float DashMul => Arms != null ? Arms.DashMul : 1f;
         float EnCostMul => Arms != null ? Arms.EnCostMul : 1f;
@@ -207,6 +208,17 @@ namespace MeleeDuel
             stepTravel = 0f;
             FootstepRadius = 0f;
             Enter(State.Free);
+        }
+
+        /// <summary>
+        /// ENを使う(エネルギー武器の射撃。DuelArms から)。残りが0以下かは呼ぶ側が Overheated で確かめる。
+        /// 足りない分はマイナスになり、回避・攻撃と同じく回復を待つ。
+        /// </summary>
+        public void SpendEnergy(float amount)
+        {
+            if (amount <= 0f) return;
+            Energy -= amount;
+            energyUsedAt = Time.time;
         }
 
         /// <summary>HP を amount だけ回復する(武装の分解。最大まで)。撃墜中は何もしない。</summary>

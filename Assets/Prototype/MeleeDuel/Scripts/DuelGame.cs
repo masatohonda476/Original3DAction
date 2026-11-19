@@ -427,8 +427,11 @@ namespace MeleeDuel
             bool minus = player.Energy <= 0f;
             Bar(new Rect(x, y, 300f, 10f), Mathf.Abs(player.Energy) / player.maxEnergy,
                 minus ? new Color(1f, 0.35f, 0.25f) : player.BoostOn ? new Color(0.35f, 0.75f, 1f) : new Color(1f, 0.82f, 0.25f));   // 通常は黄、ブーストオンで水色
+            // ENが0以下でビーム・レーザーを撃てなかった直後は、文字を赤く光らせる(弾切れの表示と同じ合図)
+            if (player.Arms != null && Time.time - player.Arms.NoEnergyAt < 1f) GUI.color = new Color(1f, 0.55f, 0.45f);
             GUI.Label(new Rect(x + 308f, y - 7f, 300f, 24f),
                 (minus ? $"EN {Mathf.FloorToInt(player.Energy)}(回復待ち)" : $"EN {Mathf.FloorToInt(player.Energy)}") + (player.BoostOn ? "  ブースト" : ""), small);
+            GUI.color = Color.white;
             y += 22f;
             // ガード:ステージで盾を持っていなければ空(ガードできない)
             bool broken = player.Current == DuelPlayer.State.GuardBroken;
@@ -731,7 +734,7 @@ namespace MeleeDuel
         float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap;
 
         /// <summary>セルの右上に出す状態。</summary>
-        enum CellState { None, Ammo, Infinite, Reload, Loading, Charging, Charged, TwoHand, Starved }
+        enum CellState { None, Ammo, Energy, Reload, Loading, Charging, Charged, TwoHand, Starved, NoEnergy }
 
         // セルの文字列(添字は DuelSlot)。名前・ボタンは武装か機器が、状態は武装・状態・残り(弾数か0.1秒単位)が変わったときだけ作り直す
         readonly string[] cellBtn = new string[ArmRows], cellName = new string[ArmRows], cellStatus = new string[ArmRows];
@@ -742,7 +745,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// 右下:付けている武装を肩ボタンの並び(左=L・右=R、上の段=肩・下の段=手)の 2×2 のセルで、その下に背中の1行。
-        /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20」(残りが弾倉の1/4以下で赤っぽく)、弾倉のない銃は「弾数∞」。
+        /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20」(残りが弾倉の1/4以下で赤っぽく)、エネルギー武器は「EN 20/秒」(ENが0以下で撃てない間は「EN切れ」)。
         /// 銃のリロード中・砲とミサイルの装填中は、セル全体を左から満ちていくオレンジのゲージにし「リロード 1.2秒」「装填 0.8秒」。
         /// 両手持ちは右手と左手のセルを細い帯でつなぎ、右手のセルに武装名と主の撃ち方の状態、左手のセルに L1 の技名と
         /// L1 の撃ち方の状態(溜めている間は溜まり具合のゲージ、撃った後は次に撃てるまでのゲージ)。
@@ -794,13 +797,13 @@ namespace MeleeDuel
             GUI.color = starve ? new Color(1f, 0.55f, 0.45f) : ammo <= r.ammoMax * 0.2f ? StatusOrange : Color.white;
             GUI.Label(new Rect(ar.x + 24f, ar.y + 2f, CellW - 30f, 20f), ammoText, cellBack);
 
-            // 武装の欄の上:所持品の数と重さ・速さ(重すぎて持てなかった直後は赤く光る。上限の9割を超えたら橙)
+            // 武装の欄の上:所持品の数と重さ・推力(重すぎて持てなかった直後は赤く光る。上限の9割を超えたら橙)
             float total = arms.TotalWeight, max = arms.CarryMax;
             var wk = (arms.Stash.Count, Mathf.RoundToInt(total), Mathf.RoundToInt(max), Mathf.RoundToInt(arms.Mobility * 100f));
             if (weightKey != wk || weightText == null)
             {
                 weightKey = wk;
-                weightText = $"所持 {wk.Item1}   重さ {wk.Item2}/{wk.Item3}   速さ ×{wk.Item4 / 100f:0.00}";
+                weightText = $"所持 {wk.Item1}   重さ {wk.Item2}/{wk.Item3}   推力 ×{wk.Item4 / 100f:0.00}";   // 推力:ブースト移動・回避・上昇(歩き・走りには効かない)
             }
             bool heavyFlash = Time.unscaledTime - arms.TooHeavyAt < 1.2f;
             GUI.color = heavyFlash ? new Color(1f, 0.45f, 0.35f) : total > max * 0.9f ? StatusOrange : new Color(1f, 1f, 1f, 0.8f);
@@ -835,6 +838,7 @@ namespace MeleeDuel
             if (w != null && !twoL)
             {
                 if (arms.Starved(slot)) st = CellState.Starved;   // 共通の弾が足りなくて撃てない
+                else if (arms.EnergyStarved(slot)) st = CellState.NoEnergy;   // ENが0以下で撃てない(エネルギー武器)
                 else if (w.IsGun)
                 {
                     float left = arms.ReloadLeft(slot);
@@ -850,7 +854,7 @@ namespace MeleeDuel
                         st = CellState.Ammo;
                         val = mag;
                     }
-                    else st = CellState.Infinite;
+                    else st = CellState.Energy;   // 弾倉のない銃 = エネルギー武器(使うEN)
                 }
                 else if (w.Explosive && arms.CooldownLeft(slot) > 0f)
                 {
@@ -864,6 +868,7 @@ namespace MeleeDuel
                 // L1 の撃ち方:溜めている間は溜まり具合(溜まったら白)、撃った後は次に撃てるまで
                 float c = arms.Charge01;
                 if (arms.AltStarved && c <= 0f) st = CellState.Starved;
+                else if (arms.AltEnergyStarved) st = CellState.NoEnergy;
                 else if (c > 0f)
                 {
                     st = c >= 1f ? CellState.Charged : CellState.Charging;
@@ -888,7 +893,8 @@ namespace MeleeDuel
                     cellStatus[i] = st switch
                     {
                         CellState.Ammo => $"弾 {val}/{w.magazine}",
-                        CellState.Infinite => "弾数∞",
+                        CellState.Energy => w.UsesEnergy ? w.EnText : "弾数∞",
+                        CellState.NoEnergy => "EN切れ",
                         CellState.Reload => $"リロード {val / 10f:0.0}秒",
                         CellState.Loading => $"装填 {val / 10f:0.0}秒",
                         CellState.Charging => "溜め中",
@@ -900,11 +906,11 @@ namespace MeleeDuel
                 GUI.color = st switch
                 {
                     CellState.Ammo => val <= w.magazine / 4 ? new Color(1f, 0.5f, 0.4f) : new Color(0.85f, 0.87f, 0.9f),
-                    CellState.Infinite => new Color(1f, 0.6f, 0.95f),
+                    CellState.Energy => new Color(1f, 0.6f, 0.95f),
                     CellState.Reload or CellState.Loading => StatusOrange,
                     CellState.Charging => new Color(1f, 0.85f, 0.5f),
                     CellState.Charged => Color.white,
-                    CellState.Starved => new Color(1f, 0.45f, 0.35f),
+                    CellState.Starved or CellState.NoEnergy => new Color(1f, 0.45f, 0.35f),
                     _ => new Color(1f, 1f, 1f, 0.5f),
                 };
                 // 武装ハントは中央寄せ。キーボードのボタン名(「右クリック」など)と重ならないよう右に寄せる
@@ -1304,7 +1310,7 @@ namespace MeleeDuel
         (int n, int total, int max, int mob, int ammo, int ammoMax) stashHeadKey;
 
         /// <summary>
-        /// 右の所持品の欄:重さ(上限)と速さ・共通の弾、その下に所持品の一覧(レア度の色・名前・種類・重さ)。選んでいる所持品は帯と縦線。
+        /// 右の所持品の欄:重さ(上限)と推力・共通の弾、その下に所持品の一覧(レア度の色・名前・種類・重さ)。選んでいる所持品は帯と縦線。
         /// 一番下に、選んでいる所持品の操作(付ける所のボタン・処分)か、処分の選び方。
         /// </summary>
         void DrawStashPanel(DuelArms arms, float x, float y, float w, float h, int block)
@@ -1320,7 +1326,7 @@ namespace MeleeDuel
             if (stashHead == null || stashHeadKey != hk)
             {
                 stashHeadKey = hk;
-                stashHead = $"重さ {hk.Item2}/{hk.Item3}   速さ ×{hk.Item4 / 100f:0.00}\n弾 {hk.Item5}/{hk.Item6}";
+                stashHead = $"重さ {hk.Item2}/{hk.Item3}   推力 ×{hk.Item4 / 100f:0.00}\n弾 {hk.Item5}/{hk.Item6}";
             }
             GUI.Label(new Rect(x + pad, y + 10f, w - pad * 2f, 26f), $"所持品  {stash.Count}", viewHeadStyle);
             GUI.color = new Color(1f, 1f, 1f, 0.75f);
@@ -1614,8 +1620,7 @@ namespace MeleeDuel
             {
                 if (w.IsTwoHand && s.name is "L1" or "L1技") continue;
                 if (sb.Length > 0) sb.Append("   ");
-                if (s.name == "弾倉" && w.magazine <= 0) sb.Append("弾切れなし");
-                else sb.Append(s.name).Append(' ').Append(s.text);
+                sb.Append(s.name).Append(' ').Append(s.text);
             }
             if (w.IsGun)
             {

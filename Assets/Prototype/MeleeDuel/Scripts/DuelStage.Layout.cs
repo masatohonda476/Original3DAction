@@ -167,7 +167,7 @@ namespace MeleeDuel
             WallX(408.5f, -80, -40, 139, 190, PipeColor);
             WallX(431.5f, -80, -40, 139, 190, PipeColor);
 
-            // ── 5. 合流:機関区画(床160m)。中央に大きな機関。ボスの前に群れが待つ(拾った武装でまとめて倒す、無双の場所) ──
+            // ── 5. 合流:機関区画(床160m)。中央に大きな機関。群れが待つ(拾った武装でまとめて倒す、無双の場所。拡張前はボスの前だった) ──
             Region("機関区画", -40, 43, 155, 195, 400, 463);
             Slab(-43, 43, 402, 463, 160f, FloorColor, 3f, floor: true);
             Slab(-43, 43, 402, 463, 191f, WallColor);
@@ -178,7 +178,7 @@ namespace MeleeDuel
             Solid(-12, 12, 160, 174, 425, 445, MachineColor);   // 機関
             Solid(-34, -26, 160, 188, 446, 454, PipeColor);
             Solid(26, 34, 160, 188, 408, 416, PipeColor);
-            Save("機関区画", 0, 160, 449, 0f);    // 大ホールへの坂の手前(どちらの道から来ても通る)
+            Save("機関区画", 0, 160, 449, 0f);    // 主通路への口の手前(どちらの道から来ても通る)
             // 群れ:兵卒5・剣士3。機関の手前(南の半分)に固まって、西口・東口のほうを向いて立つ。
             // セーブポイント(北の坂の手前)とその再開地点からは 30m 以上離し、機関の陰になり、背を向けている
             // (撃墜されて再開しても群れの真ん中にならない。倒した敵はそのままなので、ボスに負けても群れはやり直しにならない)
@@ -191,30 +191,164 @@ namespace MeleeDuel
             D(30, 160, 430, 60);     // 東口(外殻の道から)を向く
             D(0, 160, 417, 180);
 
-            // ── 6. 頭頂部の大ホール(床176m):広い。天井が大きく裂けている。四隅寄りに柱(突進を柱にぶつけられる) ──
-            Region("大ホール", -75, 75, 155, 280, 463, 625);
-            RampZ(-14, 14, 463, 160, 497, 176, FloorColor, 3f, floor: true);   // 機関区画からの坂(25°)
-            WallZ(-15.5f, 460, 499, 157, 200, WallColor);
-            WallZ(15.5f, 460, 499, 157, 200, WallColor);
-            Slab(-17, 17, 460, 499, 200f, WallColor);
-            Slab(-73, 73, 496, 622, 176f, FloorColor, 4f, floor: true);
-            WallX(497.5f, -73, 73, 172, 236, HullColor, -14, 14, 176, 197, barrier: true);
-            WallX(620.5f, -73, 73, 172, 236, HullColor, barrier: true);
-            WallZ(-71.5f, 496, 622, 172, 236, HullColor, barrier: true);
-            WallZ(71.5f, 496, 622, 172, 236, HullColor, barrier: true);
-            Slab(-73, 73, 496, 528, 236f, HullColor);       // 天井(手前)
-            Slab(-73, 73, 592, 622, 236f, HullColor);       // 天井(奥)
-            Slab(-73, -30, 528, 592, 236f, HullColor);      // 天井(西)。残りは裂けて空が見える
-            RampZ(-10, 30, 528, 236, 548, 214, HullColor);  // 裂けて垂れ下がった天井板
-            Solid(-50, -42, 176, 236, 526, 534, WallColor);
-            Solid(42, 50, 176, 236, 526, 534, WallColor);
-            Solid(-50, -42, 176, 236, 586, 594, WallColor);
-            Solid(42, 50, 176, 236, 586, 594, WallColor);
-            bossRoom = new Bounds(new Vector3(0f, 225f, 559.5f), new Vector3(140f, 110f, 119f));   // 入口の坂を上りきったら
-            bossSpawn = Add(Kind.Boss, 0, 176, 575, 180, 0f);
+            // ── 6. 主通路(上り坂。20°):機関区画の北口から、傾いた主通路を上る。崩れた隔壁の名残が左右に互い違いに残る(物陰) ──
+            Region("主通路", -19, 19, 157, 222, 460, 556);
+            RampZ(-16, 16, 463, 160, 547, 192, FloorColor, 3f, floor: true);
+            Slab(-16, 16, 547, 556, 192f, FloorColor, 3f, floor: true);   // 上りきった所(格納庫の入口)
+            RampZ(-19, 19, 463, 186, 547, 218, WallColor);                // 天井(床と平行)
+            Slab(-19, 19, 547, 556, 218f, WallColor);
+            WallZ(-17.5f, 460, 556, 157, 222, WallColor);
+            WallZ(17.5f, 460, 556, 157, 222, WallColor);
+            Solid(-16, -5, Sp(490) - 2f, Sp(494) + 7f, 490, 494, WallColor);   // 崩れた隔壁(左)
+            Solid(5, 16, Sp(520) - 2f, Sp(524) + 7f, 520, 524, WallColor);     // 崩れた隔壁(右)
+            G(9, Sp(505), 505, 180);
+            G(-9, Sp(535), 535, 200);
+
+            // ── 7. 格納庫(床192m・天井250m):広い。倒れたコンテナの山と、壁沿いのキャットウォーク(高さ22m)。倒れたクレーンの桁 ──
+            Region("格納庫", -70, 70, 189, 250, 553, 683);
+            Slab(-70, 70, 556, 683, 192f, FloorColor, 3f, floor: true);
+            Slab(-70, 70, 553, 683, 250f, WallColor);
+            WallX(554.5f, -70, 70, 189, 250, WallColor, -16, 16, 189, 215);   // 主通路からの入口
+            WallX(681.5f, -70, 70, 189, 250, WallColor, -14, 14, 189, 214);   // 昇降機の竪穴への口
+            WallZ(-68.5f, 553, 683, 189, 250, WallColor);
+            WallZ(68.5f, 553, 683, 189, 250, WallColor);
+            Slab(-67, -50, 600, 680, 214f, FloorColor);                      // キャットウォーク(西)
+            Solid(-53, -50, 192, 211, 620, 623, MachineColor);
+            Solid(-53, -50, 192, 211, 660, 663, MachineColor);
+            Slab(50, 67, 630, 680, 214f, FloorColor);                        // キャットウォーク(東)
+            Solid(50, 53, 192, 211, 640, 643, MachineColor);
+            Solid(50, 53, 192, 211, 670, 673, MachineColor);
+            Solid(-58, -38, 192, 202, 572, 592, FurnitureColor);   // コンテナの山
+            Solid(-56, -42, 202, 212, 574, 588, DebrisColor);
+            Solid(28, 46, 192, 201, 568, 584, FurnitureColor);
+            Solid(-22, -6, 192, 201, 603, 620, DebrisColor);
+            Solid(-20, -9, 201, 210, 606, 617, FurnitureColor);
+            Solid(28, 48, 192, 204, 612, 640, FurnitureColor);
+            Solid(-40, -24, 192, 200, 645, 660, HullColor);
+            RampZ(10, 16, 630, 192, 672, 224, MachineColor);       // 倒れたクレーンの桁
+            Decal(-67, -66.9f, 230, 232, 560, 680, LampColor);     // 壁を走る照明
+            Decal(66.9f, 67, 230, 232, 560, 680, LampColor);
+            Decal(-14, 14, 192, 192.06f, 600, 606, DoorColor);     // 床の誘導線
+            G(-49, 212, 581, 90, leash: 2f);    // コンテナの山の上:x -56〜-42・z 574〜588
+            G(-58, 214, 640, 90, leash: 4f);    // キャットウォーク(西):x -67〜-50
+            G(58, 214, 655, 270, leash: 4f);    // キャットウォーク(東):x 50〜67
+            G(38, 204, 626, 180, leash: 4f);    // コンテナの上:x 28〜48・z 612〜640
+            G(0, 192, 592, 180);
+            G(20, 192, 600, 210);
+            D(-8, 192, 640, 180);
+            D(25, 192, 660, 200);
+
+            // ── 8. 昇降機の竪穴(床192m〜天井333m):細く高い。張り出した足場と、途中で止まった昇降機の箱を、ブースト飛行で上る ──
+            Region("昇降機の竪穴", -30, 30, 189, 335, 680, 740);
+            Slab(-30, 30, 683, 740, 192f, FloorColor, 3f, floor: true);
+            Slab(-30, 30, 680, 740, 333f, WallColor);
+            WallX(681.5f, -30, 30, 247, 333, WallColor);                       // 格納庫の天井より上
+            WallX(738.5f, -30, 30, 189, 333, WallColor, -12, 12, 302, 324);    // 上の口(船首の外板へ)
+            WallZ(-28.5f, 680, 740, 189, 333, WallColor);
+            WallZ(28.5f, 680, 740, 189, 333, WallColor);
+            Solid(-27, -25, 192, 333, 708, 712, MachineColor);   // 昇降機のレール
+            Solid(25, 27, 192, 333, 708, 712, MachineColor);
+            Solid(-10, 12, 192, 197, 688, 703, DebrisColor);     // 底の瓦礫
+            Slab(-27, -10, 683, 705, 215f, FloorColor);          // 足場1(南西)
+            Slab(10, 27, 700, 737, 238f, FloorColor);            // 足場2(北東)
+            Solid(-14, 8, 252, 262, 705, 725, MachineColor);     // 止まった昇降機の箱(上に乗れる)
+            Solid(6, 7, 262, 333, 722, 724, PipeColor);          // 箱を吊るケーブル(箱の角)
+            Slab(8, 27, 683, 700, 280f, FloorColor);             // 足場3(南東)
+            Slab(-27, 27, 720, 737, 302f, FloorColor);           // 上の踊り場(北)
+            G(-18, 215, 694, 45, leash: 4f);    // 足場1:x -27〜-10・z 683〜705
+            G(18, 238, 712, 225, leash: 4f);    // 足場2:x 10〜27・z 700〜737
+            G(-3, 262, 714, 180, leash: 4f);    // 昇降機の箱:x -14〜8・z 705〜725
+            G(17, 280, 691, 315, leash: 3f);    // 足場3:x 8〜27・z 683〜700
+            Save("昇降機の上", 0, 302, 726, 0f);   // 上の口の手前
+
+            // ── 9. 船首の外板(開けている):横倒しの船首の外板の上を、斜面(18°)で上る。めくれた外板・砲塔の残骸・アンテナの柱が物陰 ──
+            Region("船首の外板", -63, 63, 290, 380, 737, 893);
+            Slab(-60, 60, 740, 770, 302f, HullColor, 6f, floor: true);
+            RampZ(-60, 60, 770, 302, 860, 332, HullColor, 6f, floor: true);
+            Slab(-60, 60, 860, 890, 332f, HullColor, 6f, floor: true);
+            Solid(-63, -30, 296, 345, 737, 740, HullColor, barrier: true);   // 昇降機の竪穴の脇の船体
+            Solid(30, 63, 296, 345, 737, 740, HullColor, barrier: true);
+            Barrier(-30, 30, 737, 740, 333f);                                // 竪穴の屋根の上から戻れないように
+            // 縁:低い縁取り+見えない壁(落ちない)
+            Solid(60, 63, 296, 305, 740, 770, HullColor);
+            RampZ(60, 63, 770, 305, 860, 335, HullColor, 9f);
+            Solid(60, 63, 326, 335, 860, 890, HullColor);
+            Solid(-63, -60, 296, 305, 740, 770, HullColor);
+            RampZ(-63, -60, 770, 305, 860, 335, HullColor, 9f);
+            Solid(-63, -60, 326, 335, 860, 890, HullColor);
+            Barrier(60, 63, 737, 893, 290f);
+            Barrier(-63, -60, 737, 893, 290f);
+            Solid(-35, -25, 302, 309, 750, 758, DebrisColor);                        // めくれた外板
+            Solid(20, 32, Bow(790) - 3f, Bow(796) + 8f, 790, 796, HullColor);
+            Solid(-40, -28, Bow(815) - 3f, Bow(830) + 10f, 815, 830, MachineColor);  // 砲塔の残骸
+            Solid(-35, -33, Bow(830) + 6f, Bow(830) + 8f, 830, 852, MachineColor);   // 砲身
+            Solid(30, 34, Bow(840) - 3f, Bow(844) + 40f, 840, 844, MachineColor);    // アンテナの柱
+            Solid(5, 18, 332, 338, 868, 878, DebrisColor);
+            G(-20, Bow(785), 785, 180);
+            G(15, Bow(810), 810, 200);
+            G(42, Bow(825), 825, 230);
+            D(-10, Bow(848), 848, 180);
+            G(-45, 332, 872, 135);
+            G(30, 332, 880, 200);
+
+            // ── 10. 艦橋の下(床332m):ボスの前の群れ(拾った武装でまとめて倒す、無双の場所)。北の口から大ホールへの坂 ──
+            Region("艦橋の下", -50, 50, 329, 365, 890, 970);
+            Slab(-50, 50, 893, 970, 332f, FloorColor, 3f, floor: true);
+            Slab(-50, 50, 890, 970, 365f, WallColor);
+            WallX(891.5f, -63, 63, 326, 375, HullColor, -16, 16, 332, 356, barrier: true);   // 外板からの入口
+            WallX(968.5f, -50, 50, 329, 365, WallColor, -14, 14, 332, 355);                  // 大ホールへの口
+            WallZ(-48.5f, 890, 970, 329, 365, WallColor);
+            WallZ(48.5f, 890, 970, 329, 365, WallColor);
+            Solid(-26, -20, 332, 362, 915, 921, WallColor);     // 柱
+            Solid(20, 26, 332, 362, 915, 921, WallColor);
+            Solid(-42, -32, 332, 338, 935, 950, MachineColor);  // 計器盤
+            Solid(32, 42, 332, 338, 935, 950, MachineColor);
+            Decal(-47, -46.9f, 350, 352, 900, 965, LampColor);
+            Decal(46.9f, 47, 350, 352, 900, 965, LampColor);
+            Save("艦橋の下", 0, 332, 956, 0f);    // 大ホールへの坂の手前
+            // 群れ:兵卒5・剣士2。入口(南)のほうを向いて立つ。セーブポイントと再開地点からは 30m 以上離し、背を向けている
+            G(-30, 332, 905, 180);
+            G(-12, 332, 902, 180);
+            G(12, 332, 904, 180);
+            G(30, 332, 908, 180);
+            G(0, 332, 918, 180);
+            D(-15, 332, 928, 200);
+            D(15, 332, 928, 160);
+
+            // ── 11. 頭頂部の大ホール(ボス)。形は拡張前のまま、艦橋の下の北の口の先へ移す ──
+            BossHall(332f - 160f, 970f - 463f);
 
             StartPos = saves[0].RespawnPos;
             StartRot = saves[0].RespawnRot;
+        }
+
+        /// <summary>
+        /// 頭頂部の大ホール(床176m):広い。天井が大きく裂けている。四隅寄りに柱(突進を柱にぶつけられる)。
+        /// 座標は拡張前(機関区画の北の口の先にあったとき)のまま書き、dy・dz だけ上・奥へ移す。
+        /// 手前の部屋の北の壁(z 460〜463 に当たる所。口は x -14〜14・高さ 0〜23m)は手前の部屋が持つ。
+        /// </summary>
+        void BossHall(float dy, float dz)
+        {
+            Region("大ホール", -75, 75, 155 + dy, 280 + dy, 463 + dz, 625 + dz);
+            RampZ(-14, 14, 463 + dz, 160 + dy, 497 + dz, 176 + dy, FloorColor, 3f, floor: true);   // 手前の部屋からの坂(25°)
+            WallZ(-15.5f, 460 + dz, 499 + dz, 157 + dy, 200 + dy, WallColor);
+            WallZ(15.5f, 460 + dz, 499 + dz, 157 + dy, 200 + dy, WallColor);
+            Slab(-17, 17, 460 + dz, 499 + dz, 200f + dy, WallColor);
+            Slab(-73, 73, 496 + dz, 622 + dz, 176f + dy, FloorColor, 4f, floor: true);
+            WallX(497.5f + dz, -73, 73, 172 + dy, 236 + dy, HullColor, -14, 14, 176 + dy, 197 + dy, barrier: true);
+            WallX(620.5f + dz, -73, 73, 172 + dy, 236 + dy, HullColor, barrier: true);
+            WallZ(-71.5f, 496 + dz, 622 + dz, 172 + dy, 236 + dy, HullColor, barrier: true);
+            WallZ(71.5f, 496 + dz, 622 + dz, 172 + dy, 236 + dy, HullColor, barrier: true);
+            Slab(-73, 73, 496 + dz, 528 + dz, 236f + dy, HullColor);       // 天井(手前)
+            Slab(-73, 73, 592 + dz, 622 + dz, 236f + dy, HullColor);       // 天井(奥)
+            Slab(-73, -30, 528 + dz, 592 + dz, 236f + dy, HullColor);      // 天井(西)。残りは裂けて空が見える
+            RampZ(-10, 30, 528 + dz, 236 + dy, 548 + dz, 214 + dy, HullColor);  // 裂けて垂れ下がった天井板
+            Solid(-50, -42, 176 + dy, 236 + dy, 526 + dz, 534 + dz, WallColor);
+            Solid(42, 50, 176 + dy, 236 + dy, 526 + dz, 534 + dz, WallColor);
+            Solid(-50, -42, 176 + dy, 236 + dy, 586 + dz, 594 + dz, WallColor);
+            Solid(42, 50, 176 + dy, 236 + dy, 586 + dz, 594 + dz, WallColor);
+            bossRoom = new Bounds(new Vector3(0f, 225f + dy, 559.5f + dz), new Vector3(140f, 110f, 119f));   // 入口の坂を上りきったら
+            bossSpawn = Add(Kind.Boss, 0, 176 + dy, 575 + dz, 180, 0f);
         }
 
         /// <summary>居住区の部屋3の床の高さ(奥へ 8° 上る)。</summary>
@@ -223,6 +357,10 @@ namespace MeleeDuel
         static float Outer(float z) => 124f + Mathf.Clamp(z - 332f, 0f, 100f) * 0.36f;
         /// <summary>配管の道のダクト2の床の高さ。</summary>
         static float D2(float z) => 124f + Mathf.Clamp(z - 326f, 0f, 72f) * 0.25f;
+        /// <summary>主通路の床の高さ(機関区画の北の口から 20° で上る)。</summary>
+        static float Sp(float z) => 160f + Mathf.Clamp(z - 463f, 0f, 84f) * 32f / 84f;
+        /// <summary>船首の外板の斜面の高さ。</summary>
+        static float Bow(float z) => 302f + Mathf.Clamp(z - 770f, 0f, 90f) / 3f;
 
         // ───────── 配置の書き方 ─────────
 

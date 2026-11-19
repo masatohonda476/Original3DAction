@@ -100,6 +100,14 @@ namespace MeleeDuel
         [Tooltip("照準の枠の大きさ(画面の中央からの角度。横の半分。縦は DuelArmsRules.frameAspect 倍)。0 なら DuelArmsRules.defaultFrame。両手の銃・砲の L1 は 0 なら主の撃ち方の枠")]
         public float aimFrame;
 
+        [Header("反動(連射すると照準が広がり、実際のばらつきも広がる。撃つのをやめると戻る。カメラは動かさない)")]
+        [Tooltip("1発(散弾は1回)撃つごとに、ばらつきに足す角度(度)。0 なら広がらない")]
+        public float recoilPerShot;
+        [Tooltip("広がりの上限(度。spread に足す分)")]
+        public float recoilMax;
+        [Tooltip("撃つのをやめてから戻る速さ(度/秒。DuelArmsRules.recoilDelay 秒たってから戻り始める)")]
+        public float recoilRecover = 6f;
+
         [Header("見た目(仮の形)")]
         public PrimitiveType shape = PrimitiveType.Cylinder;
         public Vector3 scale = new(0.8f, 1.6f, 0.8f);
@@ -134,6 +142,15 @@ namespace MeleeDuel
             ammoCost = ammo;
             aimFrame = frame;
             enCost = en;
+            return this;
+        }
+
+        /// <summary>反動(1発ごとに広がる角度・上限・戻る速さ。度)をまとめて入れる(this を返す)。</summary>
+        DuelWeapon Recoil(float perShot, float max, float recover)
+        {
+            recoilPerShot = perShot;
+            recoilMax = max;
+            recoilRecover = recover;
             return this;
         }
 
@@ -485,21 +502,21 @@ namespace MeleeDuel
             Shield("小型の盾", 1, "受けてもすぐ動ける。構えたまま走れる", 90f, 1f, 0.1f, 0.75f, 1f, 0.5f, new Vector3(0.3f, 2f, 1.8f)).Spec(4f),
             Shield("エネルギーシールド", 2, "ほとんど削れず、傷も通さない", 220f, 0.6f, 0f, 0.6f, 1f, 0.6f, new Vector3(0.2f, 3.8f, 3.2f)).Spec(7f),
             // 手の銃(手。付けた手のボタンで撃つ。肩の銃より一発ずつ狙って撃つ性格)
-            HandGun("ハンドガン", 0, "押すたびに1発。弱いが狙いが正確", false, 4f, 0.2f, 55f, 0.4f, 1, 12, 1.3f, 1.5f, 3f, new Vector3(0.4f, 0.7f, 2.6f)).Spec(3f, 1f, 14f),
-            HandGun("サブマシンガン", 0, "押している間ばらまく。近い敵向け", true, 1.4f, 0.07f, 35f, 4f, 1, 30, 1.8f, 0.3f, 2f, new Vector3(0.45f, 0.8f, 3f)).Spec(4f, 0.5f, 16f),
-            HandGun("ライフル", 1, "一発が重く、遠くまで届く", false, 11f, 0.5f, 90f, 0.2f, 1, 6, 2f, 4f, 6f, new Vector3(0.45f, 0.8f, 4.6f)).Spec(6f, 3f, 6f),
-            HandGun("散弾銃", 1, "近くで撃てば怯みを一気にため、押し返す", false, 2.4f, 0.75f, 28f, 8f, 8, 4, 2.2f, 0.9f, 10f, new Vector3(0.6f, 0.9f, 3.6f)).Spec(6f, 4f, 18f),
-            HandGun("ビームライフル", 2, "弾を使わずENで撃つ。一発が重く遠くまで届く", false, 16f, 0.45f, 110f, 0f, 1, 0, 0f, 5f, 8f, new Vector3(0.5f, 0.9f, 5f)).Spec(7f, 0f, 7f, en: 12f),
+            HandGun("ハンドガン", 0, "押すたびに1発。弱いが狙いが正確", false, 4f, 0.2f, 55f, 0.4f, 1, 12, 1.3f, 1.5f, 3f, new Vector3(0.4f, 0.7f, 2.6f)).Spec(3f, 1f, 14f).Recoil(0.8f, 3f, 10f),
+            HandGun("サブマシンガン", 0, "押している間ばらまく。近い敵向け", true, 1.4f, 0.07f, 35f, 4f, 1, 30, 1.8f, 0.3f, 2f, new Vector3(0.45f, 0.8f, 3f)).Spec(4f, 0.5f, 16f).Recoil(0.35f, 5f, 6f),
+            HandGun("ライフル", 1, "一発が重く、遠くまで届く", false, 11f, 0.5f, 90f, 0.2f, 1, 6, 2f, 4f, 6f, new Vector3(0.45f, 0.8f, 4.6f)).Spec(6f, 3f, 6f).Recoil(1.5f, 4f, 9f),
+            HandGun("散弾銃", 1, "近くで撃てば怯みを一気にため、押し返す", false, 2.4f, 0.75f, 28f, 8f, 8, 4, 2.2f, 0.9f, 10f, new Vector3(0.6f, 0.9f, 3.6f)).Spec(6f, 4f, 18f).Recoil(1f, 3f, 6f),
+            HandGun("ビームライフル", 2, "弾を使わずENで撃つ。一発が重く遠くまで届く", false, 16f, 0.45f, 110f, 0f, 1, 0, 0f, 5f, 8f, new Vector3(0.5f, 0.9f, 5f)).Spec(7f, 0f, 7f, en: 12f).Recoil(1.2f, 3.5f, 9f),
             // 背中
             Back("背部スラスター", 0, "速さと燃費のバランス型", 1.05f, 1.15f, 1.1f, 0.85f, new Vector3(2.4f, 2.8f, 1.3f)).Spec(5f),
             Back("省エネスラスター", 0, "速さは控えめだが、長く飛び続けられる", 1f, 1.05f, 1f, 0.6f, new Vector3(2f, 2.4f, 1.1f)).Spec(5f),
             Back("軽量スラスター", 1, "軽く速い。回避が伸びる", 1.15f, 1.3f, 1.2f, 0.75f, new Vector3(1.6f, 2f, 0.8f)).Spec(2f),
             Back("高速スラスター", 2, "とても速く、燃費も良い", 1.25f, 1.6f, 1.35f, 0.6f, new Vector3(2.8f, 3.2f, 1.6f)).Spec(4.5f),
             // 肩の銃(右肩・左肩のどちらにも)
-            Gun("肩部機関銃", 0, "弱いが、離れた所から削れる", true, 1.2f, 0.12f, 55f, 2.5f, 1, 24, 2.2f, 0.4f, new Vector3(0.7f, 1.6f, 0.7f)).Spec(6f, 0.5f, 14f),
-            Gun("重機関銃", 1, "一発が重く、よく削れる", true, 2f, 0.09f, 75f, 2f, 1, 45, 2.5f, 0.6f, new Vector3(1.2f, 2f, 1.2f)).Spec(12f, 0.5f, 10f),
-            Gun("肩部散弾銃", 1, "近いほど多く当たる9粒の散弾", false, 2.2f, 0.6f, 35f, 7f, 9, 6, 2f, 0.8f, new Vector3(1f, 1.5f, 1f)).Spec(8f, 4f, 18f),
-            Gun("ビームガトリング", 2, "弾を使わずENで撃ち続けて溶かす", true, 1.8f, 0.06f, 95f, 1.5f, 1, 0, 0f, 0.5f, new Vector3(1.1f, 2.4f, 1.1f)).Spec(11f, 0f, 10f, en: 20f),
+            Gun("肩部機関銃", 0, "弱いが、離れた所から削れる", true, 1.2f, 0.12f, 55f, 2.5f, 1, 24, 2.2f, 0.4f, new Vector3(0.7f, 1.6f, 0.7f)).Spec(6f, 0.5f, 14f).Recoil(0.3f, 4f, 5f),
+            Gun("重機関銃", 1, "一発が重く、よく削れる", true, 2f, 0.09f, 75f, 2f, 1, 45, 2.5f, 0.6f, new Vector3(1.2f, 2f, 1.2f)).Spec(12f, 0.5f, 10f).Recoil(0.3f, 5f, 5f),
+            Gun("肩部散弾銃", 1, "近いほど多く当たる9粒の散弾", false, 2.2f, 0.6f, 35f, 7f, 9, 6, 2f, 0.8f, new Vector3(1f, 1.5f, 1f)).Spec(8f, 4f, 18f).Recoil(1f, 3f, 6f),
+            Gun("ビームガトリング", 2, "弾を使わずENで撃ち続けて溶かす", true, 1.8f, 0.06f, 95f, 1.5f, 1, 0, 0f, 0.5f, new Vector3(1.1f, 2.4f, 1.1f)).Spec(11f, 0f, 10f, en: 20f).Recoil(0.2f, 4f, 5f),
             // 肩の砲・ミサイル(右肩・左肩のどちらにも)
             Heavy("速射砲", 0, "爆発は小さいが、すぐ次が撃てる", true, 8f, 1, 5f, 1.4f, 70f, 6f, 8f, PrimitiveType.Cylinder, new Vector3(0.6f, 1.4f, 0.6f)).Spec(8f, 2f, 10f),
             Heavy("重榴弾砲", 1, "装填は遅いが、大きな爆発で群れをまとめて削る", false, 22f, 1, 12f, 3.5f, 80f, 14f, 22f, PrimitiveType.Cylinder, new Vector3(1.3f, 2f, 1.3f)).Spec(20f, 6f, 8f),
@@ -520,19 +537,19 @@ namespace MeleeDuel
             // 同じレア度の手の銃・肩の砲より強い
             TwoGun("大型ライフル", 0, "重い一発。L1 を溜めて離すと、敵を貫く強い一発", "1発ずつ", "溜め撃ち(貫通)",
                    false, 14f, 0.45f, 100f, 0.2f, 1, 8, 2.2f, 6f, 8f, new Vector3(0.55f, 0.9f, 6f),
-                   AltShot(40f, 0.8f, 120f, 0f, 1, 16f, 16f, charge: 1f, pierce: true, beamWidth: 0.5f).Spec(0f, 8f)).Spec(12f, 3f, 6f),
+                   AltShot(40f, 0.8f, 120f, 0f, 1, 16f, 16f, charge: 1f, pierce: true, beamWidth: 0.5f).Spec(0f, 8f)).Spec(12f, 3f, 6f).Recoil(1.5f, 4f, 9f),
             TwoGun("ガトリング砲", 0, "押している間ばらまき続ける。L1 で榴弾", "押している間連射", "榴弾",
                    true, 1.6f, 0.05f, 60f, 3f, 1, 90, 3f, 0.35f, 2f, new Vector3(0.9f, 0.9f, 4.5f),
-                   AltBlast(16f, 1, 6f, 2.5f, 70f, 8f, 12f).Spec(0f, 4f, 10f)).Spec(16f, 0.5f, 12f),
+                   AltBlast(16f, 1, 6f, 2.5f, 70f, 8f, 12f).Spec(0f, 4f, 10f)).Spec(16f, 0.5f, 12f).Recoil(0.25f, 6f, 6f),
             TwoCannon("バズーカ", 1, "砲弾が大きく爆ぜる。L1 を溜めて離すと大爆発", "砲弾", "溜めて大爆発",
                       false, 30f, 1, 9f, 1.8f, 90f, 16f, 22f, PrimitiveType.Cylinder, new Vector3(1f, 2.8f, 1f),
                       AltBlast(60f, 1, 15f, 3f, 90f, 30f, 30f, charge: 1.2f).Spec(0f, 12f)).Spec(14f, 6f, 8f),
             TwoGun("ショットキャノン", 1, "近くの敵を12粒で押し返す。L1 で遠くまで届く重いスラグ弾", "散弾", "スラグ弾",
                    false, 2.8f, 0.8f, 32f, 9f, 12, 5, 2.4f, 1.2f, 14f, new Vector3(0.8f, 1f, 4.4f),
-                   AltShot(34f, 1.2f, 70f, 0f, 1, 20f, 26f).Spec(0f, 6f, 7f)).Spec(13f, 6f, 16f),
+                   AltShot(34f, 1.2f, 70f, 0f, 1, 20f, 26f).Spec(0f, 6f, 7f).Recoil(2f, 4f, 6f)).Spec(13f, 6f, 16f).Recoil(1f, 3f, 6f),
             TwoGun("レーザー砲", 2, "押している間、敵を貫く光線を撃ち続ける。L1 を溜めて離すと極太の光線", "押している間照射(貫通)", "溜め撃ち(極太・貫通)",
                    true, 3.8f, 0.08f, 110f, 0f, 1, 0, 0f, 0.6f, 2f, new Vector3(0.8f, 1.1f, 6.5f),
-                   AltShot(90f, 1.5f, 130f, 0f, 1, 40f, 30f, charge: 1.5f, pierce: true, beamWidth: 3f).Spec(0f, 0f, en: 45f), pierce: true, beamWidth: 0.3f).Spec(15f, 0f, 7f, en: 25f),
+                   AltShot(90f, 1.5f, 130f, 0f, 1, 40f, 30f, charge: 1.5f, pierce: true, beamWidth: 3f).Spec(0f, 0f, en: 45f), pierce: true, beamWidth: 0.3f).Spec(15f, 0f, 7f, en: 25f).Recoil(0.1f, 1.5f, 4f),
             TwoCannon("多連装ロケット", 2, "8発のロケットが狙える敵を追う。L1 を溜めて離すと20発の一斉発射", "8発", "溜めて一斉発射",
                       false, 9f, 8, 5f, 2.5f, 110f, 5f, 8f, PrimitiveType.Cube, new Vector3(1.6f, 1.4f, 3.6f),
                       AltBlast(12f, 20, 6f, 5f, 120f, 6f, 10f, charge: 1.2f).Spec(0f, 30f)).Spec(18f, 12f, 24f),
@@ -560,6 +577,26 @@ namespace MeleeDuel
         [Range(0f, 1f)] public float assistPart = 0.35f;
         [Tooltip("武装に枠の大きさがないときの値(度)")]
         public float defaultFrame = FallbackFrame;
+
+        [Header("構え(狙って撃つ銃・砲のボタンを押している間と、撃ってから少しの間。ミサイルは入らない。カメラの値は DuelCamera)")]
+        [Tooltip("最後に撃ってから、構えを続ける秒数(押すたびに撃つ銃で、撃つ合間にカメラがロックオンへ戻らないように)")]
+        public float aimHoldAfterShot = 0.6f;
+
+        [Header("反動(連射で照準が広がり、実際のばらつきも広がる。カメラは跳ね上げない・揺らさない。武装ごとの値は DuelWeapon.Defaults() の .Recoil(...))")]
+        [Tooltip("全部の武装の広がり(1発ごと・上限)に掛ける倍率。0 で反動なし")]
+        public float recoilMul = 1f;
+        [Tooltip("最後に撃ってから、広がりが戻り始めるまでの秒数(連射の間は戻らずに広がっていく)")]
+        public float recoilDelay = 0.12f;
+
+        [Header("手応えの表示(ヒットマーカー・弾の筋)")]
+        [Tooltip("当たったときに照準の真ん中に出す印の秒数(実時間)")]
+        public float hitMarkTime = 0.22f;
+        [Tooltip("当たった弾の筋が残る秒数(細くなって消える)")]
+        public float tracerLife = 0.08f;
+        [Tooltip("外れた弾の筋が残る秒数(当たったときより長く見せる)")]
+        public float missTracerLife = 0.2f;
+        [Tooltip("外れた弾の筋の太さ(m。機体は約9m)")]
+        public float missTracerWidth = 0.35f;
 
         [Header("重さと所持(付けている武装 + 所持品の合計)")]
         [Tooltip("持てる重さの上限。拾って持つ・付けると超えるなら、持てない・付けられない")]

@@ -416,7 +416,11 @@ namespace MeleeDuel
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
             ProtoDamageText.Draw(cam, uiScale, SH);
             if (player == null) return;
-            if (player.Arms != null && !equipOpen) DrawAimFrames(player.Arms, cam);   // 照準の枠は、ほかの表示より奥に描く
+            if (player.Arms != null && !equipOpen)
+            {
+                DrawAimFrames(player.Arms, cam);   // 照準の枠は、ほかの表示より奥に描く
+                DrawHitMark(player.Arms);
+            }
 
             // 左下:自機のHP・EN・ガード、その下に操作説明。操作説明は右下の武装の欄の手前で折り返し、
             // 3行以上になるときは全体を上へずらす(2行までなら今までと同じ高さ)
@@ -466,7 +470,9 @@ namespace MeleeDuel
             if (e != null && !e.Dead && cam != null)
             {
                 Vector3 sp = cam.WorldToScreenPoint(e.LockPoint);
-                if (sp.z > 0f)
+                // 画面の外(射撃の構えでカメラを自分で回したときなど):画面の端に、その方向を示す小さな印(見失わないように)
+                if (sp.z <= 0f || sp.x < 0f || sp.x > Screen.width || sp.y < 0f || sp.y > Screen.height) DrawOffscreenLock(cam, e.LockPoint);
+                else
                 {
                     float cx = sp.x / uiScale, cy = SH - sp.y / uiScale;
                     const float arm = 9f, th = 2f, gap = 3f;
@@ -532,9 +538,22 @@ namespace MeleeDuel
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
             float cx = SW * 0.5f, cy = SH * 0.5f;
             var dev = ProtoInput.Current;
+            float spread = -1f;
+            bool spreadHot = false;
             foreach (var f in arms.Frames)
             {
-                float hw = Mathf.Min(f.halfW * k, SW * 0.48f), hh = Mathf.Min(f.halfH * k, SH * 0.45f);
+                // 反動で広がっている間は、枠も少し外へ開く(見た目だけ。吸い付く範囲は広げない)
+                float hw = Mathf.Min(f.drawW * k, SW * 0.48f), hh = Mathf.Min(f.drawH * k, SH * 0.45f);
+                // 真ん中の十字に出すばらつき:撃っている武装を優先し、同じなら大きいほう
+                if (f.spread >= 0f)
+                {
+                    if (f.hot && !spreadHot)
+                    {
+                        spread = f.spread;
+                        spreadHot = true;
+                    }
+                    else if (f.hot == spreadHot) spread = Mathf.Max(spread, f.spread);
+                }
                 var c = f.locked ? FrameLocked : FrameIdle;
                 c.a = f.hot ? 0.9f : 0.38f;
                 Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, c);
@@ -553,6 +572,20 @@ namespace MeleeDuel
                 GUI.color = c;
                 GUI.Label(new Rect(cx - hw, cy - hh - 16f, 200f, 16f), label, cellTiny);
             }
+            // 真ん中の十字:4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
+            if (spread >= 0f)
+            {
+                float g = Mathf.Clamp(spread * k, 3f, SH * 0.3f);
+                var sc = FrameIdle;
+                sc.a = spreadHot ? 0.85f : 0.4f;
+                GUI.color = sc;
+                const float len = 7f, th = 2f;
+                var t = Texture2D.whiteTexture;
+                GUI.DrawTexture(new Rect(cx - g - len, cy - th / 2f, len, th), t);
+                GUI.DrawTexture(new Rect(cx + g, cy - th / 2f, len, th), t);
+                GUI.DrawTexture(new Rect(cx - th / 2f, cy - g - len, th, len), t);
+                GUI.DrawTexture(new Rect(cx - th / 2f, cy + g, th, len), t);
+            }
             var mc = FrameLocked;
             mc.a = 0.95f;
             foreach (var e in arms.Marks)
@@ -563,6 +596,75 @@ namespace MeleeDuel
                 float x = sp.x / uiScale, y = SH - sp.y / uiScale;
                 Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, mc);
             }
+            GUI.color = Color.white;
+        }
+
+        // ヒットマーカーの色:当たった / 崩せる(怯みが射撃の上限まで。斬りにいけ)/ 崩れている敵に当たった / 倒した
+        static readonly Color[] HitMarkColors =
+        {
+            new(1f, 1f, 1f), new(1f, 0.5f, 0.12f), new(1f, 0.9f, 0.25f), new(1f, 0.28f, 0.22f),
+        };
+        static readonly float[] HitMarkSizes = { 7f, 9f, 10f, 12f };
+
+        /// <summary>
+        /// ヒットマーカー:射撃(銃・砲)が敵に当たったら、照準の真ん中に小さな斜めの十字を短く出す(実時間。ヒットストップ中も消えていく)。
+        /// 色と大きさで、当たった(白)/ 崩せる(橙。怯みが射撃の上限まで溜まった)/ 崩れている敵(黄)/ 倒した(赤)を見分ける。
+        /// 出た瞬間だけ少し大きく、すぐ縮む(画面は揺らさない)。
+        /// </summary>
+        void DrawHitMark(DuelArms arms)
+        {
+            if (Event.current.type != EventType.Repaint || player.Dead) return;
+            float life = Mathf.Max(0.02f, arms.Rules.hitMarkTime);
+            float age = Time.unscaledTime - arms.HitMarkAt;
+            if (age < 0f || age > life) return;
+            int kind = Mathf.Clamp(arms.HitMarkKind, 0, HitMarkColors.Length - 1);
+            float a = 1f - age / life;
+            var c = HitMarkColors[kind];
+            c.a = Mathf.Clamp01(a * 1.5f);
+            float len = HitMarkSizes[kind] * (1f + 0.35f * a * a), th = kind >= 1 ? 3f : 2f, gap = 4f;
+            Vector2 center = new(SW * 0.5f, SH * 0.5f);
+            var saved = GUI.matrix;
+            GUIUtility.RotateAroundPivot(45f, center * uiScale);   // 回す中心は画面の画素で渡す(GUI.matrix の拡大の外側で回るため)
+            GUI.color = c;
+            var t = Texture2D.whiteTexture;
+            GUI.DrawTexture(new Rect(center.x - gap - len, center.y - th / 2f, len, th), t);
+            GUI.DrawTexture(new Rect(center.x + gap, center.y - th / 2f, len, th), t);
+            GUI.DrawTexture(new Rect(center.x - th / 2f, center.y - gap - len, th, len), t);
+            GUI.DrawTexture(new Rect(center.x - th / 2f, center.y + gap, th, len), t);
+            GUI.matrix = saved;
+            GUI.color = Color.white;
+        }
+
+        /// <summary>
+        /// ロックオンの相手が画面の外にいるとき、画面の端(内側に少し寄せた所)に、その方向を指す小さな三角を出す。
+        /// 後ろにいるときも、カメラから見た左右・上下の向きで指す。
+        /// </summary>
+        void DrawOffscreenLock(Camera cam, Vector3 world)
+        {
+            if (Event.current.type != EventType.Repaint) return;
+            Vector3 v = cam.transform.InverseTransformPoint(world);
+            Vector2 d = new(v.x, v.y);
+            if (d.sqrMagnitude < 0.0001f) d = Vector2.down;   // 真後ろ:下を指す
+            d.Normalize();
+            const float margin = 34f;
+            float hx = SW * 0.5f - margin, hy = SH * 0.5f - margin;
+            float t = Mathf.Min(Mathf.Abs(d.x) > 0.0001f ? hx / Mathf.Abs(d.x) : float.MaxValue, Mathf.Abs(d.y) > 0.0001f ? hy / Mathf.Abs(d.y) : float.MaxValue);
+            Vector2 at = new(SW * 0.5f + d.x * t, SH * 0.5f - d.y * t);   // 画面の y は下向き
+            float ang = Mathf.Atan2(-d.y, d.x) * Mathf.Rad2Deg;
+            var saved = GUI.matrix;
+            GUIUtility.RotateAroundPivot(ang, at * uiScale);
+            var tex = Texture2D.whiteTexture;
+            // 右を指す段々の三角(回して向ける)。黒い縁で、明るい背景でも見えるように
+            for (int pass = 0; pass < 2; pass++)
+            {
+                float o = pass == 0 ? 1.5f : 0f;
+                GUI.color = pass == 0 ? new Color(0f, 0f, 0f, 0.5f) : new Color(1f, 1f, 1f, 0.85f);
+                GUI.DrawTexture(new Rect(at.x - 7f - o, at.y - 7f - o, 4f + o * 2f, 14f + o * 2f), tex);
+                GUI.DrawTexture(new Rect(at.x - 3f - o, at.y - 5f - o, 4f + o * 2f, 10f + o * 2f), tex);
+                GUI.DrawTexture(new Rect(at.x + 1f - o, at.y - 3f - o, 4f + o * 2f, 6f + o * 2f), tex);
+                GUI.DrawTexture(new Rect(at.x + 5f - o, at.y - 1f - o, 2f + o * 2f, 2f + o * 2f), tex);
+            }
+            GUI.matrix = saved;
             GUI.color = Color.white;
         }
 

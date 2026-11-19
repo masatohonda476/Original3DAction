@@ -339,8 +339,10 @@ namespace MeleeDuel
                         Energy -= dashCost * EnCostMul * dt;
                         energyUsedAt = now;
                     }
+                    // 射撃の構えの間は、撃つ向き(カメラの向き)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
-                    if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
+                    if (Arms != null && Arms.Aiming) Face(camFwd, 14f, dt);
+                    else if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
                     else if (Dashing) Face(worldMove, 14f, dt);
                     else if (worldMove.sqrMagnitude > 0.01f) Face(worldMove, 12f, dt);
                     break;
@@ -445,8 +447,12 @@ namespace MeleeDuel
         float GuardMoveMul => guardShield != null ? guardShield.guardMoveMul : guardMoveMul;
         float GuardStunMul => guardShield != null ? guardShield.guardStunMul : 1f;
 
+        /// <summary>最後に近接(剣・両手の近接・回避斬り)か回避を始めた時刻。射撃の構え(DuelArms.Aiming)はこれで終わる。</summary>
+        public float MeleeOrDodgeAt { get; private set; } = -10f;
+
         void Enter(State s, float dur = 0f)
         {
+            if (s is State.Attack or State.Dodge) MeleeOrDodgeAt = Time.time;
             Current = s;
             stateT = 0f;
             stateDur = dur;

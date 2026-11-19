@@ -567,7 +567,11 @@ namespace MeleeDuel
         public const float FallbackFrame = 12f;
 
         [Header("照準の枠(射撃だけ。銃・砲は画面の中央の先へ撃ち、枠の中の敵へ少しだけ狙いを寄せる。ミサイルは枠の中の敵へ)")]
-        [Tooltip("全部の武装の枠の大きさに掛ける倍率(1 で武装ごとの値のまま)")]
+        [Tooltip("オンなら、全部の武装で枠の大きさを共通(commonFrame)にする。オフなら武装ごとの値(作者「エイムの枠はは共通にしてください」)")]
+        public bool useCommonFrame = true;
+        [Tooltip("共通の枠の大きさ(画面の中央からの角度。横の半分。度)")]
+        public float commonFrame = 12f;
+        [Tooltip("全部の武装の枠の大きさに掛ける倍率(1 で武装ごとの値・共通の値のまま)")]
         public float frameMul = 1f;
         [Tooltip("枠の縦の大きさ(横に対する割合)")]
         [Range(0.2f, 1f)] public float frameAspect = 0.6f;
@@ -632,7 +636,8 @@ namespace MeleeDuel
         /// </summary>
         public float FrameDeg(DuelWeapon w, DuelWeapon parent)
         {
-            float deg = w != null && w.aimFrame > 0f ? w.aimFrame : parent != null && parent.aimFrame > 0f ? parent.aimFrame : defaultFrame;
+            float deg = useCommonFrame ? commonFrame
+                : w != null && w.aimFrame > 0f ? w.aimFrame : parent != null && parent.aimFrame > 0f ? parent.aimFrame : defaultFrame;
             return Mathf.Clamp(deg * frameMul, 0.5f, 70f);
         }
 

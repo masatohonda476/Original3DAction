@@ -71,7 +71,9 @@ namespace MeleeDuel
         [Tooltip("構えの間のマウスの1画素あたりの角度(度)。自由なカメラは 0.24")]
         public float aimMouseSens = 0.18f;
         [Tooltip("構えの間に見上げられる角度(度。マイナスが上)/ 見下ろせる角度")]
-        public float aimMinPitch = -35f, aimMaxPitch = 60f;
+        public float aimMinPitch = -70f, aimMaxPitch = 60f;
+        [Tooltip("ロックオンしていない自由なカメラで見上げられる角度(度。マイナスが上)。作者「もっとカメラは上を向けられるようにしてください」")]
+        public float freeMinPitch = -55f;
         [Tooltip("構えの間、カメラが自機の動きに付いていく速さ(大きいほどぴったり付く)")]
         public float aimFollow = 14f;
         [Tooltip("構えが終わってから、ロックオンのカメラへ戻りきるまでの秒数(ゆっくり動き出して、ゆっくり止まる)。敵へ60°より大きく向き直るときは、その分長くなる")]
@@ -100,7 +102,8 @@ namespace MeleeDuel
 
         const float Distance = 5.4f, Height = 2.9f, Shoulder = 1.2f, Smooth = 7f, FreeSmooth = 16f;
         const float StickYawSpeed = 320f, StickPitchSpeed = 190f, MouseSens = 0.24f;
-        const float MinPitch = -5f, MaxPitch = 55f, DefaultPitch = 20f;
+        const float MaxPitch = 55f, DefaultPitch = 20f;
+        float MinPitch => freeMinPitch;
 
         float yaw, pitch = DefaultPitch;
         Vector3 fwd = Vector3.forward, pos, lookPoint;

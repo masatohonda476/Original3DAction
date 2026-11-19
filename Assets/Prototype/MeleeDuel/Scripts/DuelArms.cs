@@ -1582,7 +1582,8 @@ namespace MeleeDuel
         float AssistDeg(DuelWeapon w, DuelWeapon parent)
         {
             var r = Rules;
-            if (!r.projectileAssist && (w.Explosive || SpeedOf(w) > 0f)) return 0f;
+            // 照準を動かせない(既定)ときは、先に置く偏差射撃ができないので、弾が速さを持つ撃ち方にも吸い付かせる(敵の今の位置へ。先読みはしない)
+            if (!r.projectileAssist && r.cursorMovable && (w.Explosive || SpeedOf(w) > 0f)) return 0f;
             return r.FrameDeg(w, parent) * Mathf.Clamp01(r.assistPart);
         }
 

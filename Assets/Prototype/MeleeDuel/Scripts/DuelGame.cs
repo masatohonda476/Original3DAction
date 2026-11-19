@@ -460,9 +460,10 @@ namespace MeleeDuel
             {
                 DrawArms(player.Arms);
                 if (!equipOpen) DrawPickup(player.Arms);
-                // 両手の銃・砲の溜め撃ち:画面の中央の少し下に溜まり具合(溜まったら白)
+                // 両手の銃・砲の溜め撃ち:照準の少し下に溜まり具合(溜まったら白)
                 float c = player.Arms.Charge01;
-                if (c > 0f && !equipOpen) Bar(new Rect(SW / 2f - 60f, SH * 0.5f + 46f, 120f, 6f), c, c >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
+                Vector2 cc = CursorScreen(player.Arms);
+                if (c > 0f && !equipOpen) Bar(new Rect(cc.x - 60f, cc.y + 46f, 120f, 6f), c, c >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
             }
 
             // ロックオンの印:敵の胸の上のほうに、目立ちすぎない細い白の十字
@@ -470,7 +471,7 @@ namespace MeleeDuel
             if (e != null && !e.Dead && cam != null)
             {
                 Vector3 sp = cam.WorldToScreenPoint(e.LockPoint);
-                // 画面の外(射撃の構えでカメラを自分で回したときなど):画面の端に、その方向を示す小さな印(見失わないように)
+                // 画面の外(敵が背中側へ回り、カメラが上限の速さで向き直っている途中など):画面の端に、その方向を示す小さな印(見失わないように)
                 if (sp.z <= 0f || sp.x < 0f || sp.x > Screen.width || sp.y < 0f || sp.y > Screen.height) DrawOffscreenLock(cam, e.LockPoint);
                 else
                 {
@@ -527,17 +528,27 @@ namespace MeleeDuel
         // 枠に添えるボタン名(ボタンの組と機器が変わったときだけ作る)
         readonly Dictionary<(int, ProtoInput.Device), string> frameLabels = new();
 
+        /// <summary>画面の上の照準の位置(GUI の座標。y は下向き)。</summary>
+        Vector2 CursorScreen(DuelArms arms)
+        {
+            Vector2 c = arms != null ? arms.Cursor : Vector2.zero;
+            return new Vector2(SW * (0.5f + c.x), SH * (0.5f - c.y));
+        }
+
         /// <summary>
-        /// 画面の中央に、撃つ武装の照準の枠を角の鉤(かぎ)だけで出す(アーマード・コアの FCS の枠)。大きさの違う枠は入れ子で全部出し、
-        /// 同じ大きさの枠は1つにまとめる。左上の角の上に使うボタン名。ふだんは薄く、その武装を撃っている・撃ったばかり・溜めている間は濃く。
-        /// 枠の中に当てる相手がいれば枠を橙にし、相手の胸に小さな橙の鉤の印(ミサイルは当てる相手みんな)。画面は揺らさない。
+        /// 照準の位置(DuelArms.Cursor。構えていない間は画面の中央へ戻る)に、撃つ武装の照準の枠を角の鉤(かぎ)だけで出す(アーマード・コアの FCS の枠)。
+        /// 大きさの違う枠は入れ子で全部出し、同じ大きさの枠は1つにまとめる。左上の角の上に使うボタン名。ふだんは薄く、その武装を撃っている・撃ったばかり・溜めている間は濃く。
+        /// 枠の中に当てる相手がいれば枠を橙にし、相手の胸に小さな橙の鉤の印(ミサイルは当てる相手みんな)。
+        /// 構えている間は、照準が動ける範囲の縁を薄い点で出す。画面は揺らさない。
         /// </summary>
         void DrawAimFrames(DuelArms arms, Camera cam)
         {
             if (Event.current.type != EventType.Repaint || cam == null || player.Dead) return;
             if (arms.Frames.Count == 0 && arms.Marks.Count == 0) return;
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
-            float cx = SW * 0.5f, cy = SH * 0.5f;
+            Vector2 cur = CursorScreen(arms);
+            float cx = cur.x, cy = cur.y;
+            if (arms.CursorActive) DrawCursorRange(arms);
             var dev = ProtoInput.Current;
             float spread = -1f;
             bool spreadHot = false;
@@ -600,6 +611,28 @@ namespace MeleeDuel
             GUI.color = Color.white;
         }
 
+        /// <summary>照準が動ける範囲(楕円)の縁を、薄い小さな点で出す(構えている間だけ)。</summary>
+        void DrawCursorRange(DuelArms arms)
+        {
+            var r = arms.Rules;
+            float rx = SW * Mathf.Clamp(r.cursorRangeX, 0.001f, 0.49f), ry = SH * Mathf.Clamp(r.cursorRangeY, 0.001f, 0.49f);
+            float ox = SW * 0.5f, oy = SH * 0.5f;
+            const int n = 48;
+            const float dot = 2f;
+            var push = arms.EdgePush;
+            var t = Texture2D.whiteTexture;
+            for (int i = 0; i < n; i++)
+            {
+                float a = i * Mathf.PI * 2f / n;
+                Vector2 d = new(Mathf.Cos(a), Mathf.Sin(a));
+                // 押し付けている側は少し濃く(カメラがそちらへゆっくり回っている合図。ロックオンしていないときだけ回る)
+                float lit = player.Target == null ? Mathf.Clamp01(Vector2.Dot(d, push)) : 0f;
+                GUI.color = new Color(0.85f, 0.92f, 1f, 0.16f + 0.5f * lit);
+                GUI.DrawTexture(new Rect(ox + d.x * rx - dot / 2f, oy - d.y * ry - dot / 2f, dot, dot), t);
+            }
+            GUI.color = Color.white;
+        }
+
         // ヒットマーカーの色:当たった / 崩せる(怯みが射撃の上限まで。斬りにいけ)/ 崩れている敵に当たった / 倒した
         static readonly Color[] HitMarkColors =
         {
@@ -608,7 +641,7 @@ namespace MeleeDuel
         static readonly float[] HitMarkSizes = { 7f, 9f, 10f, 12f };
 
         /// <summary>
-        /// ヒットマーカー:射撃(銃・砲)が敵に当たったら、照準の真ん中に小さな斜めの十字を短く出す(実時間。ヒットストップ中も消えていく)。
+        /// ヒットマーカー:射撃(銃・砲)が敵に当たったら、照準の位置に小さな斜めの十字を短く出す(実時間。ヒットストップ中も消えていく)。
         /// 色と大きさで、当たった(白)/ 崩せる(橙。怯みが射撃の上限まで溜まった)/ 崩れている敵(黄)/ 倒した(赤)を見分ける。
         /// 出た瞬間だけ少し大きく、すぐ縮む(画面は揺らさない)。
         /// </summary>
@@ -623,7 +656,7 @@ namespace MeleeDuel
             var c = HitMarkColors[kind];
             c.a = Mathf.Clamp01(a * 1.5f);
             float len = HitMarkSizes[kind] * (1f + 0.35f * a * a), th = kind >= 1 ? 3f : 2f, gap = 4f;
-            Vector2 center = new(SW * 0.5f, SH * 0.5f);
+            Vector2 center = CursorScreen(arms);
             var saved = GUI.matrix;
             GUIUtility.RotateAroundPivot(45f, center * uiScale);   // 回す中心は画面の画素で渡す(GUI.matrix の拡大の外側で回るため)
             GUI.color = c;
@@ -1441,8 +1474,10 @@ namespace MeleeDuel
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
             bool kb = dev == ProtoInput.Device.Keyboard;
             // ロックオンのボタンはオン・オフの切り替え(電脳斬禅と同じ)。狙う敵の切り替え:撃っていないときに右スティック(マウスは左右に振る)を左右に弾く。
-            // R3 / Tab でも切り替わる(オフのときに押すとオンに戻る)
-            string lockSwitch = kb ? "  マウスを左右に振る/Tab 狙う敵を変更" : "  右スティックを左右に弾く/R3 狙う敵を変更";
+            // R3 / Tab でも切り替わる(オフのときに押すとオンに戻る)。ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない
+            string lockSwitch = kb ? "  ロックオン中にマウスを左右に振る/Tab 狙う敵を変更" : "  ロックオン中に右スティックを左右に弾く/R3 狙う敵を変更";
+            // 銃・砲のボタンを押している間(と撃ってから少しの間)は、右スティック・マウスで画面の上の照準を動かす(カメラは回さない)
+            string aimMove = kb ? "  撃つボタンを押している間 マウス 照準を動かす" : "  撃つボタンを押している間 右スティック 照準を動かす";
             var sb = new System.Text.StringBuilder();
             if (arms)
             {
@@ -1460,6 +1495,7 @@ namespace MeleeDuel
                     sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 強攻撃");
                 }
                 if (reload) sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append("+撃つボタン リロード");
+                sb.Append(aimMove);
                 sb.Append("  ").Append(B(ProtoInput.Btn.R2)).Append('/').Append(B(ProtoInput.Btn.L2)).Append(" 右肩/左肩");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");

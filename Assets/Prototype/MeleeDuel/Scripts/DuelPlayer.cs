@@ -357,9 +357,13 @@ namespace MeleeDuel
                         Energy -= dashCost * EnCostMul * dt;
                         energyUsedAt = now;
                     }
-                    // 射撃の構えの間は、撃つ向き(カメラの向き)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
+                    // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
-                    if (Arms != null && Arms.Aiming) Face(camFwd, 14f, dt);
+                    if (Arms != null && Arms.Aiming)
+                    {
+                        Vector3 af = Arms.AimFacing;
+                        Face(af != Vector3.zero ? af : camFwd, 14f, dt);
+                    }
                     else if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
                     else if (Dashing) Face(worldMove, 14f, dt);
                     else if (worldMove.sqrMagnitude > 0.01f) Face(worldMove, 12f, dt);
@@ -556,7 +560,9 @@ namespace MeleeDuel
             if (Target == null && !(Arms != null && Arms.Aiming)) Target = PickBest(AutoLockRange);
             if (ProtoInput.SwitchTarget && !turnedOn) Target = Target == null ? PickBest(LockRange) : NearestToView(Target);
             // ロックオン中で、銃を構えていないとき:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)。
-            // 構えの間は右スティック・マウスで狙う(DuelCamera)ので切り替えない(作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)
+            // 構えの間は右スティック・マウスで画面の上の照準を動かす(DuelArms。カメラは回さない)ので切り替えない
+            // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
+            // 構えの間は自動でも選ばない(撃っている最中に、相手が替わってカメラが回り出さないように。構えが終わってから選ぶ)
             if (Target == null || (Arms != null && Arms.Aiming)) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;

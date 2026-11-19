@@ -13,6 +13,7 @@ namespace MeleeDuel
     /// 部屋のモード:R1 で剣(素の剣の技)、L1 でガード(下の値)。
     /// ステージ(武装あり、DuelArms):R1 / L1 はその手の武装を使う(剣なら攻撃、盾なら押している間ガード、手の銃なら撃つ)。
     ///   技は剣ごとの表(DuelWeapon.moves → DuelMoveSet)。強攻撃(△+R1/L1)・回避斬りは押したボタンの手の剣で出す。
+    ///   弾倉のある銃のボタンでは △+ボタンはリロード(DuelArms.TryManualReload。剣の手のボタンは横取りしない)。
     ///   ガードの値は構えている盾のもの。盾がなければガードできない。近接攻撃の間と回避の間は撃てない(CanShoot)。
     ///   両手の近接:R1 で連撃、L1 で別の技(回避の後も R1 は回避斬り、L1 は別の技)、△+R1/L1 で強攻撃。右手のクリップで振り、左右反転しない。
     ///   両手の銃・砲は DuelArms が撃つ(R1 が主の撃ち方、L1 が別の撃ち方)。両手持ちには盾がないのでガードできない。
@@ -582,6 +583,7 @@ namespace MeleeDuel
         bool TryChord()
         {
             if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
+            if (Arms != null && Time.time - Arms.ReloadChordAt <= heavyChordWindow) return false;   // その△は銃のリロードに使った(△+撃つボタン)
             if (SwordIn(atkHand) == null) return false;   // 振っている手に剣がない(素の剣の強攻撃に化けないように)
             float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
             var h = Armed(HeavyOf(atkHand)[0], atkHand);

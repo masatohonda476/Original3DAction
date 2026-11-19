@@ -29,6 +29,8 @@ namespace MeleeDuel
         public DuelSenses senses = new();
         [Tooltip("ロックオンできる距離(m)。壁・床ごしの敵はロックオンしない")]
         public float lockRange = 130f;
+        [Tooltip("自動でロックオンする距離(m)。ロックオンしていないとき、画面に映っていて壁・床ごしでなく、この距離の内の敵がいれば、一番近い敵へ自動で付く(敵が気づいたかどうかは見ない)。撃破後の移り先も同じ条件。ボタン・切り替えでは lockRange まで付けられる")]
+        public float autoLockRange = 40f;
 
         [Header("マップ")]
         [Tooltip("ステージに入ったときに一度だけ画面の中央に出すマップ名(場所ごとの名前は出さない)")]

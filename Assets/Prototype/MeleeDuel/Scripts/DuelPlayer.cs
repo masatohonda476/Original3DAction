@@ -486,9 +486,22 @@ namespace MeleeDuel
         {
             // ステージ:ロックオンできる距離の1.5倍より離れたら外す
             if (Target != null && LockRange > 0f && (Target.transform.position - transform.position).sqrMagnitude > LockRange * LockRange * 2.25f) Target = null;
-            // 倒したら、最初のロックオンと同じ条件(Lockable:画面内・遮られない・距離の内)の一番近い敵へ。いなければ外し、次の相手には付けない
-            if (Target != null && Target.Dead) Target = Nearest();
-            if (ProtoInput.LockToggle) Target = Target == null ? Nearest() : null;
+            // 倒したら、自動ロックオンと同じ条件(画面内・遮られない・autoLockRange の内)の一番近い敵へ。いなければ外す
+            if (Target != null && Target.Dead) Target = NearestAuto();
+            if (ProtoInput.LockToggle)
+            {
+                if (Target == null) Target = Nearest();
+                else { Target = null; autoLockHeld = true; }   // 自分で外したら、すぐ付け直さない
+            }
+            // 自動ロックオン(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」):
+            // ロックオンしていなければ、画面に映り・遮られず・autoLockRange の内の一番近い敵へ付く。銃を構えている間は付けない。
+            // 自分で外したあとは、条件に合う敵がいったん誰もいなくなるまで自動では付けない
+            if (Target == null && !(Arms != null && Arms.Aiming))
+            {
+                var c = NearestAuto();
+                if (c == null) autoLockHeld = false;
+                else if (!autoLockHeld) Target = c;
+            }
             if (ProtoInput.SwitchTarget) Target = Target == null ? Nearest() : NearestToView(Target);
             // ロックオン中で、銃を構えていないとき:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)。
             // 構えの間は右スティック・マウスで狙う(DuelCamera)ので切り替えない(作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)
@@ -558,7 +571,26 @@ namespace MeleeDuel
         /// <summary>敵が出てきた・こちらに気づいたとき、ロックオンしていなければその敵に合わせる。</summary>
         public void AutoLock(DuelEnemy e)
         {
-            if ((Target == null || Target.Dead) && Lockable(e)) Target = e;
+            // 敵が気づいた・出てきたことでは付けない(自動ロックオンは UpdateLock で、画面内・距離で決める)
+        }
+
+        bool autoLockHeld;
+        float AutoLockRange => game.stage != null ? game.stage.autoLockRange : 0f;
+
+        /// <summary>自動ロックオンの相手:autoLockRange の内で、ロックオンしてよい(画面内・遮られない)敵のうち一番近いもの。いなければ null。部屋では距離を見ない。</summary>
+        DuelEnemy NearestAuto()
+        {
+            float r = AutoLockRange;
+            DuelEnemy best = null;
+            float bestD = float.MaxValue;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead) continue;
+                float d = (e.transform.position - transform.position).sqrMagnitude;
+                if (r > 0f && d > r * r) continue;
+                if (d < bestD && Lockable(e)) { bestD = d; best = e; }
+            }
+            return best;
         }
 
         // ───────── 回避 ─────────

@@ -76,14 +76,14 @@ namespace MeleeDuel
         [Tooltip("1発(散弾は1粒・ミサイルは1発)のダメージ")] public float damage = 1f;
         [Tooltip("銃:発射の間隔(秒) / 砲・ミサイル:次に撃てるまで(秒)")] public float interval = 0.1f;
         public float range = 60f;
-        [Tooltip("1発ごとの敵の怯みゲージへの量")] public float stagger = 0.5f;
+        [Tooltip("1発ごとの敵の怯みゲージへの量(射撃は上限 DuelGame.rangedStaggerCap の手前までしかためず、怯ませない。崩すのは近接)")] public float stagger = 0.5f;
         [Tooltip("銃:ばらつき(度)")] public float spread;
         [Tooltip("銃:1回で出る粒の数(2以上なら散弾)")] public int pellets = 1;
         [Tooltip("銃:弾倉(0なら弾倉なし)")] public int magazine;
         [Tooltip("銃:リロードの秒数(撃ち切ったときと、△+撃つボタンの手動リロード)")] public float reload = 2f;
         [Tooltip("砲・ミサイル:爆発の半径(m)")] public float radius = 5f;
         [Tooltip("砲・ミサイル:1回で撃つ数(2以上ならミサイル。狙える敵に割り振って追いかける)")] public int salvo = 1;
-        [Tooltip("当たったときに押す速さ(砲・ミサイルは怯んだときだけ)")] public float knock = 10f;
+        [Tooltip("当たったときに押す速さ(射撃では怯ませないので、DuelGame.rangedPushMin 以上なら1発ごとに軽く押し返す。技は止めない)")] public float knock = 10f;
         [Tooltip("両手の銃・砲だけ:オンなら主の撃ち方が爆発(砲・ミサイル)。オフなら弾(銃)")] public bool blast;
         [Tooltip("溜め撃ち:押している間に溜め、この秒数を超えてから離すと撃つ(0なら溜めない)")] public float charge;
         [Tooltip("弾が敵を貫いて、線の上の敵みんなに当たる")] public bool pierce;
@@ -430,7 +430,7 @@ namespace MeleeDuel
             HandGun("ハンドガン", 0, "押すたびに1発。弱いが狙いが正確", false, 4f, 0.2f, 55f, 0.4f, 1, 12, 1.3f, 1.5f, 3f, new Vector3(0.4f, 0.7f, 2.6f)),
             HandGun("サブマシンガン", 0, "押している間ばらまく。近い敵向け", true, 1.4f, 0.07f, 35f, 4f, 1, 30, 1.8f, 0.3f, 2f, new Vector3(0.45f, 0.8f, 3f)),
             HandGun("ライフル", 1, "一発が重く、遠くまで届く", false, 11f, 0.5f, 90f, 0.2f, 1, 6, 2f, 4f, 6f, new Vector3(0.45f, 0.8f, 4.6f)),
-            HandGun("散弾銃", 1, "近くで撃てば大きく怯ませ、押し返す", false, 2.4f, 0.75f, 28f, 8f, 8, 4, 2.2f, 0.9f, 10f, new Vector3(0.6f, 0.9f, 3.6f)),
+            HandGun("散弾銃", 1, "近くで撃てば怯みを一気にため、押し返す", false, 2.4f, 0.75f, 28f, 8f, 8, 4, 2.2f, 0.9f, 10f, new Vector3(0.6f, 0.9f, 3.6f)),
             HandGun("ビームライフル", 2, "弾切れなし。一発が重く遠くまで届く", false, 16f, 0.45f, 110f, 0f, 1, 0, 0f, 5f, 8f, new Vector3(0.5f, 0.9f, 5f)),
             // 背中
             Back("背部スラスター", 0, "速さと燃費のバランス型", 1.05f, 1.15f, 1.1f, 0.85f, new Vector3(2.4f, 2.8f, 1.3f)),
@@ -444,7 +444,7 @@ namespace MeleeDuel
             Gun("ビームガトリング", 2, "弾切れなし。撃ち続けて溶かす", true, 1.8f, 0.06f, 95f, 1.5f, 1, 0, 0f, 0.5f, new Vector3(1.1f, 2.4f, 1.1f)),
             // 肩の砲・ミサイル(右肩・左肩のどちらにも)
             Heavy("速射砲", 0, "爆発は小さいが、すぐ次が撃てる", true, 8f, 1, 5f, 1.4f, 70f, 6f, 8f, PrimitiveType.Cylinder, new Vector3(0.6f, 1.4f, 0.6f)),
-            Heavy("重榴弾砲", 1, "装填は遅いが、大きな爆発で群れを崩す", false, 22f, 1, 12f, 3.5f, 80f, 14f, 22f, PrimitiveType.Cylinder, new Vector3(1.3f, 2f, 1.3f)),
+            Heavy("重榴弾砲", 1, "装填は遅いが、大きな爆発で群れをまとめて削る", false, 22f, 1, 12f, 3.5f, 80f, 14f, 22f, PrimitiveType.Cylinder, new Vector3(1.3f, 2f, 1.3f)),
             Heavy("ミサイルポッド", 1, "4発が狙える敵を追いかける", false, 6f, 4, 4f, 3f, 100f, 4f, 6f, PrimitiveType.Cube, new Vector3(1.2f, 1f, 1.4f)),
             Heavy("多弾頭ミサイル", 2, "10発が周りの敵へ散って追いかける", false, 10f, 10, 5f, 4f, 110f, 6f, 8f, PrimitiveType.Cube, new Vector3(1.8f, 1.4f, 1.8f)),
             Heavy("超重砲", 2, "装填はとても遅いが、群れごと吹き飛ばす", false, 40f, 1, 20f, 6f, 90f, 30f, 30f, PrimitiveType.Cylinder, new Vector3(1.9f, 3.2f, 1.9f)),
@@ -469,7 +469,7 @@ namespace MeleeDuel
             TwoCannon("バズーカ", 1, "砲弾が大きく爆ぜる。L1 を溜めて離すと大爆発", "砲弾", "溜めて大爆発",
                       false, 30f, 1, 9f, 1.8f, 90f, 16f, 22f, PrimitiveType.Cylinder, new Vector3(1f, 2.8f, 1f),
                       AltBlast(60f, 1, 15f, 3f, 90f, 30f, 30f, charge: 1.2f)),
-            TwoGun("ショットキャノン", 1, "近くの敵を12粒で吹き飛ばす。L1 で遠くまで届く重いスラグ弾", "散弾", "スラグ弾",
+            TwoGun("ショットキャノン", 1, "近くの敵を12粒で押し返す。L1 で遠くまで届く重いスラグ弾", "散弾", "スラグ弾",
                    false, 2.8f, 0.8f, 32f, 9f, 12, 5, 2.4f, 1.2f, 14f, new Vector3(0.8f, 1f, 4.4f),
                    AltShot(34f, 1.2f, 70f, 0f, 1, 20f, 26f)),
             TwoGun("レーザー砲", 2, "押している間、敵を貫く光線を撃ち続ける。L1 を溜めて離すと極太の光線", "押している間照射(貫通)", "溜め撃ち(極太・貫通)",

@@ -696,7 +696,7 @@ namespace MeleeDuel
         /// <summary>振り抜いた瞬間:扇の中の敵に当てる。</summary>
         void Strike()
         {
-            bool any = false;
+            bool any = false, big = false;
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
@@ -705,14 +705,19 @@ namespace MeleeDuel
                 to.y = 0f;
                 if (GapTo(e) > cur.reach) continue;
                 if (to.magnitude > Radius + e.Radius + 0.5f && Vector3.Angle(transform.forward, to) > cur.arc) continue;
+                bool wasBroken = e.Flinching;   // 崩れた敵を斬る(大ダメージ)
                 e.TakeHit(cur.damage, cur.stagger, Flat(to) * cur.knock, cur.flinch);
-                // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく
+                bool broke = !wasBroken && e.Flinching;   // この一太刀で崩した
+                // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく。崩した・崩れた敵を斬ったときはさらに多く大きく
                 Vector3 hitAt = e.Chest - Flat(to) * e.Radius;
-                DuelSpark.Burst(hitAt, -Flat(to), new Color(1f, 0.88f, 0.55f), cur.heavy ? 26 : 14, cur.heavy ? 1.4f : 1f);
-                ProtoFx.Blast(hitAt, cur.heavy ? 2f : 1.2f, Color.white, 0.08f);
+                float fx = wasBroken || broke ? 1.6f : 1f;
+                DuelSpark.Burst(hitAt, -Flat(to), new Color(1f, 0.88f, 0.55f), Mathf.RoundToInt((cur.heavy ? 26 : 14) * fx), (cur.heavy ? 1.4f : 1f) * fx);
+                ProtoFx.Blast(hitAt, (cur.heavy ? 2f : 1.2f) * fx, Color.white, 0.08f);
                 any = true;
+                big |= wasBroken || broke;
             }
-            if (any) game.HitStop(cur.heavy ? 0.12f : 0.06f);
+            // ヒットストップ(画面は揺らさない)。崩した・崩れた敵を斬ったときは少し長く
+            if (any) game.HitStop((cur.heavy ? 0.12f : 0.06f) + (big ? 0.04f : 0f));
         }
 
         // ───────── 被弾 ─────────

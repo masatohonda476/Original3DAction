@@ -11,7 +11,7 @@ namespace MeleeDuel
     ///   突き:低く前かがみに構え、少し後ろへ下がって溜める /
     ///   跳び上がり斬り(対空):自機が頭上を飛んでいると、深く沈み込んで上を見上げるようにのけぞって溜め、自機へ跳び上がる
     /// 怯みゲージが攻撃でたまり、満タンになると怯む(技の途中でも止まる)。攻撃の後の隙に当てると多くたまる。
-    /// 1発ごとには怯まない。
+    /// 1発ごとには怯まない。射撃では上限の手前までしかたまらず、最後に崩す(怯ませる)のは近接だけ。崩れた敵を斬ると大ダメージ(DuelGame の「崩し」)。
     /// 種類(Spec)で性格を変える:剣士(中型・1.5倍の大きさ・技3つ・ブースト飛行)/ 兵卒(雑魚・技2つ・すぐ怯む・攻めがゆっくり)。
     /// 剣士は自機が頭上を飛ぶと、噴射炎を出して同じ高さまで飛び上がり、空中で斬りかかる(続けて飛べるのは maxFlyTime 秒まで)。
     /// 同時に攻撃してくる数は DuelGame が絞る(順番待ちの間は回り込んで待つ)。
@@ -973,33 +973,49 @@ namespace MeleeDuel
 
         /// <summary>射撃が当たった(rangedTakenMul を掛けてから TakeHit)。</summary>
         public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
-            TakeHit(dmg * rangedTakenMul, stagger * rangedTakenMul, knock, flinchTime);
+            TakeHit(dmg * rangedTakenMul, stagger * rangedTakenMul, knock, flinchTime, true);
 
         /// <summary>
         /// 自機の攻撃が当たった。怯みゲージをため、満タンになったら怯む(技の予備動作・出ている途中でも止まる)。
-        /// 怯む時間は、いっぱいにした攻撃で決まる(flinchTime)。怯んでいる間はゲージはたまらない。
+        /// 怯む時間は、いっぱいにした攻撃で決まる(flinchTime。近接で崩したときは DuelGame.breakFlinchMin 秒より短くしない)。
+        /// 怯んでいる間はゲージはたまらない。
+        /// 崩し(DuelGame):射撃(ranged)は怯みゲージを上限(rangedStaggerCap)の手前までしかためず、怯ませない
+        /// (knock の大きい射撃は1発ごとに軽く押し返すだけ)。最後に崩すのは近接だけ。
+        /// 崩れている(怯んでいる)敵に近接を当てると、ダメージが brokenMeleeDamageMul 倍(数字は橙)。
         /// </summary>
-        public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime)
+        public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime, bool ranged = false)
         {
             if (Dead) return;
             Engage();   // 斬られたら発覚(見通せる近くの仲間にも伝わる)
             if (senses != null) holdEngagedUntil = Time.time + senses.holdAfterHit;   // 斬られた直後は、持ち場から遠くても発覚を切らない
+            bool broken = Current == State.Flinch && !ranged;   // 崩れた敵を斬った
+            if (broken) dmg *= game.brokenMeleeDamageMul;
             HP -= dmg;
-            ProtoDamageText.Show(Chest, dmg);
+            ProtoDamageText.Show(Chest, dmg, broken);   // 崩れた敵への大ダメージは橙の数字
             Flash(Color.white, 0.08f);
             Jolt(-7f);
             if (HP <= 0f) { Die(); return; }
             if (Current == State.Flinch) return;
 
             float mul = Current == State.Recover ? recoverStaggerMul : 1f;   // 攻撃の後の隙に当てると多くたまる
-            Stagger += stagger * mul;
             lastStaggerHitAt = Time.time;
+            if (ranged && game.rangedStaggerCap < 1f)
+            {
+                // 射撃:上限の手前までしかためない(近接で上限より上にためてあれば、そのまま)。怯ませない
+                float cap = maxStagger * game.rangedStaggerCap;
+                if (Stagger < cap) Stagger = Mathf.Min(cap, Stagger + stagger * mul);
+                // knock の大きい射撃(散弾・砲など)は、1発ごとに軽く押し返す(技は止めない)
+                Vector3 shove = knock * game.rangedPushMul * Kind.knockMul;
+                if (knock.magnitude >= game.rangedPushMin && shove.sqrMagnitude > push.sqrMagnitude) Knockback(shove);
+                return;
+            }
+            Stagger += stagger * mul;
             if (Stagger < maxStagger) return;
             Stagger = 0f;
             chain = 0;
             Knockback(knock * 1.5f * Kind.knockMul);
             StopRising();   // 空中で怯んだら上昇が止まり、怯んでいる間は落ちる
-            Enter(State.Flinch, flinchTime);
+            Enter(State.Flinch, ranged ? flinchTime : Mathf.Max(flinchTime, game.breakFlinchMin));
         }
 
         void Die()

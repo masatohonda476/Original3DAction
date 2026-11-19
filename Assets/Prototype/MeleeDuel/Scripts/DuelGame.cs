@@ -35,6 +35,22 @@ namespace MeleeDuel
         public int maxAttackers = 2;
         public float respawnDelay = 2f;
 
+        [Header("崩し(銃で崩しにいき、剣で仕留める。部屋・ステージ・ボス共通)")]
+        [Tooltip("射撃で溜められる敵の怯みゲージの上限(最大の何割)。射撃だけでは怯ませられず、最後に崩す(怯ませ切る)のは近接だけ。" +
+                 "怯みのバーはこの少し手前から白く点滅する。1 にすると射撃でも怯む(元の動き)")]
+        [Range(0f, 1f)] public float rangedStaggerCap = 0.9f;
+        [Tooltip("崩れている(怯んでいる)敵に近接を当てたときのダメージの倍率(射撃には掛からない)")]
+        public float brokenMeleeDamageMul = 2f;
+        [Tooltip("近接で崩したときの怯みの最短の秒数。技の怯みの時間がこれより短ければ延ばす(崩した後に一太刀入れる間)。0 なら技の値のまま")]
+        public float breakFlinchMin = 1f;
+        [Tooltip("射撃の1発ごとに軽く押し返す速さ(武装の knock に掛ける倍率)。怯ませず、技も止めない。0 なら押さない")]
+        public float rangedPushMul = 1f;
+        [Tooltip("武装の knock がこれ以上の射撃だけ1発ごとに押し返す(連射の銃で、寄ってくる敵を引き止め続けないように)")]
+        public float rangedPushMin = 8f;
+
+        /// <summary>怯みのバーを白く点滅させ始める割合(8割か、射撃の上限の少し手前の低いほう)。射撃で止まった所が「斬りにいけ」の合図になる。</summary>
+        public float StaggerBlinkFrom => Mathf.Min(0.8f, rangedStaggerCap - 0.02f);
+
         [Header("頭上のゲージ(電脳斬禅と同じ。近くの敵の頭の上に、HPと怯みの小さなバー)")]
         [Tooltip("自機からこの距離(m)より遠い敵には出さない")]
         public float overheadRange = 90f;
@@ -398,7 +414,8 @@ namespace MeleeDuel
                 Bar(new Rect(ex, 24f, w, 14f), e.HP / e.MaxHP, new Color(0.9f, 0.3f, 0.25f));
                 // 怯みゲージ:HPのバーの1/4の長さ
                 float sw = w / 4f, sx = (SW - sw) / 2f;
-                Bar(new Rect(sx, 42f, sw, 8f), e.Flinching ? 1f : e.Stagger / e.maxStagger, e.Flinching ? new Color(1f, 0.85f, 0.2f) : new Color(1f, 0.6f, 0.2f));
+                float est = e.Flinching ? 1f : Mathf.Clamp01(e.Stagger / e.maxStagger);
+                Bar(new Rect(sx, 42f, sw, 8f), est, StaggerColor(e, est, Time.unscaledTime));
                 GUI.Label(new Rect(ex, 52f, w, 24f), e.Flinching ? "怯み!" : "怯み", center);
             }
 
@@ -421,6 +438,17 @@ namespace MeleeDuel
             if (stage != null) DrawStage();
             if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― セーブポイントから再開します" : "撃墜 ― やり直します", big);
             if (equipOpen && player.Arms != null) DrawEquipView(player.Arms);
+        }
+
+        /// <summary>
+        /// 怯みのバーの色(上の中央・頭上で同じ)。怯んでいる(崩れている)間は満タンの黄。StaggerBlinkFrom を超えたら白く点滅して
+        /// 「あと少し・斬りにいけ」を知らせる(射撃は上限 rangedStaggerCap で止まるので、射撃で溜めきると点滅したままになる)。
+        /// </summary>
+        Color StaggerColor(DuelEnemy e, float st, float now)
+        {
+            if (e.Flinching) return new Color(1f, 0.85f, 0.2f);
+            var c = new Color(1f, 0.6f, 0.2f);
+            return st > StaggerBlinkFrom ? Color.Lerp(c, Color.white, 0.5f + 0.5f * Mathf.Sin(now * 16f)) : c;
         }
 
         /// <summary>上の中央のゲージに出す敵:ロックオンしている敵。いなければ、ステージで動いているボス。</summary>
@@ -484,11 +512,9 @@ namespace MeleeDuel
                 GUI.DrawTexture(new Rect(hpRect.x, hpRect.y, w * g.ghost, hpH), Texture2D.whiteTexture);
                 GUI.color = new Color(0.9f, 0.3f, 0.25f);
                 GUI.DrawTexture(new Rect(hpRect.x, hpRect.y, w * hp, hpH), Texture2D.whiteTexture);
-                // 怯み:上の中央と同じ色。怯んでいる間は満タンの黄、8割を超えたら白く点滅して「あと少し」を知らせる
+                // 怯み:上の中央と同じ色(StaggerColor)
                 float st = e.Flinching ? 1f : Mathf.Clamp01(e.Stagger / e.maxStagger);
-                Color stC = e.Flinching ? new Color(1f, 0.85f, 0.2f) : new Color(1f, 0.6f, 0.2f);
-                if (!e.Flinching && st > 0.8f) stC = Color.Lerp(stC, Color.white, 0.5f + 0.5f * Mathf.Sin(now * 16f));
-                GUI.color = stC;
+                GUI.color = StaggerColor(e, st, now);
                 GUI.DrawTexture(new Rect(stRect.x, stRect.y, w * st, stH), Texture2D.whiteTexture);
             }
             GUI.color = Color.white;

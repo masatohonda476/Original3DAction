@@ -210,9 +210,9 @@ namespace MeleeDuel
         /// <summary>その所の砲・ミサイルが次に撃てるまでの残り(0〜1。0で撃てる)。</summary>
         public float Cooldown01(DuelSlot s) => cd[(int)s] > 0f ? Mathf.Clamp01(cd[(int)s] / Mathf.Max(0.01f, cdMax[(int)s])) : 0f;
         /// <summary>その所の砲・ミサイルが次に撃てるまでの残り(秒)。</summary>
-        public float CooldownLeft(DuelSlot s) => Mathf.Max(0f, cd[(int)s]);
+        public float CooldownLeft(DuelSlot s) => lastFire[(int)s] < 0f ? 0f : Mathf.Max(0f, cd[(int)s]);   // まだ撃っていなければ 0(付けた直後の待ちは出さない)
         /// <summary>L1 の撃ち方が次に撃てるまでの残り(秒)。</summary>
-        public float AltCooldownLeft => AltFire != null ? Mathf.Max(0f, cd[AltIndex]) : 0f;
+        public float AltCooldownLeft => AltFire != null && lastFire[AltIndex] >= 0f ? Mathf.Max(0f, cd[AltIndex]) : 0f;
         /// <summary>手動でリロードできる銃(弾倉のある銃)をどこかに付けている(操作説明に「△+撃つボタン リロード」を出すか)。</summary>
         public bool AnyReloadable
         {
@@ -351,6 +351,9 @@ namespace MeleeDuel
         /// 押して覚えている射撃(先行入力)も忘れる。押したのが剣・盾・砲・弾倉のない銃のボタンなら何もしない(△+R1 の強攻撃などは DuelPlayer がそのまま読む)。
         /// 撃てない間(振っている途中・回避中など)でも始められる。付け先を選んでいる間は Pressed が数えないので始めない。
         /// </summary>
+        /// <summary>△+撃つボタンをリロードに使った時刻(DuelPlayer の強攻撃の同時押しの救済が、この△を拾わないように)。</summary>
+        public float ReloadChordAt { get; private set; } = -10f;
+
         void TryManualReload()
         {
             if (!ProtoInput.AimHeld) return;
@@ -361,6 +364,7 @@ namespace MeleeDuel
                 if (i < 0) continue;
                 suppress[Btn(s)] = true;
                 pressedAt[i] = -10f;
+                ReloadChordAt = Time.time;
                 var w = slots[i];
                 if (reload[i] > 0f || mag[i] >= w.magazine) continue;
                 reload[i] = w.reload;
@@ -499,6 +503,7 @@ namespace MeleeDuel
             if (w == null) return;
             mag[i] = w.magazine;
             cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
+            lastFire[i] = -10f;   // 付けた直後の 0.3 秒の待ちは、装填のゲージに出さない(CooldownLeft)
         }
 
         /// <summary>
@@ -914,7 +919,7 @@ namespace MeleeDuel
                 if (w.magazine > 0 && --mag[i] <= 0) { reload[i] = w.reload; break; }   // 撃ち切ったらリロード
             }
             cd[i] = Mathf.Max(cd[i], 0f);
-            cdMax[i] = Mathf.Max(0.01f, cd[i]);   // 次に撃てるまでのゲージの分母(両手の銃の L1 の弾。付けたときの 0.3 秒のままだとゲージが合わない)
+            cdMax[i] = Mathf.Max(0.01f, w.interval);   // 次に撃てるまでのゲージの分母(両手の銃の L1 の弾。付けたときの 0.3 秒のままだとゲージが合わない)
             return true;
         }
 

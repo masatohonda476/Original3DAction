@@ -80,7 +80,7 @@ namespace MeleeDuel
         [Tooltip("銃:ばらつき(度)")] public float spread;
         [Tooltip("銃:1回で出る粒の数(2以上なら散弾)")] public int pellets = 1;
         [Tooltip("銃:弾倉(0なら弾倉なし)")] public int magazine;
-        [Tooltip("銃:撃ち切ったときのリロード(秒)")] public float reload = 2f;
+        [Tooltip("銃:リロードの秒数(撃ち切ったときと、△+撃つボタンの手動リロード)")] public float reload = 2f;
         [Tooltip("砲・ミサイル:爆発の半径(m)")] public float radius = 5f;
         [Tooltip("砲・ミサイル:1回で撃つ数(2以上ならミサイル。狙える敵に割り振って追いかける)")] public int salvo = 1;
         [Tooltip("当たったときに押す速さ(砲・ミサイルは怯んだときだけ)")] public float knock = 10f;

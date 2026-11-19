@@ -641,7 +641,9 @@ namespace MeleeDuel
                     return;
             }
             float sp = new Vector3(vel.x, 0f, vel.z).magnitude;
-            if (Dashing || Altitude > 1.5f) { Pose(MechRig.Dash, 0f, 12f); return; }   // ブースト移動中・空中
+            // ブースト移動中・空中。足もとの高さは機体の中心から真下へ測るので、足場の角に立つと中心が外へ出て高く出る。
+            // 接地しているかも見る(Airborne)ことで、角に立っても空中の姿勢にしない
+            if (Dashing || (Airborne && Altitude > 1.5f)) { Pose(MechRig.Dash, 0f, 12f); return; }
             // 右手の銃(両手の銃・砲も)を撃った直後・L1 を溜めている間に止まっていれば、右腕を前に出した射撃の構え(左手用の構えのクリップはないので右手だけ)
             if (sp <= 0.5f && Arms != null && Arms.AimPose(0.4f) && rig != null && rig.Has(MechRig.Aim))
             {

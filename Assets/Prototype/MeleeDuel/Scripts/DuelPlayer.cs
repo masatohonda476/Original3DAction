@@ -476,7 +476,9 @@ namespace MeleeDuel
         {
             // ステージ:ロックオンできる距離の1.5倍より離れたら外す
             if (Target != null && LockRange > 0f && (Target.transform.position - transform.position).sqrMagnitude > LockRange * LockRange * 2.25f) Target = null;
-            if (Target != null && Target.Dead) Target = Nearest();   // 倒したら、残っている一番近い敵へ
+            // 倒したら、最初の自動ロックオン(AutoLock)と同じ条件で次の相手を選ぶ:こちらに気づいていて(Engaged)ロックオンしてよい敵の、一番近いもの。
+            // いなければロックオンを外す(気づいていない敵へは移らない。作者「撃破後のターゲット変更は、最初のロックオンと同じ条件でやるようにしてください」)
+            if (Target != null && Target.Dead) Target = NearestEngaged();
             if (ProtoInput.LockToggle) Target = Target == null ? Nearest() : null;
             if (ProtoInput.SwitchTarget) Target = Target == null ? Nearest() : NearestToView(Target);
             // ロックオン中で、銃を構えていないとき:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)。
@@ -542,6 +544,20 @@ namespace MeleeDuel
                 if (d < bestD && Lockable(e)) { bestD = d; best = e; }
             }
             return best != null ? best : except != null && !except.Dead ? except : null;
+        }
+
+        /// <summary>こちらに気づいている(Engaged)、ロックオンしてよい敵のうち一番近いもの(自動ロックオンと同じ条件)。いなければ null。</summary>
+        DuelEnemy NearestEngaged()
+        {
+            DuelEnemy best = null;
+            float bestD = float.MaxValue;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead || !e.Engaged) continue;
+                float d = (e.transform.position - transform.position).sqrMagnitude;
+                if (d < bestD && Lockable(e)) { bestD = d; best = e; }
+            }
+            return best;
         }
 
         /// <summary>敵が出てきた・こちらに気づいたとき、ロックオンしていなければその敵に合わせる。</summary>

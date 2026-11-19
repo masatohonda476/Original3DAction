@@ -386,6 +386,14 @@ namespace MeleeDuel
             if (ProtoInput.Dodge) dodgePressedAt = now;
         }
 
+        /// <summary>先行入力(押してからの受付時間内の攻撃・回避)を捨てる。装備の確認を開いたとき(閉じた直後に出ないように)。</summary>
+        public void ClearBufferedInput()
+        {
+            lightPressedAt = -10f;
+            dodgePressedAt = -10f;
+            pressHeavy = false;
+        }
+
         void PressSword(int hand, float now)
         {
             lightPressedAt = now;

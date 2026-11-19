@@ -364,17 +364,42 @@ namespace MeleeDuel
             if (Choosing != null) EndChoice();
         }
 
+        /// <summary>先行入力(押してからの受付時間内の射撃)を捨てる。装備の確認を開いたとき(閉じた直後に撃たないように)。</summary>
+        public void ClearBufferedInput()
+        {
+            for (int i = 0; i < StateCount; i++) pressedAt[i] = -10f;
+        }
+
+        /// <summary>捨てた武装を出す所(所ごとに少しずらす。Drop と HasFloorBelow で同じ)。</summary>
+        Vector3 DropPos(int i)
+        {
+            float ang = (i - 2) * 50f;
+            Vector3 off = Quaternion.Euler(0f, ang, 0f) * player.transform.forward * (player.Radius * 0.6f);
+            return player.transform.position + off + Vector3.up * 2f;
+        }
+
+        /// <summary>
+        /// その所の武装を捨てたときに置く所の真下に床があるか(穴の上・空中で捨てると、落ちる武装が -200m より下まで落ちて消えるので)。
+        /// 下の階の床でもよい(そこまで落ちて拾い直せる)。
+        /// </summary>
+        public bool HasFloorBelow(DuelSlot slot)
+        {
+            if (player == null) return false;
+            Vector3 p = DropPos((int)slot);
+            return Physics.Raycast(p, Vector3.down, p.y + 200f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        }
+
         /// <summary>
         /// その所の武装を外して、自機の足もとの床に置く(装備の確認の画面から。素の剣も捨てられ、どの所も空にできる)。
         /// 置き方は付け替えで外した武装と同じ DuelLoot.Place(勢いなしで真下の床まで落ちる。拾い直せる)。
         /// 機体の中心から半径の内側(所ごとに少しずらす)の、床から少し上に出す(壁の外・床の下に出ないように)。
-        /// 撃墜中・ボスを倒した後(拾い直せない)は捨てない。捨てたら true。
+        /// 撃墜中・ボスを倒した後(拾い直せない)・真下に床がない所(HasFloorBelow)では捨てない。捨てたら true。
         /// </summary>
         public bool Drop(DuelSlot slot)
         {
             int i = (int)slot;
             var w = slots[i];
-            if (w == null || player == null || player.Dead || (game.stage != null && game.stage.Cleared)) return false;
+            if (w == null || player == null || player.Dead || (game.stage != null && game.stage.Cleared) || !HasFloorBelow(slot)) return false;
             bool two = w.IsTwoHand && (i == R || i == L);
             if (two)
             {
@@ -393,9 +418,7 @@ namespace MeleeDuel
                 ResetState(i);
                 Refresh(slot);
             }
-            float ang = (i - 2) * 50f;
-            Vector3 off = Quaternion.Euler(0f, ang, 0f) * player.transform.forward * (player.Radius * 0.6f);
-            DuelLoot.Place(w, player.transform.position + off + Vector3.up * 2f);
+            DuelLoot.Place(w, DropPos(i));
             if (w.kind == DuelKind.Shield) player.OnShieldsChanged(false);
             if (two && w.IsBlade)
             {

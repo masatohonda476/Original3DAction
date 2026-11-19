@@ -165,10 +165,15 @@ namespace MeleeDuel
             /// <summary>帯グラフの右の数値(リッチテキスト。比べるときは「相手→主↑」)。</summary>
             public string[] valueText;
             public bool Compared => otherNorm != null;
+            /// <summary>比べる相手が主と同じ武装(性能は同じ。凡例で「同じ」と出す)。</summary>
+            public bool Same => other != null && other == main;
             public bool ShowRadar => !otherDifferent;
         }
 
         static readonly Dictionary<(DuelWeapon, DuelWeapon), Pair> cache = new();
+
+        /// <summary>武装の組のとっておきを捨てる(やり直すたびに、前のシーンの武装の組がたまらないように。DuelGame.Awake)。</summary>
+        public static void ClearCache() => cache.Clear();
 
         /// <summary>
         /// main の性能を、other(今の武装 / もう片方の所。空き・同じ武装なら null)と比べる組。作るのは組ごとに1回だけ。
@@ -177,7 +182,7 @@ namespace MeleeDuel
         public static Pair Get(DuelWeapon main, DuelWeapon other)
         {
             if (main == null) return null;
-            if (other == main) other = null;
+            // 相手が同じ武装(同じ一覧の同じもの:今と同じ武装を拾う・両手に同じ片手剣)でも、空きにはせず自分どうしで比べる(差はなし。Same)
             if (cache.TryGetValue((main, other), out var p)) return p;
             Init();
             int f = DuelWeapon.Family(main);

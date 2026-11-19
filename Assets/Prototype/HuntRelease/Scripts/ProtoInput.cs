@@ -13,7 +13,7 @@ namespace HuntProto
     ///   ブースト  : ○・B で入/切 / 左Shift
     ///   飛行      : ×・A 長押しで上昇 / Space 長押し
     ///   ロックオン: Q・中クリック / 十字キー左(切り替え:Tab / R3、ロックオン中は右スティックを左右に弾く)
-    ///   装備の確認: SHARE・View を押して離す / I(近接の試作だけ。時間が止まる。↑↓で選び、□・X / X を2回で床に捨てる。○・B / Esc / Backspace でも閉じる)
+    ///   装備の確認: SHARE・View を押して離す / I(近接の試作だけ。時間が止まる。↑↓で選び、□・X / X を2回で床に捨てる。○・B / Backspace でも閉じる。Esc はカメラのマウスの固定を外すので使わない)
     ///   やり直し  : F1 / SHARE を押しながら△(電脳斬禅のデバッグメニューと同じ)
     ///   モード切替: F2 / SHARE を押しながら□
     /// </summary>
@@ -115,8 +115,17 @@ namespace HuntProto
             }
         }
 
-        /// <summary>近接の試作:装備の確認を閉じる(○・B / Esc / Backspace)。</summary>
-        public static bool EquipViewBack => K(k => k.escapeKey) || K(k => k.backspaceKey) || P(p => p.buttonEast);
+        /// <summary>近接の試作:装備の確認を閉じる(○・B / Backspace)。Esc は DuelCamera がマウスの固定を外すのに使うので含めない。</summary>
+        public static bool EquipViewBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
+
+        /// <summary>
+        /// 近接の試作:左のメニューボタンを今押していれば、組み合わせ(やり直しなど)に使ったことにする(離しても装備の確認を開かない)。
+        /// やり直した直後の新しいシーンの始め(DuelGame.Awake)で呼ぶ。
+        /// </summary>
+        public static void SelectHeldAsCombo()
+        {
+            if (Pad != null && Pad.selectButton.isPressed) selectCombo = true;
+        }
 
         public static Vector2 Move
         {
@@ -280,7 +289,17 @@ namespace HuntProto
         public static bool Heal => !BtnBlocked && (K(k => k.hKey) || P(p => p.dpad.up));
         public static bool LockToggle => !BtnBlocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame) || P(p => p.dpad.left));
         public static bool SwitchTarget => !BtnBlocked && (K(k => k.tabKey) || P(p => p.rightStickButton));
-        public static bool Restart => K(k => k.f1Key) || (DebugMod && P(p => p.buttonNorth));
-        public static bool ToggleMode => K(k => k.f2Key) || (DebugMod && P(p => p.buttonWest));
+        public static bool Restart => K(k => k.f1Key) || Combo(DebugMod && P(p => p.buttonNorth));
+        public static bool ToggleMode => K(k => k.f2Key) || Combo(DebugMod && P(p => p.buttonWest));
+
+        /// <summary>
+        /// 左のメニューボタン+ボタンの組み合わせが成り立ったら、組み合わせ済みにする(左のメニューボタンを離しても装備の確認を開かない)。
+        /// やり直しのフレームは EquipView が読まれないことがあるので、ここで立てる。
+        /// </summary>
+        static bool Combo(bool done)
+        {
+            if (done) selectCombo = true;
+            return done;
+        }
     }
 }

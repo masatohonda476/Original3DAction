@@ -62,6 +62,9 @@ namespace MeleeDuel
             I = this;
             Time.timeScale = 1f;
             ProtoInput.Paused = false;
+            // SHARE+△ でやり直した直後:押したままの SHARE を離しても、装備の確認を開かない
+            ProtoInput.SelectHeldAsCombo();
+            DuelRadar.ClearCache();   // 前のシーンの武装の組をためこまない
         }
 
         void OnDestroy()
@@ -187,11 +190,11 @@ namespace MeleeDuel
         public static bool Paused => I != null && I.equipOpen;
 
         /// <summary>
-        /// 左のメニューボタン(SHARE・View・− を離す / I)で装備の確認を開く・閉じる。○・B / Esc / Backspace でも閉じる。
+        /// 左のメニューボタン(SHARE・View・− を離す / I)で装備の確認を開く・閉じる。○・B / Backspace でも閉じる(Esc はカメラのマウスの固定を外すので使わない)。
         /// ステージ(武装がある)だけ。開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
         /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
         /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所を選び、捨てるボタン(□・X / X キー)を2回押すと、その武装を足もとの床に捨てる
-        /// (1回目で「もう一度押すと捨てる」になり、選び直す・○/Esc で取り消し)。撃墜中・ボスを倒した後は捨てられない。
+        /// (1回目で「もう一度押すと捨てる」になり、選び直す・○/Backspace で取り消し)。撃墜中・ボスを倒した後・真下に床がない所は捨てられない。
         /// </summary>
         void UpdateEquipView()
         {
@@ -217,6 +220,11 @@ namespace MeleeDuel
             if (open)
             {
                 player.Arms.CancelChoice();
+                // 先行入力(攻撃・回避・射撃)を捨てる(閉じた直後に出ないように)
+                player.ClearBufferedInput();
+                player.Arms.ClearBufferedInput();
+                // 捨てた武装を置く所の真下に床があるか(止まっている間は動かないので、開いたときに1回だけ測る)
+                for (int i = 0; i < ArmRows; i++) dropFloor[i] = player.Arms.HasFloorBelow((DuelSlot)i);
                 // 武装が付いている最初の所を選ぶ
                 viewSel = 0;
                 for (int i = 0; i < ArmRows; i++)
@@ -232,8 +240,11 @@ namespace MeleeDuel
         int viewSel;
         bool dropArmed;
 
-        /// <summary>今は捨てられない理由(0 = 捨てられる / 1 = 撃墜中 / 2 = ボスを倒した後で拾えない)。</summary>
-        int DropBlock() => player == null || player.Dead ? 1 : stage != null && stage.Cleared ? 2 : 0;
+        /// <summary>選んでいる所の武装を置く所の真下に床があるか(開いたときに測る)。</summary>
+        readonly bool[] dropFloor = new bool[ArmRows];
+
+        /// <summary>今は捨てられない理由(0 = 捨てられる / 1 = 撃墜中 / 2 = ボスを倒した後で拾えない / 3 = 真下に床がない(穴の上・空中。落ちて消えるので))。</summary>
+        int DropBlock() => player == null || player.Dead ? 1 : stage != null && stage.Cleared ? 2 : !dropFloor[viewSel] ? 3 : 0;
 
         void EquipViewInput(DuelArms arms, bool up, bool down)
         {
@@ -729,6 +740,7 @@ namespace MeleeDuel
         {
             string main = "<color=" + DuelRadar.MainHex + ">■ " + mainTag + ":" + p.main.name + "</color>";
             if (otherTag == null || p.other == null) return main + "   <color=#999999>" + emptyText + "</color>";
+            if (p.Same) return main + "   <color=" + DuelRadar.OtherHex + ">━ " + otherTag + ":同じ" + p.other.name + "(性能は同じ)</color>";
             if (p.otherDifferent)
                 return main + "   <color=#AAAAAA>" + otherTag + ":" + p.other.name + "(" + DuelWeapon.KindName(p.other.kind) + "。仲間が違うので比べない)</color>";
             return main + "   <color=" + DuelRadar.OtherHex + ">━ " + otherTag + ":" + p.other.name + "</color>";
@@ -937,7 +949,10 @@ namespace MeleeDuel
                         : "";
                     var sb = new System.Text.StringBuilder();
                     sb.Append("<color=").Append(DuelRadar.MainHex).Append(">■ ").Append(me).Append(":").Append(w.name).Append("</color>\n");
-                    if (viewChartPair.Compared)
+                    if (viewChartPair.Same)
+                        sb.Append("<color=").Append(DuelRadar.OtherHex).Append(">━ ").Append(them).Append(":同じ").Append(other.name).Append("</color>\n\n")
+                          .Append("<color=#BBBBBB>").Append(them).Append("と同じ武装なので、性能は同じ</color>\n");
+                    else if (viewChartPair.Compared)
                         sb.Append("<color=").Append(DuelRadar.OtherHex).Append(">━ ").Append(them).Append(":").Append(other.name).Append("</color>\n\n")
                           .Append("<color=#BBBBBB>数値は ").Append(them).Append("→").Append(me).Append("。")
                           .Append("<color=#7CFC8A>緑</color>は").Append(me).Append("のほうが良い、<color=#FF7A6A>赤</color>は劣る</color>\n");
@@ -1022,8 +1037,8 @@ namespace MeleeDuel
                     _ => $"{btn} {w.FireMode}",
                 };
             }
-            string close = kb ? "I / Esc" : ProtoInput.L(ProtoInput.Btn.EquipView) + " / " + ProtoInput.L(ProtoInput.Btn.Back);
-            string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Esc" : ProtoInput.L(ProtoInput.Btn.Back);
+            string close = kb ? "I / Backspace" : ProtoInput.L(ProtoInput.Btn.EquipView) + " / " + ProtoInput.L(ProtoInput.Btn.Back);
+            string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Backspace" : ProtoInput.L(ProtoInput.Btn.Back);
             viewDropHint = $"<color=#AAAAAA>{drop} 床に捨てる</color>";
             viewDropConfirm = $"<color=#FF8A70><b>もう一度 {drop} で足もとに捨てる</b>  {back} やめる</color>";
             viewDropConfirm2 = $"<color=#FF8A70><b>もう一度 {drop} で両手の武装を足もとに捨てる(両手が空く)</b>  {back} やめる</color>";
@@ -1032,6 +1047,7 @@ namespace MeleeDuel
             {
                 1 => $"一時停止中 ― {sel} 選ぶ  撃墜中は捨てられない  {close} 閉じる",
                 2 => $"一時停止中 ― {sel} 選ぶ  ボスを倒した後は拾い直せないので、捨てられない  {close} 閉じる",
+                3 => $"一時停止中 ― {sel} 選ぶ  真下に床がない(穴の上・空中)ので、ここでは捨てられない  {close} 閉じる",
                 _ => $"一時停止中 ― {sel} 選ぶ  {drop} 床に捨てる(もう一度押して決める。拾い直せる)  {close} 閉じる",
             };
         }

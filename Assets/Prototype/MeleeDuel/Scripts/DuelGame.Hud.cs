@@ -101,7 +101,7 @@ namespace MeleeDuel
                 {
                     // 銃・砲を持っていなければ、十字は相手の胸に出す(持っていれば、弾が飛んでいく所に出る。DrawAimFrames)
                     Vector3 cp = cam.WorldToScreenPoint(e.Chest);
-                    if (cp.z > 0f) DrawCross(cp.x / uiScale, SH - cp.y / uiScale, 3f, 0.6f);
+                    if (cp.z > 0f) DrawCross(cp.x / uiScale, SH - cp.y / uiScale, CrossMinGap, 0.6f);
                 }
             }
             DrawLockCorners(cam);   // ロックオンのオン・オフの照準枠
@@ -219,7 +219,7 @@ namespace MeleeDuel
                 if (crossShownAt < 0f || now - crossShownAt > 0.2f) crossPos = new Vector2(sx, sy);   // しばらく出していなければ、その場に出す
                 else crossPos = Vector2.Lerp(crossPos, new Vector2(sx, sy), 1f - Mathf.Exp(-3f * (now - crossShownAt) / CrossFollowTime));
                 crossShownAt = now;
-                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, 3f, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
+                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, CrossMinGap, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
             }
             var mc = FrameLocked;
             mc.a = 0.95f;
@@ -239,6 +239,8 @@ namespace MeleeDuel
         Vector2 crossPos;
         float crossShownAt = -1f;
         const float CrossFollowTime = 0.08f;
+        /// <summary>十字の真ん中の空きの最小(ぶれていないときの詰まり具合。作者「ぶれてないときのカーソルはもっと線が詰まった状態にしてください」で 3 → 1)。武装そのもののばらつきの分はこれより開く。</summary>
+        const float CrossMinGap = 1f;
 
         /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。</summary>
         static void DrawCross(float cx, float cy, float g, float alpha)

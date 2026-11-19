@@ -268,7 +268,8 @@ namespace MeleeDuel
             ReadButtons(now);
             if (ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
             // ✗:押したら自動でブーストオン。押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
-            bool flyHeld = ProtoInput.FlyHeld;
+            // 付け先を選ぶ表示の間と、それを終えた時に押していた ✗ を離すまでは飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
+            bool flyHeld = ProtoInput.FlyHeld && (Arms == null || !Arms.FlyBlocked);
             if (flyHeld && !flyHeldPrev && Energy > 0f) BoostOn = true;
             flyHeldPrev = flyHeld;
             flying = flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;

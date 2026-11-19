@@ -13,7 +13,7 @@ namespace MeleeDuel
     ///   肩:銃・砲・ミサイルのどれでも(左右どちらにも)。R2 で右肩、L2 で左肩を撃つ。撃ち方(押している間 / 押すたび)は武装ごと。
     /// 近接攻撃の間(振りかぶり〜戻り)と回避の間は撃てない(DuelPlayer.CanShoot)。
     /// 狙い:ロックオン中はその敵(射程の外・壁ごしなら、画面の中央に近い敵 → いなければ画面の中央の先)。
-    /// 拾う:落ちている武装の近くで十字右(V)。背中はそのまま付ける。手・肩は付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)で決める
+    /// 拾う:落ちている武装の近くで十字右(V)。付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
     ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
     ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
     ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。在庫はない。装備の確認の画面から、足もとの床に捨てられる(Drop)。
@@ -45,8 +45,14 @@ namespace MeleeDuel
         readonly int[] mag = new int[StateCount];
         /// <summary>L1 の溜め撃ちを溜めている秒数(0なら溜めていない)。</summary>
         float charge;
-        /// <summary>ボタン(0=R1 1=L1 2=R2 3=L2)を、離すまで使わない(付け先を決めたボタンが、そのまま攻撃・射撃にならないように)。</summary>
-        readonly bool[] suppress = new bool[4];
+        /// <summary>
+        /// ボタン(0=R1 1=L1 2=R2 3=L2 4=✗)を、離すまで使わない(付け先を決めたボタンが、そのまま攻撃・射撃・飛行にならないように)。
+        /// ✗(FlyBtn)は付け先を選ぶ表示で背中に付けるボタン。ふだんは飛行(DuelPlayer が FlyBlocked を見る)。
+        /// </summary>
+        readonly bool[] suppress = new bool[5];
+        const int FlyBtn = 4;
+        /// <summary>✗ を前のフレームに押していたか / このフレームに押したか(押し始めの判定。Tick の始めで決める)。</summary>
+        bool flyPrev, flyPressed;
 
         /// <summary>拾える範囲にある一番近い武装(なければ null)。</summary>
         public DuelLoot Nearby { get; private set; }
@@ -148,21 +154,32 @@ namespace MeleeDuel
             _ => -1,
         };
 
+        /// <summary>付け先を選ぶ表示で、その所に決めるボタン(手・肩はその所のボタン、背中は ✗)。</summary>
+        static int ChoiceBtn(DuelSlot s) => s == DuelSlot.Back ? FlyBtn : Btn(s);
+
         static bool RawHeld(int b) => b switch
         {
             0 => ProtoInput.RightHandHeld,
             1 => ProtoInput.LeftHandHeld,
             2 => ProtoInput.RightShoulderHeld,
-            _ => ProtoInput.LeftShoulderHeld,
+            3 => ProtoInput.LeftShoulderHeld,
+            _ => ProtoInput.FlyHeld,
         };
 
-        static bool RawPressed(int b) => b switch
+        bool RawPressed(int b) => b switch
         {
             0 => ProtoInput.Attack,
             1 => ProtoInput.LeftHandPressed,
             2 => ProtoInput.RightShoulderPressed,
-            _ => ProtoInput.LeftShoulderPressed,
+            3 => ProtoInput.LeftShoulderPressed,
+            _ => flyPressed,
         };
+
+        /// <summary>
+        /// ✗ を飛行に使わない(付け先を選んでいる間と、選ぶ表示を終えた時に押していた ✗ を離すまで)。DuelPlayer の飛行が見る。
+        /// 空中で選ぶ表示を開くと、閉じるまで(と ✗ を離すまで)飛べずに落ちる。
+        /// </summary>
+        public bool FlyBlocked => Choosing != null || suppress[FlyBtn];
 
         /// <summary>その所のボタンを押している(付け先を選んでいる間・決めたボタンを離すまでは数えない)。</summary>
         public bool Held(DuelSlot s)
@@ -194,6 +211,9 @@ namespace MeleeDuel
         public void Tick()
         {
             float dt = Time.deltaTime, now = Time.time;
+            bool fh = ProtoInput.FlyHeld;
+            flyPressed = fh && !flyPrev;
+            flyPrev = fh;
             bool two = TwoHanded;
             for (int i = 0; i < StateCount; i++)
             {
@@ -294,8 +314,9 @@ namespace MeleeDuel
         // ───────── 付ける・外す ─────────
 
         /// <summary>
-        /// 十字右:背中の武装はそのまま付ける。手・肩の武装は付け先を選ぶ表示にする(両手持ちも手の武装と同じ流れ)。
-        /// 選んでいる間は R1/L1(手)・R2/L2(肩)で決める。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
+        /// 十字右:付け先を選ぶ表示にする(手・肩・背中・両手持ちとも同じ流れ)。
+        /// 選んでいる間は R1/L1(手)・R2/L2(肩)・✗(背中)で決める(背中は R1〜L2 では付かず、手・肩は ✗ では付かない)。
+        /// ✗ は押し始めだけ数える(飛んでいて押し続けていた ✗ では付かない)。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
         /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
         /// </summary>
         void UpdateChoice()
@@ -310,7 +331,7 @@ namespace MeleeDuel
                 }
                 foreach (var s in DuelWeapon.SlotsFor(Choosing.Weapon.kind))
                 {
-                    int b = Btn(s);
+                    int b = ChoiceBtn(s);
                     if (b < 0 || !RawPressed(b)) continue;
                     var loot = Choosing;
                     EndChoice();
@@ -320,9 +341,7 @@ namespace MeleeDuel
                 return;
             }
             if (!ready || Nearby == null || !ProtoInput.EquipNow) return;
-            var to = DuelWeapon.SlotsFor(Nearby.Weapon.kind);
-            if (to.Length == 1) Equip(Nearby, to[0]);
-            else Choosing = Nearby;
+            Choosing = Nearby;
         }
 
         /// <summary>

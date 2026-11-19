@@ -578,7 +578,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// 画面の下の中央:拾える武装があれば、名前と今の装備と比べた内容。無視すればそのまま残る。
-        /// 十字右で、背中ならそのまま付ける。手・肩なら付け先を選ぶ表示にして、左右それぞれの今の武装と比べる。
+        /// 十字右で付け先を選ぶ表示にして、手・肩なら左右それぞれの今の武装と、背中なら今の背中と比べる(背中は ✗ で付ける)。
         /// </summary>
         void DrawPickup(DuelArms arms)
         {
@@ -622,9 +622,21 @@ namespace MeleeDuel
                 }
                 else if (to.Length == 1)
                 {
-                    pickupLines[0] = equip + " " + DuelWeapon.SlotName(to[0]) + "に付ける:" + name + "  ― " + w.feel + "(今:" + CurName(a) + ")";
-                    pickupLines[1] = DuelWeapon.CompareText(w, a);
-                    pickupLineCount = 2;
+                    // 背中:付け先を選ぶ表示で ✗ を押すと付く(✗ は飛行と同じボタン。選んでいる間は飛ばない)
+                    string fly = "[" + ProtoInput.L(ProtoInput.Btn.Fly) + "]";
+                    if (arms.Choosing == null)
+                    {
+                        pickupLines[0] = equip + " 拾う:" + name + "(" + DuelWeapon.KindName(w.kind) + ")  ― " + w.feel + "(今:" + CurName(a) + ")";
+                        pickupLines[1] = DuelWeapon.CompareText(w, a);
+                        pickupLineCount = 2;
+                    }
+                    else
+                    {
+                        pickupLines[0] = name + " を背中に付ける?  " + fly + " " + DuelWeapon.SlotName(to[0]) + "に付ける(今:" + (a != null ? a.name : "なし") + ")    " + equip + " やめる";
+                        pickupLines[1] = DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
+                        pickupLines[2] = "<color=#AAAAAA>選んでいる間は " + ProtoInput.L(ProtoInput.Btn.Fly) + " で飛ばない(空中なら落ちる)</color>";
+                        pickupLineCount = 3;
+                    }
                 }
                 else if (arms.Choosing == null)
                 {
@@ -661,22 +673,29 @@ namespace MeleeDuel
 
         // ───────── 付け先を選ぶ表示の性能のグラフ ─────────
 
-        // [0] = 画面の左(左手・左肩と比べる)/ [1] = 画面の右(右手・右肩と比べる)。中身は付け先を選ぶ表示の文字列と一緒に作り直す
-        readonly bool[] pickChartOn = new bool[2];
-        readonly DuelRadar.Pair[] pickChartPair = new DuelRadar.Pair[2];
-        readonly string[] pickChartHead = new string[2], pickChartLegend = new string[2];
+        // [0] = 画面の左(左手・左肩と比べる)/ [1] = 画面の右(右手・右肩と比べる)/ [2] = 画面の上の中央(背中と比べる)。
+        // 中身は付け先を選ぶ表示の文字列と一緒に作り直す
+        const int PickCharts = 3;
+        readonly bool[] pickChartOn = new bool[PickCharts];
+        readonly DuelRadar.Pair[] pickChartPair = new DuelRadar.Pair[PickCharts];
+        readonly string[] pickChartHead = new string[PickCharts], pickChartLegend = new string[PickCharts];
 
         /// <summary>
         /// 付け先を選ぶ表示のグラフの中身。左の所(左手・左肩)と比べるものを画面の左、右の所と比べるものを画面の右に出し、
         /// 押す前に両方の候補を並べる(どちらのボタンでどちらの今の武装と入れ替わるかが、置き場所とボタン名で分かるように)。
         /// 両手持ちは両手の今の武装それぞれと比べる(R1/L1 のどちらでも両手に付くのでボタン名は出さない)。今も両手持ちなら1つだけ(右)。
         /// 片手の武装を、両手持ちを付けたまま付けるときは、左右どちらも今の両手持ちと比べる(どちらでも両手持ちが外れる)。
-        /// w が null(選んでいない)・付け先が1つ(背中)なら出さない。
+        /// 背中は画面の上の中央に1つ(今の背中と比べる。見出しは ✗ のボタン名)。w が null(選んでいない)なら出さない。
         /// </summary>
         void BuildPickCharts(DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool curTwo)
         {
-            pickChartOn[0] = pickChartOn[1] = false;
-            if (w == null || to.Length < 2) return;
+            for (int i = 0; i < PickCharts; i++) pickChartOn[i] = false;
+            if (w == null) return;
+            if (to.Length == 1)
+            {
+                SetPickChart(2, w, a, "<b>[" + ProtoInput.L(ProtoInput.Btn.Fly) + "] " + DuelWeapon.SlotName(to[0]) + "に付けると</b>");
+                return;
+            }
             if (w.IsTwoHand)
             {
                 if (curTwo)
@@ -717,17 +736,22 @@ namespace MeleeDuel
 
         /// <summary>
         /// 付け先を選ぶ表示のグラフ:拾う案内の枠(画面の下の中央)の上で、画面の左右の端に寄せて出す(真ん中の機体と敵を隠さない)。
+        /// 背中だけは左右の別がないので、画面の上の中央(上の敵のゲージの下)に出す(左右の枠と同時には出ない)。
         /// 1つの枠に、見出し(どのボタンでどこに付けるか)・凡例・レーダーチャート(仲間が違えば出さない)・帯グラフ。
         /// </summary>
+        /// <summary>背中のグラフの上端(上の中央の敵の HP・怯みのゲージ(〜76)の下)。</summary>
+        const float BackChartTop = 82f;
+
         void DrawPickCharts(float boxY)
         {
             const float pw = 440f, ph = 190f, pad = 8f, radarW = 150f, gap = 16f;   // gap:レーダーの横の軸名が帯グラフの名前に重ならない間
             float py = boxY - 8f - ph;
-            for (int side = 0; side < 2; side++)
+            for (int side = 0; side < PickCharts; side++)
             {
                 if (!pickChartOn[side]) continue;
                 var pair = pickChartPair[side];
-                float px = side == 0 ? 16f : SW - 16f - pw;
+                float px = side == 0 ? 16f : side == 1 ? SW - 16f - pw : (SW - pw) / 2f;
+                if (side == 2) py = BackChartTop;
                 GUI.color = new Color(0f, 0f, 0f, 0.62f);
                 GUI.DrawTexture(new Rect(px, py, pw, ph), Texture2D.whiteTexture);
                 GUI.color = Color.white;
@@ -775,7 +799,7 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
-                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 拾う");
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 拾う→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
                 sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・捨てる");
                 helpText = sb.ToString();

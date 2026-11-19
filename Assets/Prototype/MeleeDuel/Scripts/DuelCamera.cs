@@ -91,7 +91,9 @@ namespace MeleeDuel
         public float edgeSmooth = 6f;
 
         float wallDist = -1f, wallClearFor;
-        readonly DuelWallFader fader = new();
+        // MaterialPropertyBlock を持つので、フィールドの初期化では作らない(MonoBehaviour の構築中は作れない)。最初に使うときに作る
+        DuelWallFader fader;
+        DuelWallFader Fader => fader ??= new DuelWallFader();
         readonly RaycastHit[] pullHits = new RaycastHit[16];
         // ロックオン中の左右の角速度(度/秒)と、上下を決める敵までの水平距離・高さの差(ゆっくり追う)
         float lockYawVel, lookDh, lookDy;
@@ -217,8 +219,8 @@ namespace MeleeDuel
             lastRot = rot;
             // 透かす:自機の体の数点からカメラまでの間に入った壁・柱を半透明にする(外れたら少し待ってから戻す)。
             // 切ったとき・寄せるモードのときは新しく薄くせず、薄くしていた物はいつもの速さで戻す
-            if (fade) fader.Mark(p, shown, transform.right, fadeBodyWidth, floorNormalY, !pullOnCeilings);
-            fader.Tick(dt, fadeAlpha, fadeInTime, fadeOutTime, fadeHoldTime);
+            if (fade) Fader.Mark(p, shown, transform.right, fadeBodyWidth, floorNormalY, !pullOnCeilings);
+            Fader.Tick(dt, fadeAlpha, fadeInTime, fadeOutTime, fadeHoldTime);
             wasLocked = enemy != null;
             initialized = true;
         }
@@ -264,8 +266,8 @@ namespace MeleeDuel
             fwd = (Quaternion.AngleAxis(step, Vector3.up) * fwd).normalized;
         }
 
-        void OnDisable() => fader.RestoreAll();
-        void OnDestroy() => fader.Dispose();
+        void OnDisable() => fader?.RestoreAll();
+        void OnDestroy() => fader?.Dispose();
 
         /// <summary>
         /// 自機の注視点からカメラまでの間に壁があれば、壁の手前まで寄せる。寄るのは短い補間で速く、離れるのはゆっくり(急に飛ばないように)。

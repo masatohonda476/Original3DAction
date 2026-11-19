@@ -359,7 +359,12 @@ namespace MeleeDuel
                     }
                     // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
-                    if (Arms != null && Arms.Aiming)
+                    if (Arms != null && Arms.Aiming && DuelArmsRules.Current.aimByFacing && !DuelArmsRules.Current.cursorMovable)
+                    {
+                        // 弾は自機の向いている方へ飛ぶ:構えの間は、ロックオン中なら相手、していなければカメラの向きを向く(向いた方へ撃つ)
+                        Face(Target != null ? Target.transform.position - transform.position : camFwd, 14f, dt);
+                    }
+                    else if (Arms != null && Arms.Aiming)
                     {
                         Vector3 af = Arms.AimFacing;
                         Face(af != Vector3.zero ? af : camFwd, 14f, dt);

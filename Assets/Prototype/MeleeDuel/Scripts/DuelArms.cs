@@ -1397,6 +1397,29 @@ namespace MeleeDuel
             aimDirValid = false;
             cursorOnEnemy = false;
             if (cam == null || game == null) return;
+            if (r.aimByFacing && player != null && !r.cursorMovable)
+            {
+                // 自機の向いている方へ撃つ(作者「自機の向いている方に弾が飛ぶようにしてください」):
+                // 左右は自機の向き、上下はロックオンの相手の胸へ(いなければカメラの上下の向き)。自機の胸から伸ばした先を照準の先にし、
+                // 照準の表示(cursor)と枠の中心(cursorTan)はその点を画面に映した所へ置く。弾の向き・吸い付きはカメラからその点への向きで求める
+                Vector3 chest = player.Chest;
+                Vector3 f = Flat(player.transform.forward);
+                if (f.sqrMagnitude < 0.0001f) f = Flat(cam.transform.forward);
+                f.Normalize();
+                var tg = player.Target;
+                Vector3 up = tg != null && !tg.Dead ? tg.Chest - chest : cam.transform.forward;
+                float dh = Mathf.Max(0.001f, new Vector2(up.x, up.z).magnitude);
+                Vector3 fd = (f * dh + Vector3.up * up.y).normalized;
+                CursorPoint = AimPointAlong(chest, fd, out var fhit);
+                cursorOnEnemy = fhit != null;
+                aimDir = (CursorPoint - cam.transform.position).normalized;
+                aimDirValid = true;
+                Vector3 fl = cam.transform.InverseTransformDirection(aimDir);
+                cursorTan = fl.z > 0.01f ? new Vector2(fl.x / fl.z, fl.y / fl.z) : Vector2.zero;
+                Vector3 vp = cam.WorldToViewportPoint(CursorPoint);
+                cursor = vp.z > 0f ? new Vector2(Mathf.Clamp(vp.x - 0.5f, -0.49f, 0.49f), Mathf.Clamp(vp.y - 0.5f, -0.49f, 0.49f)) : Vector2.zero;
+                return;
+            }
             var ray = cam.ViewportPointToRay(new Vector3(0.5f + cursor.x, 0.5f + cursor.y, 0f));
             aimDir = ray.direction;
             aimDirValid = true;

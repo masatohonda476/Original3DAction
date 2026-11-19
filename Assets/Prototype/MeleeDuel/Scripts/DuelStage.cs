@@ -654,6 +654,14 @@ namespace MeleeDuel
         void Update()
         {
             if (game == null || player == null) return;
+            if (DuelGame.Paused)
+            {
+                // 装備の確認を開いている間:実時間で数える再開・知らせの時計も止める
+                float udt = Time.unscaledDeltaTime;
+                if (respawnAt > 0f) respawnAt += udt;
+                BannerAt += udt;
+                return;
+            }
             if (respawnAt > 0f && Time.unscaledTime >= respawnAt)
             {
                 respawnAt = -1f;

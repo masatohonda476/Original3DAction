@@ -259,6 +259,12 @@ namespace MeleeDuel
                 if (RawHeld(b) || RawPressed(b)) suppress[b] = true;
         }
 
+        /// <summary>付け先を選ぶ表示の途中なら取り消す(装備の確認を開いたとき)。</summary>
+        public void CancelChoice()
+        {
+            if (Choosing != null) EndChoice();
+        }
+
         /// <summary>落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。</summary>
         void Equip(DuelLoot loot, DuelSlot slot)
         {

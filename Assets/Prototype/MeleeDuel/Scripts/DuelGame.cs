@@ -50,7 +50,7 @@ namespace MeleeDuel
         int kills, wave;
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
-        GUIStyle small, label, big, center, richCenter, rightSmall;
+        GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, viewHeadStyle, viewTitleStyle;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
@@ -61,6 +61,16 @@ namespace MeleeDuel
         {
             I = this;
             Time.timeScale = 1f;
+            ProtoInput.Paused = false;
+        }
+
+        void OnDestroy()
+        {
+            if (I != this) return;
+            // 装備の確認を開いたまま抜けた(やり直し・Play の停止):止めた時間と入力を戻す
+            if (equipOpen) Time.timeScale = 1f;
+            equipOpen = false;
+            ProtoInput.Paused = false;
         }
 
         void Start()
@@ -145,8 +155,10 @@ namespace MeleeDuel
                 Restart();
                 return;
             }
-            // ヒットストップ:短い間だけ時間をほぼ止める
-            Time.timeScale = Time.unscaledTime < warpUntil ? 0.05f : 1f;
+            UpdateEquipView();
+            // 装備の確認を開いている間は時間を止める。ほかはヒットストップ:短い間だけ時間をほぼ止める
+            Time.timeScale = equipOpen ? 0f : Time.unscaledTime < warpUntil ? 0.05f : 1f;
+            if (equipOpen) return;
 
             Enemies.RemoveAll(e => e == null);
             if (nextSpawnAt > 0f && Time.time >= nextSpawnAt)
@@ -166,6 +178,37 @@ namespace MeleeDuel
 #else
             UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
 #endif
+        }
+
+        // ───────── 装備の確認(左のメニューボタン) ─────────
+
+        bool equipOpen;
+        /// <summary>装備の確認を開いている(時間が止まっている)。自機・敵・ステージの Update はこの間なにもしない。</summary>
+        public static bool Paused => I != null && I.equipOpen;
+
+        /// <summary>
+        /// 左のメニューボタン(SHARE・View・− を離す / I)で装備の確認を開く・閉じる。○・B / Esc / Backspace でも閉じる。
+        /// ステージ(武装がある)だけ。開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
+        /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
+        /// </summary>
+        void UpdateEquipView()
+        {
+            bool toggle = ProtoInput.EquipView;   // 組み合わせの判定のため、毎フレーム読む
+            if (equipOpen)
+            {
+                if (toggle || ProtoInput.EquipViewBack || player == null || player.Arms == null) SetEquipOpen(false);
+                return;
+            }
+            if (toggle && stage != null && player != null && player.Arms != null) SetEquipOpen(true);
+        }
+
+        void SetEquipOpen(bool open)
+        {
+            if (open == equipOpen) return;
+            if (open) player.Arms.CancelChoice();
+            equipOpen = open;
+            ProtoInput.Paused = open;
+            viewBuilt = false;
         }
 
         /// <summary>当たった瞬間に、realSeconds 秒だけ時間をほぼ止める。</summary>
@@ -212,6 +255,9 @@ namespace MeleeDuel
                 big = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 center = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter };
                 richCenter = new GUIStyle(small) { richText = true, alignment = TextAnchor.MiddleCenter };
+                richSmall = new GUIStyle(small) { richText = true, wordWrap = false, clipping = TextClipping.Clip };
+                viewHeadStyle = new GUIStyle(label) { fontStyle = FontStyle.Bold, wordWrap = false };
+                viewTitleStyle = new GUIStyle(label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 rightSmall = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
             }
             var cam = Camera.main;
@@ -243,11 +289,11 @@ namespace MeleeDuel
                 broken ? new Color(1f, 0.4f, 0.2f) : player.Guarding ? new Color(0.5f, 0.8f, 1f) : new Color(0.4f, 0.55f, 0.7f));
             GUI.Label(new Rect(x + 308f, y - 7f, 200f, 24f), maxGuard <= 0f ? "ガード(盾なし)" : broken ? "ガード崩れ" : player.Guarding ? "ガード中" : "ガード", small);
             y += 22f;
-            GUI.Label(new Rect(x, y, SW - x * 2f, 24f), Help(), small);
+            GUI.Label(new Rect(x, y, SW - x * 2f, 44f), Help(), small);   // 長ければ2行に折り返す(キーボードの表記は長い)
             if (player.Arms != null)
             {
                 DrawArms(player.Arms, x, SH - 118f - ArmRows * 21f - 10f);
-                DrawPickup(player.Arms);
+                if (!equipOpen) DrawPickup(player.Arms);
             }
 
             // ロックオンの印:敵の胸の上のほうに、目立ちすぎない細い白の十字
@@ -299,6 +345,7 @@ namespace MeleeDuel
 
             if (stage != null) DrawStage();
             if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), stage != null ? "撃墜 ― セーブポイントから再開します" : "撃墜 ― やり直します", big);
+            if (equipOpen && player.Arms != null) DrawEquipView(player.Arms);
         }
 
         /// <summary>上の中央のゲージに出す敵:ロックオンしている敵。いなければ、ステージで動いているボス。</summary>
@@ -530,6 +577,7 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 拾う");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備");
                 helpText = sb.ToString();
                 return helpText;
             }
@@ -543,6 +591,122 @@ namespace MeleeDuel
             sb.Append(kb ? "  マウス左右 / Tab 切替" : "  右スティック左右 切替");
             helpText = sb.ToString();
             return helpText;
+        }
+
+        // ───────── 装備の確認の画面 ─────────
+
+        // 文字列は開いたとき・中身(武装・機器)が変わったときだけ作る
+        readonly string[] viewHead = new string[ArmRows], viewName = new string[ArmRows], viewStats = new string[ArmRows], viewUse = new string[ArmRows];
+        readonly DuelWeapon[] viewKeyW = new DuelWeapon[ArmRows];
+        ProtoInput.Device viewKeyDev;
+        bool viewBuilt;
+        string viewFoot;
+
+        /// <summary>
+        /// 画面の中央:5つの所それぞれの武装(名前・レア度の色・種類・一言)、主な性能(拾うときの比較と同じ値)、使うボタン。空きは「なし」。
+        /// 見るだけ(付け替え・捨てるはしない)。
+        /// </summary>
+        void DrawEquipView(DuelArms arms)
+        {
+            var dev = ProtoInput.Current;
+            bool changed = !viewBuilt || viewKeyDev != dev;
+            for (int i = 0; i < ArmRows && !changed; i++) changed = viewKeyW[i] != arms.Get((DuelSlot)i);
+            if (changed) BuildEquipView(arms, dev);
+
+            const float wd = 940f, rowH = 76f, headW = 130f, pad = 18f, titleH = 46f, footH = 34f;
+            float h = pad + titleH + rowH * ArmRows + footH + 6f;
+            float bx = (SW - wd) / 2f, by = (SH - h) / 2f;
+            // 画面全体を少し暗くし、その上にパネル
+            GUI.color = new Color(0f, 0f, 0f, 0.35f);
+            GUI.DrawTexture(new Rect(0f, 0f, SW, SH), Texture2D.whiteTexture);
+            GUI.color = new Color(0.03f, 0.04f, 0.06f, 0.88f);
+            GUI.DrawTexture(new Rect(bx, by, wd, h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(bx, by + pad - 6f, wd, titleH), "装備", viewTitleStyle);
+
+            float y = by + pad + titleH;
+            float tx = bx + pad + headW, tw = wd - pad * 2f - headW;
+            for (int i = 0; i < ArmRows; i++)
+            {
+                var w = arms.Get((DuelSlot)i);
+                // 区切りの細い線
+                GUI.color = new Color(1f, 1f, 1f, 0.12f);
+                GUI.DrawTexture(new Rect(bx + pad, y, wd - pad * 2f, 1f), Texture2D.whiteTexture);
+                GUI.color = new Color(1f, 1f, 1f, 0.8f);
+                GUI.Label(new Rect(bx + pad, y + 6f, headW, 26f), viewHead[i], viewHeadStyle);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewName[i], richSmall);
+                if (w != null) GUI.Label(new Rect(tx, y + 29f, tw, 22f), viewStats[i], richSmall);
+                GUI.color = new Color(1f, 1f, 1f, 0.6f);
+                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), viewUse[i], richSmall);
+                GUI.color = Color.white;
+                y += rowH;
+            }
+            GUI.color = new Color(1f, 1f, 1f, 0.12f);
+            GUI.DrawTexture(new Rect(bx + pad, y, wd - pad * 2f, 1f), Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 1f, 1f, 0.7f);
+            GUI.Label(new Rect(bx, y + 6f, wd, 24f), viewFoot, center);
+            GUI.color = Color.white;
+        }
+
+        void BuildEquipView(DuelArms arms, ProtoInput.Device dev)
+        {
+            viewBuilt = true;
+            viewKeyDev = dev;
+            bool kb = dev == ProtoInput.Device.Keyboard;
+            string aim = ProtoInput.L(ProtoInput.Btn.Aim);
+            for (int i = 0; i < ArmRows; i++)
+            {
+                var slot = (DuelSlot)i;
+                var w = arms.Get(slot);
+                viewKeyW[i] = w;
+                string btn = SlotButton(slot);
+                viewHead[i] = DuelWeapon.SlotName(slot) + (btn.Length > 0 ? "  " + btn : "");
+                if (w == null)
+                {
+                    viewName[i] = "<color=#999999>なし</color>";
+                    viewStats[i] = "";
+                    viewUse[i] = slot switch
+                    {
+                        DuelSlot.RightHand or DuelSlot.LeftHand => "剣・盾・手の銃を付けられる",
+                        DuelSlot.Back => "スラスターを付けられる",
+                        _ => "肩の銃・砲・ミサイルを付けられる",
+                    };
+                    continue;
+                }
+                string col = ColorUtility.ToHtmlStringRGB(w.Color);
+                string name = w == DuelWeapon.BaseSword ? w.name : w.name + "〈" + w.RarityName + "〉";
+                viewName[i] = "<size=19><b><color=#" + col + ">" + name + "</color></b></size>   <color=#C8C8C8>" + DuelWeapon.KindName(w.kind)
+                              + (w.feel.Length > 0 ? " ― " + w.feel : "") + "</color>";
+                viewStats[i] = StatLine(w);
+                viewUse[i] = w.kind switch
+                {
+                    DuelKind.Sword => $"{btn} 攻撃(連撃{w.LightMoves.Length}段)  {aim}+{btn} 強攻撃  回避の後に {btn} 回避斬り",
+                    DuelKind.Shield => $"{btn} 押している間ガード",
+                    DuelKind.Back => "ボタンなし(付けているだけで効く。倍率は素の性能に掛かる)",
+                    _ => $"{btn} {w.FireMode}",
+                };
+            }
+            string close = kb ? "I / Esc" : ProtoInput.L(ProtoInput.Btn.EquipView) + " / " + ProtoInput.L(ProtoInput.Btn.Back);
+            viewFoot = $"一時停止中 ― {close} で閉じる(見るだけ。付け替えは落ちている武装の近くで {ProtoInput.L(ProtoInput.Btn.EquipNow)})";
+        }
+
+        /// <summary>主な性能の1行。拾うときの比較(DuelWeapon.Stats)と同じ値に、銃は連射・リロードを足す。</summary>
+        static string StatLine(DuelWeapon w)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var s in DuelWeapon.Stats(w))
+            {
+                if (sb.Length > 0) sb.Append("    ");
+                if (s.name == "弾倉" && w.magazine <= 0) sb.Append("弾切れなし");
+                else sb.Append(s.name).Append(' ').Append(s.text);
+            }
+            if (w.IsGun)
+            {
+                sb.Append("    連射 ").Append((1f / Mathf.Max(0.01f, w.interval)).ToString("0.#")).Append("発/秒");
+                if (w.magazine > 0) sb.Append("    リロード ").Append(w.reload.ToString("0.0")).Append("秒");
+            }
+            return sb.ToString();
         }
 
         void Bar(Rect r, float k, Color c)

@@ -1477,7 +1477,7 @@ namespace MeleeDuel
             // R3 / Tab でも切り替わる(オフのときに押すとオンに戻る)。ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない
             string lockSwitch = kb ? "  ロックオン中にマウスを左右に振る/Tab 狙う敵を変更" : "  ロックオン中に右スティックを左右に弾く/R3 狙う敵を変更";
             // 銃・砲のボタンを押している間(と撃ってから少しの間)は、右スティック・マウスで画面の上の照準を動かす(カメラは回さない)
-            string aimMove = kb ? "  撃つボタンを押している間 マウス 照準を動かす" : "  撃つボタンを押している間 右スティック 照準を動かす";
+            string aimMove = !DuelArmsRules.Current.cursorMovable ? "" : kb ? "  撃つボタンを押している間 マウス 照準を動かす" : "  撃つボタンを押している間 右スティック 照準を動かす";
             var sb = new System.Text.StringBuilder();
             if (arms)
             {

@@ -256,7 +256,7 @@ namespace MeleeDuel
         }
 
         /// <summary>右スティック・マウスが画面の上の照準を動かしている(= 構え。DuelCamera はこの間カメラを回さない)。</summary>
-        public bool CursorActive => Aiming;
+        public bool CursorActive => Aiming && Rules.cursorMovable;   // 作者「照準は動かせないようにしましょう」で既定は動かさない(照準は画面の中央のまま)
 
         /// <summary>右手の銃(手の銃・両手の銃・砲)を最近撃ったか、L1 を溜めている(射撃の構えの見た目用)。</summary>
         public bool AimPose(float sec) => slots[R] is { kind: DuelKind.HandGun or DuelKind.TwoHandGun }
@@ -1424,6 +1424,7 @@ namespace MeleeDuel
         void Kick(DuelWeapon w)
         {
             var r = Rules;
+            if (!r.cursorMovable) return;   // 照準を動かせないときは、反動で照準をずらさない(押さえ込めないため。ばらつきの広がりは残る)
             float mul = Mathf.Max(0f, r.kickMul);
             if (mul <= 0f || (w.aimKick <= 0f && w.aimKickSide <= 0f)) return;
             var cam = Camera.main;

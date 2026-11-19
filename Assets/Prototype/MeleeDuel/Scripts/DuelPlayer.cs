@@ -563,7 +563,7 @@ namespace MeleeDuel
             // 構えの間は右スティック・マウスで画面の上の照準を動かす(DuelArms。カメラは回さない)ので切り替えない
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 構えの間は自動でも選ばない(撃っている最中に、相手が替わってカメラが回り出さないように。構えが終わってから選ぶ)
-            if (Target == null || (Arms != null && Arms.Aiming)) { stickArmed = false; mouseFlick = 0f; return; }
+            if (Target == null || (Arms != null && Arms.CursorActive)) { stickArmed = false; mouseFlick = 0f; return; }   // 照準を動かしている間だけ切り替えない
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }

@@ -1737,10 +1737,14 @@ namespace MeleeDuel
         /// <summary>o から向き d の先で最初に当たる地形・敵(なければ AimFar 先)。enemy は当たった敵(地形・空なら null)。</summary>
         Vector3 AimPointAlong(Vector3 o, Vector3 d, out DuelEnemy enemy)
         {
+            // カメラは壁で寄らず、壁の向こうに残って壁を透かすことがある(DuelCamera)。カメラと自機の間の物(透けている壁など)に当てて、
+            // 照準の先が自機より手前(カメラ側)にならないよう、自機の位置(線の上へ下ろした所)より先だけを調べる
+            float skip = player != null ? Mathf.Max(0f, Vector3.Dot(player.Chest - o, d)) : 0f;
+            Vector3 s = o + d * skip;
             float best = AimFar;
-            if (Physics.Raycast(o, d, out var hit, AimFar, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
-            if (RayHitsEnemy(o, d, best, out enemy, out float ed)) best = ed;
-            return o + d * best;
+            if (Physics.Raycast(s, d, out var hit, AimFar, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
+            if (RayHitsEnemy(s, d, best, out enemy, out float ed)) best = ed;
+            return s + d * best;
         }
 
         /// <summary>照準の先の点を、from から射程(range)までに切ったもの(狙う敵がいないとき、射程より遠くへ飛ばさない)。</summary>

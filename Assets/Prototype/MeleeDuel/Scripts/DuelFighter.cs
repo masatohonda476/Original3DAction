@@ -8,7 +8,7 @@ namespace MeleeDuel
     public struct DuelHit
     {
         public float damage;
-        /// <summary>ガードできる攻撃か(赤く光る攻撃はできない)。</summary>
+        /// <summary>ガードできる攻撃か(叩きつけ・跳躍叩きつけの直撃はできない。どの技かは色ではなく予備動作の姿勢で見分ける)。</summary>
         public bool guardable;
         /// <summary>ガードしたときに減るガードのゲージ。</summary>
         public float guardCost;
@@ -47,8 +47,6 @@ namespace MeleeDuel
         float vy;
         /// <summary>飛んでいる(上昇し続ける)。false なら重力で落ちる。</summary>
         protected bool flying;
-        /// <summary>飛んでいる。</summary>
-        public bool IsFlying => flying;
         /// <summary>噴射炎を出す(飛行中。自機はブースト移動・回避中も、敵はダッシュ中も)。</summary>
         public virtual bool Thrusting => flying;
         protected float riseSpeed = 20f, riseAccel = 80f;
@@ -167,7 +165,8 @@ namespace MeleeDuel
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), 1f - Mathf.Exp(-rate * dt));
         }
 
-        protected static Vector3 Flat(Vector3 v)
+        /// <summary>水平にして長さ1にした向き(ほぼ真上・真下なら zero)。</summary>
+        internal static Vector3 Flat(Vector3 v)
         {
             v.y = 0f;
             return v.sqrMagnitude > 0.0001f ? v.normalized : Vector3.zero;
@@ -194,7 +193,7 @@ namespace MeleeDuel
             flashT = t;
         }
 
-        /// <summary>続けて付けておく色(予備動作の光など)。null で外す。</summary>
+        /// <summary>続けて付けておく色(撃墜の黒焦げ)。null で外す。</summary>
         protected void SetHoldTint(Color? c) => holdTint = c;
 
         protected void UpdateTint(float dt)

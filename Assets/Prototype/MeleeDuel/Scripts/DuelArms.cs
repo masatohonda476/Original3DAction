@@ -2092,6 +2092,14 @@ namespace MeleeDuel
         IEnumerator Fly(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet, float speed, bool explosive)
         {
             var r = Rules;
+            // 撃った自機の速度を弾が受け継ぐ(作者「弾は、停止中を狙うより、相対速度を合わせる方が楽しそうです」):
+            // 敵と同じ向き・速さで動きながら撃てば、狙った所へ当たる。止まって動く敵を撃つと外れる。先読みの自動補正はしない
+            if (player != null && r.inheritShooterVelocity > 0f)
+            {
+                Vector3 v = dir * speed + player.Velocity * r.inheritShooterVelocity;
+                float m = v.magnitude;
+                if (m > 1f) { dir = v / m; speed = m; }
+            }
             float size = explosive ? 1.2f + w.radius * 0.05f : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
             float trail = explosive ? 0.18f : Mathf.Max(0.01f, r.bulletTrail);
             var p = Projectile(from, explosive ? ShellColor : c, size, trail);

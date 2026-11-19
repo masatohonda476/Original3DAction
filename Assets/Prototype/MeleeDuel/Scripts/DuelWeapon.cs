@@ -637,6 +637,8 @@ namespace MeleeDuel
         [Header("弾の速さと反動の照準のずれ(武装ごとの値は DuelWeapon.Defaults() の .Ballistic(速さ, 上へ, 左右へ))")]
         [Tooltip("全部の武装の弾の速さに掛ける倍率(1 で武装ごとの値のまま。0 にすると砲以外はすぐ届く光線)")]
         public float shotSpeedMul = 1f;
+        [Tooltip("撃った自機の速度を弾が受け継ぐ割合(1 で全部、0 で受け継がない)。敵と相対速度を合わせて動きながら撃つと当たる。速さを持つ弾(実弾・ビームの弾・砲弾)だけで、すぐ届く光線には効かない")]
+        [Range(0f, 1f)] public float inheritShooterVelocity = 1f;
         [Tooltip("全部の武装の、撃つたびに照準をずらす角度に掛ける倍率(0 でずれない)")]
         public float kickMul = 1f;
         [Tooltip("銃の弾の球の大きさ(m。機体は約9m)/ 散弾の1粒の大きさ")]

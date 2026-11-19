@@ -549,13 +549,15 @@ namespace MeleeDuel
         /// <summary>武装に枠の大きさがないときの値(度)。</summary>
         public const float FallbackFrame = 12f;
 
-        [Header("照準の枠(射撃だけ。枠の中の敵に当て、いなければ画面の中央の先へ)")]
+        [Header("照準の枠(射撃だけ。銃・砲は画面の中央の先へ撃ち、枠の中の敵へ少しだけ狙いを寄せる。ミサイルは枠の中の敵へ)")]
         [Tooltip("全部の武装の枠の大きさに掛ける倍率(1 で武装ごとの値のまま)")]
         public float frameMul = 1f;
         [Tooltip("枠の縦の大きさ(横に対する割合)")]
         [Range(0.2f, 1f)] public float frameAspect = 0.6f;
-        [Tooltip("ロックオン中の敵だけ、枠をこの倍率で広くみなす(張り付いた相手を撃てるように。1 なら他の敵と同じ)")]
+        [Tooltip("ミサイルだけ:ロックオン中の敵は、枠をこの倍率で広くみなす(1 なら他の敵と同じ)。銃・砲には効かない(必ず当たる道にしないため)")]
         public float lockFrameMul = 1.5f;
+        [Tooltip("銃・砲の吸い付き:枠の中の敵へ、画面の中央の狙いを最大で「枠の大きさ(度)× これ」だけ寄せる。小さい枠ほど弱い。0 で吸い付かない、1 で枠の端の敵まで寄せる")]
+        [Range(0f, 1f)] public float assistPart = 0.35f;
         [Tooltip("武装に枠の大きさがないときの値(度)")]
         public float defaultFrame = FallbackFrame;
 

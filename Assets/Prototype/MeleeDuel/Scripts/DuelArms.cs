@@ -12,8 +12,11 @@ namespace MeleeDuel
     ///   背中:スラスター。走り・ブースト・回避の距離が伸び、回避・ブースト・飛行のENが減る。
     ///   肩:銃・砲・ミサイルのどれでも(左右どちらにも)。R2 で右肩、L2 で左肩を撃つ。撃ち方(押している間 / 押すたび)は武装ごと。
     /// 近接攻撃の間(振りかぶり〜戻り)と回避の間は撃てない(DuelPlayer.CanShoot)。
-    /// 狙い(照準の枠):画面の中央に武装ごとの大きさの枠があり、枠に掛かっている射程の内・見通せる敵に当てる(ロックオン中の敵が先。
-    ///   ロックオン中の敵は枠を DuelArmsRules.lockFrameMul 倍に広くみなす)。枠の中にいなければ画面の中央の先へまっすぐ撃つ。ミサイルは枠の中の敵に割り振る。
+    /// 狙い(照準の枠):銃・砲は画面の中央(カメラの向き)の先へ撃つ。画面の中央に武装ごとの大きさの枠があり、枠に掛かっている射程の内・見通せる敵がいれば、
+    ///   狙いをその敵の体へ少しだけ寄せる(吸い付き。最大で「枠の大きさ × DuelArmsRules.assistPart」度。小さい枠ほど弱い)。寄せきれなければ外れる
+    ///   (作者「銃はターゲットでほぼ固定されてるので意味ないですね」→ ロックオン中もカメラで狙いを付ける形に。DuelCamera)。
+    ///   寄せた狙いが体に掛かるときだけ、枠を橙にして敵に印を出す。ミサイルは今までどおり枠の中の敵に割り振る(ロックオン中の敵は枠を
+    ///   DuelArmsRules.lockFrameMul 倍に広くみなす。狙いの要らない武装)。
     /// 共通の弾:実弾の銃・砲・ミサイルは1種類の弾(Ammo)を使う。弾倉のある銃はリロードのときに詰めた分だけ、弾倉のない撃ち方は撃つたびに使う
     ///   (DuelWeapon.ammoCost。エネルギー武器は 0 で使わない)。弾は武装を分解して得る。
     /// EN:エネルギー武器(ビーム・レーザー。DuelWeapon.enCost)は弾の代わりに自機のENを使う(回避・攻撃と同じEN)。ENが0以下の間は撃てず、
@@ -1353,8 +1356,9 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// 撃つ相手:照準の枠に掛かっている、射程の内で見通せる敵。ロックオン中の敵が先(枠を lockFrameMul 倍に広くみなす。張り付いた相手を撃てるように)。
-        /// ほかは画面の中央に近く、近いもの。いなければ null(画面の中央の先へまっすぐ撃つ)。射程は撃ち出す所(from)から測る。
+        /// 吸い付く相手(銃・砲):照準の枠に掛かっている、射程の内で見通せる敵のうち、画面の中央から体まで寄せる角度が一番小さい敵
+        /// (同じくらいならロックオン中の敵。ロックオン中の敵も枠は広くみなさない)。いなければ null(画面の中央の先へまっすぐ撃つ)。
+        /// 枠に掛かっていても、寄せきれなければ外れる(AssistDir)。射程は撃ち出す所(from)から測る。
         /// 見通しは自機から調べる(敵ごとに1フレーム1回。武装ごとに撃ち出す所から調べ直さない)。
         /// </summary>
         DuelEnemy AimTarget(DuelWeapon w, DuelWeapon parent, Vector3 from)
@@ -1363,32 +1367,72 @@ namespace MeleeDuel
             if (cam == null) return null;
             PrepareViews(cam);
             var rules = Rules;
-            float hw = FrameTan(w, parent), hh = hw * rules.frameAspect, lm = Mathf.Max(1f, rules.lockFrameMul);
+            float hw = FrameTan(w, parent), hh = hw * rules.frameAspect;
             float range2 = w.range * w.range;
+            Vector3 o = cam.transform.position, d = cam.transform.forward;
             var t = player.Target;
-            if (t != null && !t.Dead)
-            {
-                for (int k = 0; k < viewCount; k++)
-                {
-                    if (views[k].e != t) continue;
-                    if ((t.Chest - from).sqrMagnitude <= range2 && InFrame(k, hw * lm, hh * lm) && Visible(k)) return t;
-                    break;
-                }
-            }
             DuelEnemy best = null;
             float bestScore = float.MaxValue;
             for (int k = 0; k < viewCount; k++)
             {
                 var e = views[k].e;
-                if (e == null || e == t || !InFrame(k, hw, hh)) continue;
+                if (e == null || !InFrame(k, hw, hh)) continue;
                 float d2 = (e.Chest - from).sqrMagnitude;
                 if (d2 > range2) continue;
-                float score = Mathf.Sqrt(d2) * (1f + views[k].off / 15f);
+                float score = BodyNeedDeg(o, d, e, out _) - (e == t ? 0.5f : 0f) + Mathf.Sqrt(d2) * 0.002f;
                 if (score >= bestScore || !Visible(k)) continue;
                 bestScore = score;
                 best = e;
             }
             return best;
+        }
+
+        /// <summary>吸い付きの強さ:画面の中央の狙いを、枠の中の敵へ寄せられる最大の角度(度)。枠の大きさ × assistPart(小さい枠ほど弱い)。</summary>
+        float AssistDeg(DuelWeapon w, DuelWeapon parent) => Rules.FrameDeg(w, parent) * Mathf.Clamp01(Rules.assistPart);
+
+        /// <summary>
+        /// 向き d(o から)を敵 e の体に掛けるのに要る角度(度。もう掛かっていれば 0)。q は体の芯(縦の線)の上で d に一番近い点。
+        /// </summary>
+        float BodyNeedDeg(Vector3 o, Vector3 d, DuelEnemy e, out Vector3 q)
+        {
+            float r = e.Radius, h = game.mechHeight * e.Size;
+            Vector3 a = e.transform.position + Vector3.up * r, b = e.transform.position + Vector3.up * Mathf.Max(r, h - r);
+            SegSegDistance(a, b, o, o + d * AimFar, out float s);
+            q = a + (b - a) * s;
+            Vector3 to = q - o;
+            float len = to.magnitude;
+            if (len <= r) return 0f;
+            float body = Mathf.Asin(Mathf.Clamp01(r / len)) * Mathf.Rad2Deg;
+            return Mathf.Max(0f, Vector3.Angle(d, to) - body);
+        }
+
+        /// <summary>
+        /// 画面の中央の向き(カメラの前)を、敵 t の体へ最大 maxDeg 度だけ寄せた向き。reach は寄せた向きが体に掛かるか(当たるか)。
+        /// </summary>
+        Vector3 AssistDir(Camera cam, DuelEnemy t, float maxDeg, out bool reach)
+        {
+            Vector3 o = cam.transform.position, d = cam.transform.forward;
+            reach = false;
+            if (t == null || t.Dead) return d;
+            float need = BodyNeedDeg(o, d, t, out Vector3 q);
+            if (need <= 0f) { reach = true; return d; }
+            reach = need <= maxDeg;
+            // 体の芯へ向けて回す。体に掛かるのに要る分(+少し)より多くは回さない(中央の狙いをなるべく残す)
+            float turn = Mathf.Min(maxDeg, need + 0.3f);
+            return Vector3.RotateTowards(d, (q - o).normalized, turn * Mathf.Deg2Rad, 0f);
+        }
+
+        /// <summary>
+        /// 銃・砲の狙う所:画面の中央の向きを、吸い付く相手 t へ少しだけ寄せた向きの先(最初に当たる地形・敵)。from から射程(range)までに切る。
+        /// </summary>
+        Vector3 AssistedAimPoint(DuelEnemy t, float maxDeg, Vector3 from, float range)
+        {
+            var cam = Camera.main;
+            if (cam == null) return t != null ? t.Chest : FreeAimPoint(from, range);
+            Vector3 dir = AssistDir(cam, t, maxDeg, out _);
+            Vector3 p = AimPointAlong(cam.transform.position, dir);
+            Vector3 d = p - from;
+            return d.magnitude > range ? from + d.normalized * range : p;
         }
 
         /// <summary>UpdateFrames が求めた、撃つ状態ごとの当てる相手(銃・砲)とミサイルの割り振り先。aimCacheFrame のフレームだけ使える。</summary>
@@ -1442,7 +1486,9 @@ namespace MeleeDuel
                 {
                     var t = AimTarget(w, parent, Muzzle(at));
                     aimCache[i] = t;
-                    any = t != null;
+                    // 枠を橙にして印を出すのは、吸い付いた狙いが体に掛かる(当たる)ときだけ
+                    any = false;
+                    if (t != null) AssistDir(cam, t, AssistDeg(w, parent), out any);
                     if (any) AddMark(t);
                 }
                 int same = -1;
@@ -1471,10 +1517,16 @@ namespace MeleeDuel
         {
             var cam = Camera.main;
             if (cam == null) return player.Chest + player.transform.forward * 100f;
-            Vector3 o = cam.transform.position, d = cam.transform.forward;
-            const float far = 250f;
-            float best = far;
-            if (Physics.Raycast(o, d, out var hit, far, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
+            return AimPointAlong(cam.transform.position, cam.transform.forward);
+        }
+
+        const float AimFar = 250f;
+
+        /// <summary>o から向き d の先で最初に当たる地形・敵(なければ AimFar 先)。</summary>
+        Vector3 AimPointAlong(Vector3 o, Vector3 d)
+        {
+            float best = AimFar;
+            if (Physics.Raycast(o, d, out var hit, AimFar, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
             if (RayHitsEnemy(o, d, best, out _, out float ed)) best = ed;
             return o + d * best;
         }
@@ -1569,8 +1621,9 @@ namespace MeleeDuel
             }
             lastFire[i] = Time.time;
             Vector3 from = Muzzle(s);
+            // 画面の中央の先へ撃つ(枠の中の敵がいれば、狙いを少しだけ寄せる。寄せきれなければ外れる)
             var t = TargetFor(w, i, from);
-            Vector3 aim = t != null ? t.Chest : FreeAimPoint(from, w.range);
+            Vector3 aim = AssistedAimPoint(t, AssistDeg(w, ParentOf(i)), from, w.range);
             Vector3 dir = (aim - from).normalized;
             Color c = w.magazine <= 0 ? BeamColor : BulletColor;
             int n = Mathf.Max(1, w.pellets);
@@ -1665,8 +1718,9 @@ namespace MeleeDuel
                 }
                 return true;
             }
+            // 砲も銃と同じく画面の中央の先へ(枠の中の敵へ少しだけ寄せる)。弾は今までどおり速さを持って飛ぶ
             var target = TargetFor(w, i, from);
-            Vector3 aim = target != null ? target.Chest : FreeAimPoint(from, w.range);
+            Vector3 aim = AssistedAimPoint(target, AssistDeg(w, ParentOf(i)), from, w.range);
             Vector3 dir = (aim - from).normalized;
             float len = Mathf.Min(Vector3.Distance(from, aim), w.range);
             // 間を地形・ほかの敵がさえぎっていれば、そこで爆発する

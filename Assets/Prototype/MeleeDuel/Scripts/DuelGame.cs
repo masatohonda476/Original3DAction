@@ -1190,6 +1190,8 @@ namespace MeleeDuel
             helpKey = key;
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
             bool kb = dev == ProtoInput.Device.Keyboard;
+            // ロックオンの相手の切り替えは R3 / Tab だけ(ロックオン中の右スティック・マウスはカメラで狙いをずらす)
+            string lockSwitch = kb ? "  Tab 切替" : dev == ProtoInput.Device.Xbox ? "  RS押し込み 切替" : "  R3 切替";
             var sb = new System.Text.StringBuilder();
             if (arms)
             {
@@ -1213,7 +1215,7 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 付ける→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
                 sb.Append("  ").Append(B(ProtoInput.Btn.Stash)).Append(" 持つ  ").Append(B(ProtoInput.Btn.Break)).Append(" 分解(弾か回復)");
-                sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
+                sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン").Append(lockSwitch);
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・所持品");
                 helpText = sb.ToString();
                 return helpText;
@@ -1225,7 +1227,7 @@ namespace MeleeDuel
             sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト切替");
             sb.Append("  ").Append(B(ProtoInput.Btn.L1)).Append(" ガード");
             sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
-            sb.Append(kb ? "  マウス左右 / Tab 切替" : "  右スティック左右 切替");
+            sb.Append(lockSwitch);
             helpText = sb.ToString();
             return helpText;
         }

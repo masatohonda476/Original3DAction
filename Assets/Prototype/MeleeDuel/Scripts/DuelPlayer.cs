@@ -472,35 +472,28 @@ namespace MeleeDuel
             if (Target != null && LockRange > 0f && (Target.transform.position - transform.position).sqrMagnitude > LockRange * LockRange * 2.25f) Target = null;
             if (Target != null && Target.Dead) Target = Nearest();   // 倒したら、残っている一番近い敵へ
             if (ProtoInput.LockToggle) Target = Target == null ? Nearest() : null;
-            if (ProtoInput.SwitchTarget) Target = Nearest(Target);
-            if (Target == null) { stickArmed = true; mouseFlick = 0f; return; }
-
-            // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
-            float sx = ProtoInput.RightStick.x;
-            if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
-            else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }
-            // マウス:左右に大きく振ると同じように切り替える
-            mouseFlick = mouseFlick * Mathf.Exp(-6f * Time.unscaledDeltaTime) + ProtoInput.MouseDelta.x;
-            if (Mathf.Abs(mouseFlick) > 160f) { SwitchSide(Mathf.Sign(mouseFlick)); mouseFlick = 0f; }
+            // 切り替えは R3 / Tab だけ(ロックオン中の右スティック・マウスはカメラで狙いをずらすのに使う。DuelCamera)
+            if (ProtoInput.SwitchTarget) Target = Target == null ? Nearest() : NearestToView(Target);
         }
 
-        bool stickArmed = true;
-        float mouseFlick;
-
-        /// <summary>今の敵から見て side(+1=右 / -1=左)の側にいる、向きの一番近い敵へ切り替える(いなければそのまま)。</summary>
-        void SwitchSide(float side)
+        /// <summary>
+        /// 切り替え先:今の敵のほかで、画面の中央に一番近い(向きの角度が小さい)敵。角度が同じくらいなら近い敵。
+        /// カメラで狙いをずらしてから押せば、その方の敵へ移れる。ほかにいなければ今の敵のまま。
+        /// </summary>
+        DuelEnemy NearestToView(DuelEnemy current)
         {
-            Vector3 toCur = Flat(Target.transform.position - transform.position);
+            var cam = Camera.main;
+            if (cam == null) return Nearest(current);
+            Vector3 o = cam.transform.position, f = cam.transform.forward;
             DuelEnemy best = null;
-            float bestAngle = float.MaxValue;
+            float bestScore = float.MaxValue;
             foreach (var e in game.Enemies)
             {
-                if (e == null || e.Dead || e == Target || !Lockable(e)) continue;
-                float a = Vector3.SignedAngle(toCur, Flat(e.transform.position - transform.position), Vector3.up);
-                if (a * side <= 0f) continue;
-                if (Mathf.Abs(a) < bestAngle) { bestAngle = Mathf.Abs(a); best = e; }
+                if (e == null || e.Dead || e == current || !Lockable(e)) continue;
+                float score = Vector3.Angle(f, e.LockPoint - o) + (e.transform.position - transform.position).magnitude * 0.05f;
+                if (score < bestScore) { bestScore = score; best = e; }
             }
-            if (best != null) Target = best;
+            return best != null ? best : current;
         }
 
         /// <summary>一番近い敵(except は除く。ほかにいなければ except のまま)。</summary>

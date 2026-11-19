@@ -566,6 +566,8 @@ namespace MeleeDuel
                     }
                     else if (f.hot == spreadHot) spread = Mathf.Max(spread, f.spread);
                 }
+                // 枠は出さない(作者「エイムの枠を消してください」)。狙い・吸い付きの判定は残る。出すなら DuelArmsRules.showAimFrame
+                if (!DuelArmsRules.Current.showAimFrame) continue;
                 var c = f.locked ? FrameLocked : FrameIdle;
                 c.a = f.hot ? 0.9f : 0.38f;
                 Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, c);

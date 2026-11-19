@@ -591,6 +591,8 @@ namespace MeleeDuel
         [Header("照準の枠(射撃だけ。銃・砲は照準の先へ撃ち、枠の中の敵へ少しだけ狙いを寄せる。ミサイルは枠の中の敵へ。枠は照準の位置が中心)")]
         [Tooltip("オンなら、全部の武装で枠の大きさを共通(commonFrame)にする。オフなら武装ごとの値(作者「エイムの枠はは共通にしてください」)")]
         public bool useCommonFrame = true;
+        [Tooltip("オンなら照準の枠(四隅の鉤とボタン名)を画面に出す。オフ(既定)でも枠の中の敵への吸い付き・ミサイルの割り振りは効く")]
+        public bool showAimFrame = false;
         [Tooltip("共通の枠の大きさ(画面の中央からの角度。横の半分。度)")]
         public float commonFrame = 16f;
         [Tooltip("全部の武装の枠の大きさに掛ける倍率(1 で武装ごとの値・共通の値のまま)")]

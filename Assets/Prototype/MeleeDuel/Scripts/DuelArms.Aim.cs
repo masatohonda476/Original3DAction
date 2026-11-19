@@ -120,6 +120,13 @@ namespace MeleeDuel
                 float dh = Mathf.Max(0.001f, new Vector2(up.x, up.z).magnitude);
                 Vector3 fd = (f * dh + Vector3.up * up.y).normalized;
                 CursorPoint = AimPointAlong(chest, fd, out var fhit);
+                if (tg != null && !tg.Dead)
+                {
+                    // 相手より奥の物(壁・床)には当てず、相手と同じ距離の所を照準の先にする
+                    // (線が相手の端をかすめたとき、照準の先が相手と奥の壁の間で入れ替わって、十字が跳ばないように)
+                    float reach = (tg.Chest - chest).magnitude;
+                    if ((CursorPoint - chest).sqrMagnitude > reach * reach) { CursorPoint = chest + fd * reach; fhit = null; }
+                }
                 cursorOnEnemy = fhit != null;
                 aimDir = (CursorPoint - cam.transform.position).normalized;
                 aimDirValid = true;
@@ -195,7 +202,7 @@ namespace MeleeDuel
         public readonly List<AimFrame> Frames = new();
         public readonly List<DuelEnemy> Marks = new();
         /// <summary>
-        /// 弾が飛んでいく所(銃・砲。照準の向きを吸い付く相手へ寄せた先の、最初に当たる地形・敵)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
+        /// 弾が飛んでいく所(銃・砲。撃つときと同じ狙いの先へ向けた弾が、自機の速度を受け継いで流れた先。PredictShot)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
         /// 撃っている・撃ったばかり・溜めている武装を先に選ぶ。銃・砲を付けていなければ null。毎フレーム UpdateFrames で求める。
         /// </summary>
         public Vector3? ShotPoint { get; private set; }
@@ -362,10 +369,41 @@ namespace MeleeDuel
         {
             var cam = Camera.main;
             if (cam == null) return t != null ? t.Chest : FreeAimPoint(from, range);
+            Vector3 o = cam.transform.position;
             Vector3 dir = AssistDir(cam, t, maxDeg, out _);
-            Vector3 p = AimPointAlong(cam.transform.position, dir, out _);
+            Vector3 p = AimPointAlong(o, dir, out _);
+            // 当てる相手(いなければロックオンの相手)より奥の物には狙いを置かず、相手と同じ奥行きの所へ(線が相手をかすめても、狙いが奥へ跳ばない)
+            var lt = t != null && !t.Dead ? t : player != null ? player.Target : null;
+            if (lt != null && !lt.Dead)
+            {
+                float depth = Vector3.Dot(lt.Chest - o, dir);
+                if (depth > 0f && Vector3.Dot(p - o, dir) > depth) p = o + dir * depth;
+            }
             Vector3 d = p - from;
             return d.magnitude > range ? from + d.normalized * range : p;
+        }
+
+        /// <summary>
+        /// 撃つ状態 i の弾が通る所の見込み(真ん中の十字に出す):撃つときと同じ狙いの先(AssistedAimPoint)へ銃口から向けた弾が、
+        /// 自機の速度を受け継いで(Fly)流れた先の、狙いの先と同じ前後の距離の所。速さのない光線は狙いの先のまま。ばらつき(Jitter)は入れない(十字の開きで出す)。
+        /// </summary>
+        Vector3 PredictShot(DuelWeapon w, int i, DuelSlot at, DuelEnemy t)
+        {
+            Vector3 from = Muzzle(at);
+            Vector3 aim = AssistedAimPoint(t, AssistDeg(w, ParentOf(i)), from, w.range);
+            Vector3 to = aim - from;
+            float dist = to.magnitude;
+            float speed = SpeedOf(w);
+            if (w.Explosive && speed <= 0f) speed = FallbackShellSpeed;
+            float inherit = Rules.inheritShooterVelocity;
+            if (dist < 0.01f || speed <= 0f || player == null || inherit <= 0f) return aim;
+            Vector3 dir = to / dist;
+            Vector3 v = dir * speed + player.Velocity * inherit;
+            float m = v.magnitude;
+            if (m <= 1f) return aim;
+            Vector3 fd = v / m;
+            float s = dist / Mathf.Max(0.05f, Vector3.Dot(fd, dir));   // 狙いの先と同じ前後の距離まで
+            return from + fd * Mathf.Min(s, w.range);
         }
 
         /// <summary>UpdateFrames が求めた、撃つ状態ごとの当てる相手(銃・砲)とミサイルの割り振り先。aimCacheFrame のフレームだけ使える。</summary>
@@ -430,12 +468,13 @@ namespace MeleeDuel
                     var t = AimTarget(w, parent, Muzzle(at));
                     aimCache[i] = t;
                     // 枠を橙にして印を出すのは、吸い付いた狙いが体に掛かる(当たる)ときだけ
-                    Vector3 sd = AssistDir(cam, t, AssistDeg(w, parent), out any);   // t が null なら照準の向きのまま(any は偽)
+                    any = false;
+                    if (t != null) AssistDir(cam, t, AssistDeg(w, parent), out any);
                     if (any) AddMark(t);
-                    // 弾が飛んでいく所:撃っている・撃ったばかり・溜めている武装を先に、なければ最初の銃・砲
+                    // 弾が飛んでいく所(自機の速度を受け継いで流れる分も入れる):撃っている・撃ったばかり・溜めている武装を先に、なければ最初の銃・砲
                     if (ShotPoint == null || (hot && !shotHot))
                     {
-                        ShotPoint = AimPointAlong(cam.transform.position, sd, out _);
+                        ShotPoint = PredictShot(w, i, at, t);
                         shotHot = hot;
                     }
                 }

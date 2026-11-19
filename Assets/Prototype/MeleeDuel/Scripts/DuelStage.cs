@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using HuntProto;
 using UnityEngine;
@@ -8,11 +9,13 @@ namespace MeleeDuel
     /// 近接の試作のステージ:墜落して地面に斜めに突き刺さった、横倒しの巨大な船の中を、下から上へ登る。区画の区切りはなく、ひと続きの地形。
     ///   地面の裂け目(入口・最下層。開けている)→ 横倒しの居住区(元の壁が床になった狭い部屋が3つ。ドアの穴が床・天井にある)→
     ///   大きな竪穴(張り出した足場・折れた梁をブースト飛行で上る。足場に敵)→ 分岐:外殻を伝う外の道(開けた斜面)/ 内部の配管の道(狭いダクト)→
-    ///   合流(機関区画)→ 頭頂部の大ホール(天井が裂けている。ボス)。
+    ///   合流(機関区画。ボスの前に群れが待つ。拾った武装で暴れる所)→ 頭頂部の大ホール(天井が裂けている。ボス)。
     /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
     /// セーブポイント(光る柱)に触れると再開地点が変わる。撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
+    /// 「重厚→無双」の弧ひとつ分:倒した敵がときどき武装を落とし(上ほどレア度の高い武装)、十字右で付け替えながら強くなる(DuelArms)。
+    /// 撃墜されても武装は残る。ボスを倒すと爆発で武装が全部消し飛んでクリア。
     /// </summary>
     public class DuelStage : MonoBehaviour
     {
@@ -39,8 +42,39 @@ namespace MeleeDuel
         [Tooltip("撃墜されてから、セーブポイントで再開するまでの秒数")]
         public float respawnDelay = 2.5f;
 
+        [Header("武装の落とし物(弧ひとつ分の試作)")]
+        /// <summary>
+        /// 落ちる武装の一覧(付ける所・レア度・性能)。シリアライズせず、いつも DuelWeapon.Defaults() から作る(数値はコードで直す)。
+        /// シリアライズすると、シーンを開いたまま DuelWeapon の形が変わったときにメモリ上の古い一覧が残り、
+        /// 新しい項目が既定値のまま(例:kind が 0=剣)になって、スラスターや肩の銃が剣として落ちたため。
+        /// </summary>
+        [System.NonSerialized] public List<DuelWeapon> arsenal = DuelWeapon.Defaults();
+        [Tooltip("倒した敵が武装を落とす確率:兵卒 / 剣士")]
+        [Range(0f, 1f)] public float gruntDropChance = 0.45f;
+        [Range(0f, 1f)] public float duelistDropChance = 1f;
+        [Tooltip("この数だけ続けて落ちなかったら、次に倒した敵は必ず落とす")]
+        public int pityKills = 2;
+        [Tooltip("空いている所(最初は左手・背中・両肩)に付けられる武装の出やすさ(倍)。最初は左手が空なので、盾・手の銃・剣が出やすい")]
+        public float emptySlotWeight = 2f;
+        [Tooltip("今付けているのと同じ武装の出やすさ(倍)")]
+        public float sameWeaponWeight = 0.3f;
+        [Tooltip("高さごとのレア度の重み(倒した所の高さで選ぶ。上ほど強い武装)")]
+        public DuelDropBand[] dropBands =
+        {
+            new(0f, 1f, 0f, 0f),        // 地面の裂け目・居住区の下:コモンだけ
+            new(30f, 0.65f, 0.35f, 0f), // 居住区の上・竪穴の下
+            new(85f, 0.3f, 0.55f, 0.15f),// 竪穴の上
+            new(120f, 0.15f, 0.5f, 0.35f),// 外殻・配管
+            new(155f, 0f, 0.35f, 0.65f), // 機関区画(ボスの前の群れ)
+        };
+        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装が全部消し飛ぶ(画面は揺らさない)")]
+        public float bossBlastRadius = 45f;
+
         [Header("ボス(大剣士)")]
-        public float bossHP = 182f;
+        [Tooltip("武装で強くなった自機と渡り合える硬さ(仮。武装なしの頃は182)")]
+        public float bossHP = 480f;
+        [Tooltip("射撃(肩の武装)でボスが受けるダメージと怯みの倍率(厚い装甲。1なら減らない)。ミサイル・銃が全部ボスに集まって溶けないように")]
+        [Range(0f, 1f)] public float bossRangedTaken = 0.4f;
         [Tooltip("機体の大きさの倍率(剣士は1.5)")]
         public float bossSize = 2.5f;
         [Tooltip("怯みゲージの最大(剣士は25)。大きいほど怯みにくい")]
@@ -292,7 +326,7 @@ namespace MeleeDuel
             WallX(408.5f, -80, -40, 139, 190, PipeColor);
             WallX(431.5f, -80, -40, 139, 190, PipeColor);
 
-            // ── 5. 合流:機関区画(床160m)。中央に大きな機関。敵はいない(ボスの前の一息) ──
+            // ── 5. 合流:機関区画(床160m)。中央に大きな機関。ボスの前に群れが待つ(拾った武装でまとめて倒す、無双の場所) ──
             Region("機関区画", -40, 43, 155, 195, 400, 463);
             Slab(-43, 43, 402, 463, 160f, FloorColor, 3f, floor: true);
             Slab(-43, 43, 402, 463, 191f, WallColor);
@@ -304,6 +338,17 @@ namespace MeleeDuel
             Solid(-34, -26, 160, 188, 446, 454, PipeColor);
             Solid(26, 34, 160, 188, 408, 416, PipeColor);
             Save("機関区画", 0, 160, 449, 0f);    // 大ホールへの坂の手前(どちらの道から来ても通る)
+            // 群れ:兵卒5・剣士3。機関の手前(南の半分)に固まって、西口・東口のほうを向いて立つ。
+            // セーブポイント(北の坂の手前)とその再開地点からは 30m 以上離し、機関の陰になり、背を向けている
+            // (撃墜されて再開しても群れの真ん中にならない。倒した敵はそのままなので、ボスに負けても群れはやり直しにならない)
+            G(-26, 160, 410, 270);
+            G(-12, 160, 409, 240);
+            G(10, 160, 409, 120);
+            G(20, 160, 421, 90);
+            G(-22, 160, 424, 270);
+            D(-35, 160, 420, 270);   // 西口(配管の道から)を向く
+            D(30, 160, 430, 60);     // 東口(外殻の道から)を向く
+            D(0, 160, 417, 180);
 
             // ── 6. 頭頂部の大ホール(床176m):広い。天井が大きく裂けている。四隅寄りに柱(突進を柱にぶつけられる) ──
             Region("大ホール", -75, 75, 155, 280, 463, 625);
@@ -596,6 +641,7 @@ namespace MeleeDuel
             e.homeRotation = rot;
             e.leashRadius = s.kind == Kind.Boss ? bossLeash : s.leash;
             e.ignoreLeashRange = s.kind == Kind.Boss;   // ボスは持ち場から離れすぎで発覚を切らない(見失いだけで切る)
+            if (s.kind == Kind.Boss) e.rangedTakenMul = bossRangedTaken;
             e.UseSenses(senses);
             s.enemy = e;
             game.Enemies.Add(e);
@@ -608,6 +654,14 @@ namespace MeleeDuel
         void Update()
         {
             if (game == null || player == null) return;
+            if (DuelGame.Paused)
+            {
+                // 装備の確認を開いている間:実時間で数える再開・知らせの時計も止める
+                float udt = Time.unscaledDeltaTime;
+                if (respawnAt > 0f) respawnAt += udt;
+                BannerAt += udt;
+                return;
+            }
             if (respawnAt > 0f && Time.unscaledTime >= respawnAt)
             {
                 respawnAt = -1f;
@@ -693,11 +747,111 @@ namespace MeleeDuel
         /// <summary>敵が倒れた(DuelGame から)。ボスならステージクリア。</summary>
         public void OnEnemyDied(DuelEnemy e)
         {
-            if (bossSpawn == null || e != bossSpawn.enemy || Cleared) return;
+            bool boss = bossSpawn != null && e == bossSpawn.enemy;
+            if (!boss) { TryDrop(e); return; }
+            if (Cleared) return;
             Cleared = true;
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
             game.Log("ボスを倒した");
+            DuelLoot.ClearAll();   // 床の武装も消す(消し飛んだ後にまた付けられないように)
+            StartCoroutine(BossBlast(e.Chest, e.Size));
+        }
+
+        /// <summary>クリアの画面に添える一言(武装が消し飛んだとき)。</summary>
+        public string ClearNote { get; private set; }
+
+        /// <summary>
+        /// ボスの撃墜の爆発(撃墜の演出の爆発の後)に巻き込まれ、武装が全部消し飛ぶ。画面は揺らさない(大きな爆発・火花・短いヒットストップだけ)。
+        /// </summary>
+        IEnumerator BossBlast(Vector3 at, float size)
+        {
+            yield return new WaitForSeconds(0.75f);
+            ProtoFx.Blast(at, bossBlastRadius, new Color(1f, 0.55f, 0.15f), 0.9f);
+            ProtoFx.Blast(at, bossBlastRadius * 0.45f, new Color(1f, 0.95f, 0.75f), 0.4f);
+            DuelSpark.Burst(at, Vector3.zero, new Color(1f, 0.7f, 0.3f), 80, 2.5f * size);
+            game.HitStop(0.15f);
+            int lost = player != null && player.Arms != null ? player.Arms.LoseAll() : 0;
+            if (lost > 0)
+            {
+                ClearNote = "ボスの爆発に巻き込まれ、武装がすべて消し飛んだ";
+                game.Log(ClearNote);
+            }
+        }
+
+        // ───────── 武装の落とし物 ─────────
+
+        int dryKills;
+
+        /// <summary>倒した敵が武装を落とすか決め、落とすなら倒した所の高さのレア度の重みで1つ選んで落とす。</summary>
+        void TryDrop(DuelEnemy e)
+        {
+            if (arsenal == null || arsenal.Count == 0 || e == null || Cleared) return;   // ボスを倒した後は落とさない
+            var kind = Kind.Grunt;
+            foreach (var s in spawns) if (s.enemy == e) { kind = s.kind; break; }
+            float chance = kind == Kind.Duelist ? duelistDropChance : gruntDropChance;
+            if (Random.value >= chance && dryKills < pityKills)
+            {
+                dryKills++;
+                return;
+            }
+            dryKills = 0;
+            var w = PickWeapon(BandAt(e.transform.position.y).RollRarity());
+            if (w == null) return;
+            Vector2 k = Random.insideUnitCircle * 5f;
+            DuelLoot.Drop(w, e.Chest, new Vector3(k.x, 0f, k.y));
+            if (w.rarity >= 1) game.Log($"{w.RarityName}の武装が落ちた:{w.name}");
+        }
+
+        DuelDropBand BandAt(float y)
+        {
+            DuelDropBand best = null;
+            if (dropBands != null)
+                foreach (var b in dropBands)
+                    if (b != null && y >= b.fromY && (best == null || b.fromY >= best.fromY)) best = b;
+            return best ?? new DuelDropBand();
+        }
+
+        /// <summary>
+        /// そのレア度の武装から1つ選ぶ(なければ近いレア度から)。空いている所に付けられる武装を出やすく(emptySlotWeight 倍)、
+        /// 今付けているのと同じ武装は出にくく(sameWeaponWeight 倍)する。武装ごとの出やすさ(DuelWeapon.dropWeight。両手持ちは少なめ)も掛ける。
+        /// </summary>
+        DuelWeapon PickWeapon(int rarity)
+        {
+            var arms = player != null ? player.Arms : null;
+            foreach (int r in new[] { rarity, rarity - 1, rarity + 1, rarity - 2, rarity + 2 })
+            {
+                float sum = 0f;
+                foreach (var w in arsenal) if (w != null && w.rarity == r) sum += Weight(w, arms);
+                if (sum <= 0f) continue;
+                float pick = Random.value * sum;
+                DuelWeapon last = null;
+                foreach (var w in arsenal)
+                {
+                    if (w == null || w.rarity != r) continue;
+                    last = w;
+                    pick -= Weight(w, arms);
+                    if (pick < 0f) return w;
+                }
+                return last;
+            }
+            return null;
+        }
+
+        float Weight(DuelWeapon w, DuelArms arms) => Mathf.Max(0f, w.dropWeight) * SlotWeight(w, arms);
+
+        /// <summary>空いている所に付けられるなら出やすく、今付けているのと同じなら出にくく(両手持ちは、どちらかの手が空いていれば空きとみなす)。</summary>
+        float SlotWeight(DuelWeapon w, DuelArms arms)
+        {
+            if (arms == null) return 1f;
+            bool empty = false, same = false;
+            foreach (var s in DuelWeapon.SlotsFor(w.kind))
+            {
+                var cur = arms.Get(s);
+                if (cur == null) empty = true;
+                else if (cur == w) same = true;
+            }
+            return empty ? emptySlotWeight : same ? sameWeaponWeight : 1f;
         }
 
         // ───────── 画面に出す情報 ─────────

@@ -336,14 +336,15 @@ namespace MeleeDuel
             if (w == null) return;
             mag[i] = left >= 0 ? Mathf.Min(left, w.magazine) : w.magazine;
             cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
-            lastFire[i] = -10f;   // 付けた直後の 0.3 秒の待ちは、装填のゲージに出さない(CooldownLeft)
+            lastFire[i] = -10f;
+            cdShown[i] = false;   // 付けた直後の 0.3 秒の待ちは、装填のゲージに出さない(CooldownLeft)
             float rest = ready - Time.time;
             if (w.IsShooter && rest > cd[i])
             {
-                // 外したときの装填待ちの続き(ゲージにも出す)
+                // 外したときの装填待ちの続き(ゲージにも出す。撃ってはいないので lastFire は入れない。入れると構え扱いになる)
                 cd[i] = rest;
                 cdMax[i] = Mathf.Max(rest, w.interval);
-                lastFire[i] = Time.time;
+                cdShown[i] = true;
             }
         }
 

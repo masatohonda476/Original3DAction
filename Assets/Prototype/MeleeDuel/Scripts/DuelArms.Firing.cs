@@ -36,6 +36,7 @@ namespace MeleeDuel
                 return false;
             }
             lastFire[i] = Time.time;
+            cdShown[i] = true;
             Vector3 from = Muzzle(s);
             // 照準の先へ撃つ(枠の中の敵がいれば、狙いを少しだけ寄せる。照準を動かせるときは、弾が速さを持つ撃ち方は寄せない。AssistDeg)
             var t = TargetFor(w, i, from);
@@ -214,6 +215,7 @@ namespace MeleeDuel
             if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
             cd[i] = cdMax[i] = w.interval;
             lastFire[i] = Time.time;
+            cdShown[i] = true;
             Vector3 from = Muzzle(s);
             if (w.IsMissile)
             {
@@ -242,6 +244,8 @@ namespace MeleeDuel
         /// <summary>
         /// ミサイルの狙える敵(list に入れて返す。多くても1回に撃つ数 salvo まで):照準の枠に掛かっていて(ロックオン中の敵は lockFrameMul 倍に広くみなす)、
         /// 射程の内で見通せる敵。ロックオン中の敵が先、あとは近い順。先に枠と射程で絞って並べ、見通し(Linecast)は前から salvo 体そろうまでだけ調べる。
+        /// 射程は銃・砲(AimTarget。弾が銃口から射程の分だけ飛ぶので銃口から)と違い、自機(viewEye = LockPoint)から測る。
+        /// ミサイルは追いかけて必ず届き、射程は狙う敵を選ぶのにだけ使うので、付けた所によらず同じ敵を選ぶ方をとった(差は数m。作者確認済み)。
         /// </summary>
         List<DuelEnemy> MissileTargets(DuelWeapon w, DuelWeapon parent, List<DuelEnemy> list)
         {

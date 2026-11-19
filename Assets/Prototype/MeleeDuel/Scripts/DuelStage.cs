@@ -46,13 +46,13 @@ namespace MeleeDuel
         [Tooltip("撃墜されてから、セーブポイントで再開するまでの秒数")]
         public float respawnDelay = 2.5f;
 
-        [Header("武装の落とし物(弧ひとつ分の試作)")]
         /// <summary>
         /// 落ちる武装の一覧(付ける所・レア度・性能)。シリアライズせず、いつも DuelWeapon.Defaults() から作る(数値はコードで直す)。
         /// シリアライズすると、シーンを開いたまま DuelWeapon の形が変わったときにメモリ上の古い一覧が残り、
         /// 新しい項目が既定値のまま(例:kind が 0=剣)になって、スラスターや肩の銃が剣として落ちたため。
         /// </summary>
         [System.NonSerialized] public List<DuelWeapon> arsenal = DuelWeapon.Defaults();
+        [Header("武装の落とし物(弧ひとつ分の試作)")]
         [Tooltip("倒した敵が武装を落とす確率:兵卒 / 剣士")]
         [Range(0f, 1f)] public float gruntDropChance = 0.45f;
         [Range(0f, 1f)] public float duelistDropChance = 1f;

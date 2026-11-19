@@ -90,23 +90,18 @@ namespace MeleeDuel
                 if (c > 0f && !equipOpen) Bar(new Rect(cc.x - 60f, cc.y + 46f, 120f, 6f), c, c >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
             }
 
-            // ロックオンの印:敵の胸の上のほうに、目立ちすぎない細い白の十字
+            // ロックオンの印は四つの角の枠だけ(敵を囲む。DrawLockCorners)。胸の上の白い十字は、枠と二重になるのでやめた(作者「敵の上で印が重なる」→「A」)
             var e = player.Target;
             if (e != null && !e.Dead && cam != null)
             {
                 Vector3 sp = cam.WorldToScreenPoint(e.LockPoint);
                 // 画面の外(敵が背中側へ回り、カメラが上限の速さで向き直っている途中など):画面の端に、その方向を示す小さな印(見失わないように)
                 if (sp.z <= 0f || sp.x < 0f || sp.x > Screen.width || sp.y < 0f || sp.y > Screen.height) DrawOffscreenLock(cam, e.LockPoint);
-                else
+                else if (player.Arms == null || player.Arms.ShotPoint == null)
                 {
-                    float cx = sp.x / uiScale, cy = SH - sp.y / uiScale;
-                    const float arm = 9f, th = 2f, gap = 3f;
-                    GUI.color = new Color(1f, 1f, 1f, 0.7f);
-                    GUI.DrawTexture(new Rect(cx - arm - gap, cy - th / 2f, arm, th), Texture2D.whiteTexture);
-                    GUI.DrawTexture(new Rect(cx + gap, cy - th / 2f, arm, th), Texture2D.whiteTexture);
-                    GUI.DrawTexture(new Rect(cx - th / 2f, cy - arm - gap, th, arm), Texture2D.whiteTexture);
-                    GUI.DrawTexture(new Rect(cx - th / 2f, cy + gap, th, arm), Texture2D.whiteTexture);
-                    GUI.color = Color.white;
+                    // 銃・砲を持っていなければ、十字は相手の胸に出す(持っていれば、弾が飛んでいく所に出る。DrawAimFrames)
+                    Vector3 cp = cam.WorldToScreenPoint(e.Chest);
+                    if (cp.z > 0f) DrawCross(cp.x / uiScale, SH - cp.y / uiScale, 3f, 0.6f);
                 }
             }
             DrawLockCorners(cam);   // ロックオンのオン・オフの照準枠
@@ -210,30 +205,43 @@ namespace MeleeDuel
                 GUI.color = c;
                 GUI.Label(new Rect(cx - hw, cy - hh - 16f, 200f, 16f), label, cellTiny);
             }
-            // 真ん中の十字:4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
+            // 真ん中の十字:弾が飛んでいく所(吸い付きを入れた狙いの先。DuelArms.ShotPoint)に出す。4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
             if (spread >= 0f)
             {
-                float g = Mathf.Clamp(spread * k, 3f, SH * 0.3f);
-                var sc = FrameIdle;
-                sc.a = spreadHot ? 0.85f : 0.4f;
-                GUI.color = sc;
-                const float len = 7f, th = 2f;
-                var t = Texture2D.whiteTexture;
-                GUI.DrawTexture(new Rect(cx - g - len, cy - th / 2f, len, th), t);
-                GUI.DrawTexture(new Rect(cx + g, cy - th / 2f, len, th), t);
-                GUI.DrawTexture(new Rect(cx - th / 2f, cy - g - len, th, len), t);
-                GUI.DrawTexture(new Rect(cx - th / 2f, cy + g, th, len), t);
+                float sx = cx, sy = cy;
+                if (arms.ShotPoint is Vector3 shot)
+                {
+                    Vector3 sp = cam.WorldToScreenPoint(shot);
+                    if (sp.z > 0f) { sx = sp.x / uiScale; sy = SH - sp.y / uiScale; }
+                }
+                DrawCross(sx, sy, Mathf.Clamp(spread * k, 3f, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
             }
             var mc = FrameLocked;
             mc.a = 0.95f;
             foreach (var e in arms.Marks)
             {
                 if (e == null || e.Dead) continue;
+                if (e == player.Target && lockFollow > 0f) continue;   // ロックオンの角が囲んでいる相手は、角の色で示す(DrawLockCorners。印を重ねない)
                 Vector3 sp = cam.WorldToScreenPoint(e.Chest);
                 if (sp.z <= 0f) continue;
                 float x = sp.x / uiScale, y = SH - sp.y / uiScale;
                 Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, mc);
             }
+            GUI.color = Color.white;
+        }
+
+        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。</summary>
+        static void DrawCross(float cx, float cy, float g, float alpha)
+        {
+            var sc = FrameIdle;
+            sc.a = alpha;
+            GUI.color = sc;
+            const float len = 7f, th = 2f;
+            var t = Texture2D.whiteTexture;
+            GUI.DrawTexture(new Rect(cx - g - len, cy - th / 2f, len, th), t);
+            GUI.DrawTexture(new Rect(cx + g, cy - th / 2f, len, th), t);
+            GUI.DrawTexture(new Rect(cx - th / 2f, cy - g - len, th, len), t);
+            GUI.DrawTexture(new Rect(cx - th / 2f, cy + g, th, len), t);
             GUI.color = Color.white;
         }
 
@@ -341,6 +349,9 @@ namespace MeleeDuel
         float lockOnAt = -1f, lockOffAt = -1f, lockFromOffset = LockCornerTravel, lockOffset, lockHalfH = LockCornerHalfH;
         Color lockFromInk = Color.white, lockInk = LockInk;
         float lockFollow, lockFollowSeenAt = -10f, lockHudAt = -1f;
+        /// <summary>角が囲んでいる相手に弾が吸い付く度合い(0〜1。なめらかに変える)。1 で角を照準の橙に、濃くする。</summary>
+        float lockAssist;
+        const float LockAssistTime = 0.1f, LockAssistAlpha = 0.9f;
         Vector2 lockFollowCenter, lockFollowHalf;
 
         void DrawLockCorners(Camera cam)
@@ -363,7 +374,7 @@ namespace MeleeDuel
             {
                 lockOnAt = lockOffAt = -1f;
                 lockCornersShown = false;
-                lockFollow = 0f;
+                lockFollow = lockAssist = 0f;
                 lockHudAt = -1f;
                 return;
             }
@@ -383,7 +394,7 @@ namespace MeleeDuel
                 {
                     lockOffAt = -1f;
                     lockCornersShown = false;
-                    lockFollow = 0f;
+                    lockFollow = lockAssist = 0f;
                     lockHudAt = -1f;
                     return;
                 }
@@ -411,6 +422,9 @@ namespace MeleeDuel
             bool hold = on && !onEnemy && lockFollow > 0f && now - lockFollowSeenAt < LockFollowHold;
             if (!hold) lockFollow = Mathf.MoveTowards(lockFollow, onEnemy ? 1f : 0f, dt / LockFollowTime);
             float e = Mathf.SmoothStep(0f, 1f, lockFollow);
+            // 弾が吸い付く(撃てば体に寄って当たる)相手なら、角を照準の橙にして濃くする(前は胸に小さな角の印を重ねていた)
+            bool assist = onEnemy && player.Arms != null && player.Arms.Marks.Contains(target);
+            lockAssist = Mathf.MoveTowards(lockAssist, assist ? 1f : 0f, dt / LockAssistTime);
 
             // 画面の縁寄りの枠:縦は上の敵のゲージ・右上の知らせと、下の自機のゲージ・武装の欄の手前まで(低い画面では縮める。なめらかに)
             float bottom = Mathf.Min(leftTop, player.Arms != null ? ArmsTop : SH) - 12f;
@@ -423,6 +437,13 @@ namespace MeleeDuel
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
             var col = lockInk;
             if (e > 0f) col.a = Mathf.Min(1f, col.a * Mathf.Lerp(1f, LockFollowAlpha / LockRestAlpha, e));   // 敵に重なる間は薄く
+            float a = lockAssist * e;
+            if (a > 0f)
+            {
+                float alpha = Mathf.Lerp(col.a, Mathf.Max(col.a, LockAssistAlpha * lockInk.a / LockRestAlpha), a);   // 付け外しの途中の薄さは保つ
+                col = Color.Lerp(col, FrameLocked, a);
+                col.a = Mathf.Min(1f, alpha);
+            }
             float thin = Mathf.Lerp(1f, 0.7f, e);
             // 明るい床の上でも形が読めるよう、細い暗い縁を下に敷く
             LockCornerLines(c, hw, hh, e < 0.5f, 2.7f * thin, new Color(0f, 0.025f, 0.04f, col.a * 0.8f));

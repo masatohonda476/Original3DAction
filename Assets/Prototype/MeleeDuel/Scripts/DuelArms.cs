@@ -70,6 +70,8 @@ namespace MeleeDuel
         // 撃つ武装の、所ごとの状態(6つ目は両手の銃・砲の L1 の撃ち方)
         readonly float[] cd = new float[StateCount], cdMax = new float[StateCount], reload = new float[StateCount];
         readonly float[] lastFire = new float[StateCount], pressedAt = new float[StateCount];
+        /// <summary>次に撃てるまでの待ちを装填のゲージに出すか(撃った後と、外したときの装填待ちを持ち越して付け直した後。付けた直後の 0.3 秒の待ちは出さない)。</summary>
+        readonly bool[] cdShown = new bool[StateCount];
         readonly int[] mag = new int[StateCount];
         /// <summary>撃つ状態ごとの反動の広がり(度。spread に足す)。撃つたびに広がり、撃つのをやめると戻る。</summary>
         readonly float[] bloom = new float[StateCount];
@@ -382,9 +384,9 @@ namespace MeleeDuel
         /// <summary>その所の砲・ミサイルが次に撃てるまでの残り(0〜1。0で撃てる)。</summary>
         public float Cooldown01(DuelSlot s) => cd[(int)s] > 0f ? Mathf.Clamp01(cd[(int)s] / Mathf.Max(0.01f, cdMax[(int)s])) : 0f;
         /// <summary>その所の砲・ミサイルが次に撃てるまでの残り(秒)。</summary>
-        public float CooldownLeft(DuelSlot s) => lastFire[(int)s] < 0f ? 0f : Mathf.Max(0f, cd[(int)s]);   // まだ撃っていなければ 0(付けた直後の待ちは出さない)
+        public float CooldownLeft(DuelSlot s) => cdShown[(int)s] ? Mathf.Max(0f, cd[(int)s]) : 0f;   // 付けた直後の待ちは出さない
         /// <summary>L1 の撃ち方が次に撃てるまでの残り(秒)。</summary>
-        public float AltCooldownLeft => AltFire != null && lastFire[AltIndex] >= 0f ? Mathf.Max(0f, cd[AltIndex]) : 0f;
+        public float AltCooldownLeft => AltFire != null && cdShown[AltIndex] ? Mathf.Max(0f, cd[AltIndex]) : 0f;
         /// <summary>手動でリロードできる銃(弾倉のある銃)をどこかに付けている(操作説明に「△+撃つボタン リロード」を出すか)。</summary>
         public bool AnyReloadable
         {

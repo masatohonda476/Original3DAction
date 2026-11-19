@@ -179,7 +179,8 @@ namespace MeleeDuel
         }
 
         /// <summary>比べられる仲間(振る武装 / 盾 / 背中 / 弾の銃 / 爆発)。同じ仲間なら、同じ名前の項目どうしで比べる。</summary>
-        static int Family(DuelWeapon w) => w.IsBlade ? 0 : w.kind == DuelKind.Shield ? 1 : w.kind == DuelKind.Back ? 2 : w.IsGun ? 3 : 4;
+        /// 性能のグラフ(DuelRadar)の軸の組も、この仲間ごと(0〜4)。
+        public static int Family(DuelWeapon w) =>w.IsBlade ? 0 : w.kind == DuelKind.Shield ? 1 : w.kind == DuelKind.Back ? 2 : w.IsGun ? 3 : 4;
         public static bool SameFamily(DuelWeapon a, DuelWeapon b) => a != null && b != null && Family(a) == Family(b);
 
         // ───────── 比べる(拾うとき) ─────────

@@ -50,7 +50,7 @@ namespace MeleeDuel
         int kills, wave;
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
-        GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, richRight, viewHeadStyle, viewTitleStyle;
+        GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, richRight, viewHeadStyle, viewTitleStyle, chartHeadStyle, chartLegendStyle, chartNoteStyle;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
@@ -303,6 +303,9 @@ namespace MeleeDuel
                 viewHeadStyle = new GUIStyle(label) { fontStyle = FontStyle.Bold, wordWrap = false };
                 viewTitleStyle = new GUIStyle(label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 rightSmall = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
+                chartHeadStyle = new GUIStyle(small) { fontSize = 15, richText = true, wordWrap = false, clipping = TextClipping.Clip };
+                chartLegendStyle = new GUIStyle(chartHeadStyle) { fontSize = 14 };
+                chartNoteStyle = new GUIStyle(small) { fontSize = 15, richText = true, wordWrap = true };
             }
             var cam = Camera.main;
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
@@ -643,6 +646,7 @@ namespace MeleeDuel
                         pickupLineCount = 4;
                     }
                 }
+                BuildPickCharts(arms.Choosing != null ? w : null, to, a, b, curTwo);
             }
             // 左下の武装の欄(5行)に重ならない高さ(行が多いときは上へずらす)
             float h = 6f + 26f * pickupLineCount, wd = 1200f, bx = (SW - wd) / 2f;
@@ -652,6 +656,92 @@ namespace MeleeDuel
             GUI.color = Color.white;
             for (int i = 0; i < pickupLineCount; i++)
                 GUI.Label(new Rect(bx, by + 4f + i * 26f, wd, 24f), pickupLines[i], richCenter);
+            if (arms.Choosing != null) DrawPickCharts(by);
+        }
+
+        // ───────── 付け先を選ぶ表示の性能のグラフ ─────────
+
+        // [0] = 画面の左(左手・左肩と比べる)/ [1] = 画面の右(右手・右肩と比べる)。中身は付け先を選ぶ表示の文字列と一緒に作り直す
+        readonly bool[] pickChartOn = new bool[2];
+        readonly DuelRadar.Pair[] pickChartPair = new DuelRadar.Pair[2];
+        readonly string[] pickChartHead = new string[2], pickChartLegend = new string[2];
+
+        /// <summary>
+        /// 付け先を選ぶ表示のグラフの中身。左の所(左手・左肩)と比べるものを画面の左、右の所と比べるものを画面の右に出し、
+        /// 押す前に両方の候補を並べる(どちらのボタンでどちらの今の武装と入れ替わるかが、置き場所とボタン名で分かるように)。
+        /// 両手持ちは両手の今の武装それぞれと比べる(R1/L1 のどちらでも両手に付くのでボタン名は出さない)。今も両手持ちなら1つだけ(右)。
+        /// 片手の武装を、両手持ちを付けたまま付けるときは、左右どちらも今の両手持ちと比べる(どちらでも両手持ちが外れる)。
+        /// w が null(選んでいない)・付け先が1つ(背中)なら出さない。
+        /// </summary>
+        void BuildPickCharts(DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool curTwo)
+        {
+            pickChartOn[0] = pickChartOn[1] = false;
+            if (w == null || to.Length < 2) return;
+            if (w.IsTwoHand)
+            {
+                if (curTwo)
+                {
+                    SetPickChart(1, w, a, "<b>両手に付けると</b>  <color=#AAAAAA>今の両手持ちと入れ替わる</color>");
+                    return;
+                }
+                SetPickChart(0, w, b, "<b>両手に付けると</b>  <color=#AAAAAA>今の左手と比べて</color>");
+                SetPickChart(1, w, a, "<b>両手に付けると</b>  <color=#AAAAAA>今の右手と比べて</color>");
+                return;
+            }
+            string note = curTwo && w.IsHand ? "  <color=#FFB070>両手持ちが外れる</color>" : "";
+            SetPickChart(0, w, b, "<b>[" + SlotButton(to[1]) + "] " + DuelWeapon.SlotName(to[1]) + "に付けると</b>" + note);
+            SetPickChart(1, w, a, "<b>[" + SlotButton(to[0]) + "] " + DuelWeapon.SlotName(to[0]) + "に付けると</b>" + note);
+        }
+
+        void SetPickChart(int side, DuelWeapon w, DuelWeapon cur, string head)
+        {
+            var pair = DuelRadar.Get(w, cur);
+            pickChartOn[side] = true;
+            pickChartPair[side] = pair;
+            pickChartHead[side] = head;
+            pickChartLegend[side] = ChartLegend(pair, "新", cur != null ? "今" : null, "今は空き");
+        }
+
+        /// <summary>
+        /// 凡例の1行:「■ 新:名前  ━ 今:名前」。相手が空きなら emptyText、仲間が違えば「今:名前(種類。仲間が違うので比べない)」。
+        /// mainTag / otherTag は名前の前に付ける言葉(otherTag が null なら相手は空き)。
+        /// </summary>
+        static string ChartLegend(DuelRadar.Pair p, string mainTag, string otherTag, string emptyText)
+        {
+            string main = "<color=" + DuelRadar.MainHex + ">■ " + mainTag + ":" + p.main.name + "</color>";
+            if (otherTag == null || p.other == null) return main + "   <color=#999999>" + emptyText + "</color>";
+            if (p.otherDifferent)
+                return main + "   <color=#AAAAAA>" + otherTag + ":" + p.other.name + "(" + DuelWeapon.KindName(p.other.kind) + "。仲間が違うので比べない)</color>";
+            return main + "   <color=" + DuelRadar.OtherHex + ">━ " + otherTag + ":" + p.other.name + "</color>";
+        }
+
+        /// <summary>
+        /// 付け先を選ぶ表示のグラフ:拾う案内の枠(画面の下の中央)の上で、画面の左右の端に寄せて出す(真ん中の機体と敵を隠さない)。
+        /// 1つの枠に、見出し(どのボタンでどこに付けるか)・凡例・レーダーチャート(仲間が違えば出さない)・帯グラフ。
+        /// </summary>
+        void DrawPickCharts(float boxY)
+        {
+            const float pw = 440f, ph = 190f, pad = 8f, radarW = 150f, gap = 16f;   // gap:レーダーの横の軸名が帯グラフの名前に重ならない間
+            float py = boxY - 8f - ph;
+            for (int side = 0; side < 2; side++)
+            {
+                if (!pickChartOn[side]) continue;
+                var pair = pickChartPair[side];
+                float px = side == 0 ? 16f : SW - 16f - pw;
+                GUI.color = new Color(0f, 0f, 0f, 0.62f);
+                GUI.DrawTexture(new Rect(px, py, pw, ph), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(px + pad, py + 3f, pw - pad * 2f, 22f), pickChartHead[side], chartHeadStyle);
+                GUI.Label(new Rect(px + pad, py + 24f, pw - pad * 2f, 20f), pickChartLegend[side], chartLegendStyle);
+                float cy = py + 46f, ch = ph - 46f - 4f;
+                if (pair.ShowRadar)
+                {
+                    DuelRadar.DrawRadar(new Rect(px + pad, cy, radarW, ch), uiScale, pair);
+                    DuelRadar.DrawBars(new Rect(px + pad + radarW + gap, cy, pw - pad * 2f - radarW - gap, ch), uiScale, pair);
+                }
+                else DuelRadar.DrawBars(new Rect(px + pad, cy, pw - pad * 2f, ch), uiScale, pair, 80f, 120f);
+                GUI.color = Color.white;
+            }
         }
 
         /// <summary>操作説明。ボタン名は使っているコントローラー(キーボード / PlayStation / Xbox)に合わせる。変わったときだけ作り直す。</summary>
@@ -727,7 +817,8 @@ namespace MeleeDuel
 
             const float wd = 940f, rowH = 76f, headW = 130f, pad = 18f, titleH = 46f, footH = 34f;
             float h = pad + titleH + rowH * ArmRows + footH + 6f;
-            float bx = (SW - wd) / 2f, by = (SH - h) / 2f;
+            // 下に性能のグラフの枠(EquipChartH)を足した全体を、画面の中央に
+            float bx = (SW - wd) / 2f, by = Mathf.Max(4f, (SH - h - EquipChartGap - EquipChartH) / 2f);
             // 画面全体を少し暗くし、その上にパネル
             GUI.color = new Color(0f, 0f, 0f, 0.35f);
             GUI.DrawTexture(new Rect(0f, 0f, SW, SH), Texture2D.whiteTexture);
@@ -775,6 +866,85 @@ namespace MeleeDuel
             GUI.color = new Color(1f, 1f, 1f, 0.7f);
             GUI.Label(new Rect(bx, y + 6f, wd, 24f), viewFoot, center);
             GUI.color = Color.white;
+
+            DrawEquipChart(arms, bx, by + h + EquipChartGap, wd);
+        }
+
+        const float EquipChartH = 196f, EquipChartGap = 8f;
+        // 装備の確認のグラフ:選んでいる所・その武装・比べる相手が変わったときだけ作り直す
+        (int sel, DuelWeapon w, DuelWeapon other) viewChartKey = (-1, null, null);
+        DuelRadar.Pair viewChartPair;
+        string viewChartNote;
+
+        /// <summary>比べる相手の所(右手⇔左手、右肩⇔左肩。背中はなし)。</summary>
+        static int PartnerSlot(DuelSlot s) => s switch
+        {
+            DuelSlot.RightHand => (int)DuelSlot.LeftHand,
+            DuelSlot.LeftHand => (int)DuelSlot.RightHand,
+            DuelSlot.RightShoulder => (int)DuelSlot.LeftShoulder,
+            DuelSlot.LeftShoulder => (int)DuelSlot.RightShoulder,
+            _ => -1,
+        };
+
+        /// <summary>
+        /// 装備の確認の下の枠:選んでいる所の武装のレーダーチャートと帯グラフ。比べる相手は同じ仲間のもう片方の所(右手⇔左手、右肩⇔左肩)。
+        /// 相手が空き・背中・両手持ちなら単独で出す。相手の仲間が違えば(剣と盾など)レーダーは出さず、帯グラフも選んでいる武装だけ。
+        /// 右の欄に凡例と読み方。選んでいる所が空きなら、その旨だけ。
+        /// </summary>
+        void DrawEquipChart(DuelArms arms, float bx, float y, float wd)
+        {
+            var slot = (DuelSlot)viewSel;
+            var w = arms.Get(slot);
+            int ps = PartnerSlot(slot);
+            var other = w == null || w.IsTwoHand || ps < 0 ? null : arms.Get((DuelSlot)ps);
+            var key = (viewSel, w, other);
+            if (viewChartKey != key)
+            {
+                viewChartKey = key;
+                viewChartPair = DuelRadar.Get(w, other);
+                if (w != null)
+                {
+                    string me = w.IsTwoHand ? "両手" : DuelWeapon.SlotName(slot);
+                    string them = ps >= 0 ? DuelWeapon.SlotName((DuelSlot)ps) : "";
+                    string why = w.IsTwoHand ? "両手持ちなので、比べる相手はない"
+                        : ps < 0 ? "背中は1つだけなので、比べる相手はない"
+                        : other == null ? them + "は空き"
+                        : viewChartPair.otherDifferent ? them + "の" + other.name + "は" + DuelWeapon.KindName(other.kind) + "で、仲間が違うので比べない"
+                        : "";
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append("<color=").Append(DuelRadar.MainHex).Append(">■ ").Append(me).Append(":").Append(w.name).Append("</color>\n");
+                    if (viewChartPair.Compared)
+                        sb.Append("<color=").Append(DuelRadar.OtherHex).Append(">━ ").Append(them).Append(":").Append(other.name).Append("</color>\n\n")
+                          .Append("<color=#BBBBBB>数値は ").Append(them).Append("→").Append(me).Append("。")
+                          .Append("<color=#7CFC8A>緑</color>は").Append(me).Append("のほうが良い、<color=#FF7A6A>赤</color>は劣る</color>\n");
+                    else sb.Append("<color=#999999>").Append(why).Append("</color>\n\n");
+                    sb.Append("<color=#999999>外側(長い)ほど良い。目盛りは同じ仲間の武装の中での位置</color>");
+                    viewChartNote = sb.ToString();
+                }
+            }
+
+            GUI.color = new Color(0.03f, 0.04f, 0.06f, 0.88f);
+            GUI.DrawTexture(new Rect(bx, y, wd, EquipChartH), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            if (viewChartPair == null)
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.6f);
+                GUI.Label(new Rect(bx, y, wd, EquipChartH), "空き ― 武装を付けると、ここに性能のグラフを出す", center);
+                GUI.color = Color.white;
+                return;
+            }
+            const float pad = 18f, noteW = 250f;
+            float rs = EquipChartH - 14f;
+            float rx = bx + pad, ry = y + 7f;
+            float noteX = bx + wd - pad - noteW;
+            if (viewChartPair.ShowRadar)
+            {
+                DuelRadar.DrawRadar(new Rect(rx, ry, rs, rs), uiScale, viewChartPair);
+                float barX = rx + rs + 14f;
+                DuelRadar.DrawBars(new Rect(barX, ry + 4f, noteX - 18f - barX, rs - 8f), uiScale, viewChartPair, 84f, 130f);
+            }
+            else DuelRadar.DrawBars(new Rect(rx, ry + 4f, noteX - 18f - rx, rs - 8f), uiScale, viewChartPair, 84f, 130f);
+            GUI.Label(new Rect(noteX, ry + 6f, noteW, rs - 12f), viewChartNote, chartNoteStyle);
         }
 
         void BuildEquipView(DuelArms arms, ProtoInput.Device dev, int block)

@@ -18,8 +18,11 @@ namespace MeleeDuel
         const float Hover = 1.5f;
 
         public DuelWeapon Weapon { get; private set; }
-        /// <summary>弾倉の残り(-1=満タン。捨てた・付け替えで外した銃は、撃ちかけの残りを覚えておく。拾い直しで満タンにならないように)。</summary>
-        public int Mag { get; set; } = -1;
+        /// <summary>
+        /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした武装はまっさら(弾倉は満タン)。捨てた・付け替えで外した武装は、撃ちかけの残りと装填待ちを覚えておく
+        /// (拾い直しで満タン・待ちなしにならないように)。
+        /// </summary>
+        public DuelArms.Memo Memo { get; set; } = DuelArms.Memo.Fresh;
 
         static readonly List<DuelLoot> all = new();
         Transform visual;

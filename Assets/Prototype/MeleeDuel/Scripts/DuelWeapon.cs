@@ -208,8 +208,11 @@ namespace MeleeDuel
             string body = a.Explosive
                 ? (a.salvo > 1 ? $"{a.damage:0.#}×{a.salvo}発 爆風{a.radius:0.#}m" : $"{a.damage:0.#} 爆風{a.radius:0.#}m")
                 : (a.pellets > 1 ? $"{a.damage:0.#}×{a.pellets}粒" : $"{a.damage:0.#}");
+            // L1 の枠:自分の枠がなければ主の撃ち方の枠を借りる(同じなら出さない。違えば「枠±10°」)
+            var rules = DuelArmsRules.Current;
+            float fa = rules.FrameDeg(a, this), fm = rules.FrameDeg(this, null);
             return (a.charge > 0f ? $"溜め{a.charge:0.0}秒 " : "") + body + (a.pierce ? " 貫通" : "") + (a.charge > 0f ? "" : $" 間隔{a.interval:0.0}秒")
-                   + (a.UsesEnergy ? " " + a.EnText : "");
+                   + (a.UsesEnergy ? " " + a.EnText : "") + (Mathf.Abs(fa - fm) > 0.05f ? $" 枠±{fa:0}°" : "");
         }
 
         /// <summary>比べられる仲間(振る武装 / 盾 / 背中 / 弾の銃 / 爆発)。同じ仲間なら、同じ名前の項目どうしで比べる。</summary>
@@ -316,7 +319,7 @@ namespace MeleeDuel
         /// </summary>
         static void AddShooter(List<(string, float, string, bool)> list, DuelWeapon w)
         {
-            float f = w.aimFrame > 0f ? w.aimFrame : DuelArmsRules.FallbackFrame;
+            float f = DuelArmsRules.Current.FrameDeg(w, null);   // インスペクターの frameMul・defaultFrame を掛けた、実際の枠
             list.Add(("枠", f, $"±{f:0}°", true));
             if (w.UsesEnergy && w.ammoCost <= 0f)
             {
@@ -578,6 +581,21 @@ namespace MeleeDuel
         public float breakAmmoBase = 15f, breakAmmoPerRarity = 15f, breakAmmoPerWeight = 1.5f;
         [Tooltip("回復にする量(HP) = 基本 + レア度 × これ + 重さ × これ")]
         public float breakHealBase = 8f, breakHealPerRarity = 8f, breakHealPerWeight = 0.8f;
+
+        /// <summary>今のステージの決まり(ステージがなければ既定の値)。性能表の「枠」などで使う。</summary>
+        public static DuelArmsRules Current =>
+            DuelGame.I != null && DuelGame.I.stage != null && DuelGame.I.stage.armsRules != null ? DuelGame.I.stage.armsRules : Fallback;
+        static readonly DuelArmsRules Fallback = new();
+
+        /// <summary>
+        /// 武装 w の照準の枠の横の半分の角度(度。frameMul を掛け、0.5〜70 に収める)。w に枠がなければ parent(両手の銃・砲の L1 なら主の撃ち方)の枠、
+        /// それもなければ defaultFrame。
+        /// </summary>
+        public float FrameDeg(DuelWeapon w, DuelWeapon parent)
+        {
+            float deg = w != null && w.aimFrame > 0f ? w.aimFrame : parent != null && parent.aimFrame > 0f ? parent.aimFrame : defaultFrame;
+            return Mathf.Clamp(deg * frameMul, 0.5f, 70f);
+        }
 
         public int BreakAmmo(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakAmmoBase + breakAmmoPerRarity * w.rarity + breakAmmoPerWeight * w.weight));
         public int BreakHeal(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakHealBase + breakHealPerRarity * w.rarity + breakHealPerWeight * w.weight));

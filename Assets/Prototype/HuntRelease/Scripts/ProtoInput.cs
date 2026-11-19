@@ -181,9 +181,9 @@ namespace HuntProto
         /// <summary>SHARE(View)を押している間は、△□をデバッグ用に回す。</summary>
         static bool DebugMod => Pad != null && Pad.selectButton.isPressed;
         // メニュー内:↑↓(十字キー・左スティック・W/S) で選ぶ / × 決定 / ○ 戻る
-        static bool stickUpHeld, stickDownHeld, stickLeftHeld, stickRightHeld;
+        static bool stickUpHeld, stickDownHeld;
         static int stickFrame = -1;
-        static bool stickUp, stickDown, stickLeft, stickRight;
+        static bool stickUp, stickDown;
         static void ReadStick()
         {
             if (stickFrame == Time.frameCount) return;
@@ -194,10 +194,6 @@ namespace HuntProto
             stickDown = y < -0.6f && !stickDownHeld;
             stickUpHeld = y > 0.6f;
             stickDownHeld = y < -0.6f;
-            stickLeft = v.x < -0.6f && !stickLeftHeld;
-            stickRight = v.x > 0.6f && !stickRightHeld;
-            stickLeftHeld = v.x < -0.6f;
-            stickRightHeld = v.x > 0.6f;
         }
         public static bool MenuUp { get { ReadStick(); return stickUp || K(k => k.upArrowKey) || K(k => k.wKey) || P(p => p.dpad.up); } }
         public static bool MenuDown { get { ReadStick(); return stickDown || K(k => k.downArrowKey) || K(k => k.sKey) || P(p => p.dpad.down); } }
@@ -205,10 +201,13 @@ namespace HuntProto
         public static bool MenuBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
         /// <summary>メニュー内:選んでいる武装を捨てる(□ / X)。</summary>
         public static bool MenuDiscard => K(k => k.xKey) || (!DebugMod && P(p => p.buttonWest));
-        /// <summary>近接の試作のメニュー内:←(十字左・左スティック・← / A)。分解して弾にする。</summary>
-        public static bool MenuLeft { get { ReadStick(); return stickLeft || K(k => k.leftArrowKey) || K(k => k.aKey) || P(p => p.dpad.left); } }
-        /// <summary>近接の試作のメニュー内:→(十字右・左スティック・→ / D)。分解して回復にする。</summary>
-        public static bool MenuRight { get { ReadStick(); return stickRight || K(k => k.rightArrowKey) || K(k => k.dKey) || P(p => p.dpad.right); } }
+        /// <summary>
+        /// 近接の試作のメニュー内:←(十字左・← / A)。分解して弾にする。
+        /// 左スティックでは受けない(下の行へ移ろうとして斜めに倒し、誤って分解して武装が消えないように)。
+        /// </summary>
+        public static bool MenuLeft => K(k => k.leftArrowKey) || K(k => k.aKey) || P(p => p.dpad.left);
+        /// <summary>近接の試作のメニュー内:→(十字右・→ / D)。分解して回復にする。左スティックでは受けない。</summary>
+        public static bool MenuRight => K(k => k.rightArrowKey) || K(k => k.dKey) || P(p => p.dpad.right);
         /// <summary>近接の試作のメニュー内:付けている武装を外して所持品にする(△ / C)。</summary>
         public static bool MenuStore => K(k => k.cKey) || (!DebugMod && P(p => p.buttonNorth));
 

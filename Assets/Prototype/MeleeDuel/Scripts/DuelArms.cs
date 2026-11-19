@@ -16,7 +16,7 @@ namespace MeleeDuel
     /// 拾う:落ちている武装の近くで十字右(V)。背中はそのまま付ける。手・肩は付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)で決める
     ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
     ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
-    ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。在庫・メニューはない。
+    ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。在庫はない。装備の確認の画面から、足もとの床に捨てられる(Drop)。
     /// 撃墜されても武装は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。右手は素の剣、左手は空に戻る)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
     /// 毎フレームの処理は DuelPlayer.Update の始めに Tick() で呼ぶ(ボタンの横取りを、自機が読むより先に決めるため)。
     /// </summary>
@@ -263,6 +263,31 @@ namespace MeleeDuel
         public void CancelChoice()
         {
             if (Choosing != null) EndChoice();
+        }
+
+        /// <summary>
+        /// その所の武装を外して、自機の足もとの床に置く(装備の確認の画面から。素の剣も捨てられ、どの所も空にできる)。
+        /// 置き方は付け替えで外した武装と同じ DuelLoot.Place(勢いなしで真下の床まで落ちる。拾い直せる)。
+        /// 機体の中心から半径の内側(所ごとに少しずらす)の、床から少し上に出す(壁の外・床の下に出ないように)。
+        /// 撃墜中・ボスを倒した後(拾い直せない)は捨てない。捨てたら true。
+        /// </summary>
+        public bool Drop(DuelSlot slot)
+        {
+            int i = (int)slot;
+            var w = slots[i];
+            if (w == null || player == null || player.Dead || (game.stage != null && game.stage.Cleared)) return false;
+            slots[i] = null;
+            mag[i] = 0;
+            reload[i] = cd[i] = cdMax[i] = 0f;
+            pressedAt[i] = -10f;
+            Refresh(slot);
+            float ang = (i - 2) * 50f;
+            Vector3 off = Quaternion.Euler(0f, ang, 0f) * player.transform.forward * (player.Radius * 0.6f);
+            DuelLoot.Place(w, player.transform.position + off + Vector3.up * 2f);
+            if (w.kind == DuelKind.Shield) player.OnShieldsChanged(false);
+            if (w.kind == DuelKind.Sword) player.OnSwordDropped(slot == DuelSlot.RightHand ? 0 : 1);
+            game.Log($"{DuelWeapon.SlotName(slot)}の{w.name}を床に捨てた");
+            return true;
         }
 
         /// <summary>落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。</summary>

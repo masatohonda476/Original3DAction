@@ -172,6 +172,21 @@ namespace MeleeDuel
             if (Guarding && guardShield == null) Enter(State.Free);
         }
 
+        /// <summary>
+        /// その手(0=右 / 1=左)の剣を捨てた(DuelArms.Drop。装備の確認の画面から)。その手で振っている途中なら振りをやめ
+        /// (剣のない手の振りで当たらないように)、その手で押して覚えている攻撃も忘れる。
+        /// 剣のない手では、通常攻撃・強攻撃・回避斬り・△との同時押しは出ない(TryAttack・TryChord などが SwordIn で止める)。
+        /// </summary>
+        public void OnSwordDropped(int hand)
+        {
+            if (pressHand == hand) lightPressedAt = -10f;
+            if (Current == State.Attack && atkHand == hand)
+            {
+                combo = 0;
+                Enter(State.Free);
+            }
+        }
+
         /// <summary>撃墜からのやり直し:その場所に、HP・EN・ガードを満タンにして出し直す(ロックオンは外す)。</summary>
         public void Respawn(Vector3 pos, Quaternion rot)
         {

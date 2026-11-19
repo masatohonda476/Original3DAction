@@ -50,7 +50,7 @@ namespace MeleeDuel
         int kills, wave;
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
-        GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, viewHeadStyle, viewTitleStyle;
+        GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, richRight, viewHeadStyle, viewTitleStyle;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
@@ -190,13 +190,22 @@ namespace MeleeDuel
         /// 左のメニューボタン(SHARE・View・− を離す / I)で装備の確認を開く・閉じる。○・B / Esc / Backspace でも閉じる。
         /// ステージ(武装がある)だけ。開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
         /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
+        /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所を選び、捨てるボタン(□・X / X キー)を2回押すと、その武装を足もとの床に捨てる
+        /// (1回目で「もう一度押すと捨てる」になり、選び直す・○/Esc で取り消し)。撃墜中・ボスを倒した後は捨てられない。
         /// </summary>
         void UpdateEquipView()
         {
             bool toggle = ProtoInput.EquipView;   // 組み合わせの判定のため、毎フレーム読む
+            bool up = ProtoInput.MenuUp, down = ProtoInput.MenuDown;   // スティックの倒し始めの判定のため、毎フレーム読む
             if (equipOpen)
             {
-                if (toggle || ProtoInput.EquipViewBack || player == null || player.Arms == null) SetEquipOpen(false);
+                if (toggle || player == null || player.Arms == null) SetEquipOpen(false);
+                else if (ProtoInput.EquipViewBack)
+                {
+                    if (dropArmed) dropArmed = false;   // 捨てる確認の途中なら、確認だけ取り消す
+                    else SetEquipOpen(false);
+                }
+                else EquipViewInput(player.Arms, up, down);
                 return;
             }
             if (toggle && stage != null && player != null && player.Arms != null) SetEquipOpen(true);
@@ -205,10 +214,44 @@ namespace MeleeDuel
         void SetEquipOpen(bool open)
         {
             if (open == equipOpen) return;
-            if (open) player.Arms.CancelChoice();
+            if (open)
+            {
+                player.Arms.CancelChoice();
+                // 武装が付いている最初の所を選ぶ
+                viewSel = 0;
+                for (int i = 0; i < ArmRows; i++)
+                    if (player.Arms.Get((DuelSlot)i) != null) { viewSel = i; break; }
+            }
+            dropArmed = false;
             equipOpen = open;
             ProtoInput.Paused = open;
             viewBuilt = false;
+        }
+
+        /// <summary>選んでいる所(0〜4 = DuelSlot)と、捨てる確認の途中か。</summary>
+        int viewSel;
+        bool dropArmed;
+
+        /// <summary>今は捨てられない理由(0 = 捨てられる / 1 = 撃墜中 / 2 = ボスを倒した後で拾えない)。</summary>
+        int DropBlock() => player == null || player.Dead ? 1 : stage != null && stage.Cleared ? 2 : 0;
+
+        void EquipViewInput(DuelArms arms, bool up, bool down)
+        {
+            int d = (down ? 1 : 0) - (up ? 1 : 0);
+            if (d != 0)
+            {
+                viewSel = (viewSel + d + ArmRows) % ArmRows;
+                dropArmed = false;
+            }
+            if (!ProtoInput.MenuDiscard) return;
+            var slot = (DuelSlot)viewSel;
+            if (arms.Get(slot) == null || DropBlock() != 0) dropArmed = false;
+            else if (!dropArmed) dropArmed = true;   // 1回目:確認
+            else
+            {
+                dropArmed = false;
+                arms.Drop(slot);   // 2回目:捨てる
+            }
         }
 
         /// <summary>当たった瞬間に、realSeconds 秒だけ時間をほぼ止める。</summary>
@@ -256,6 +299,7 @@ namespace MeleeDuel
                 center = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter };
                 richCenter = new GUIStyle(small) { richText = true, alignment = TextAnchor.MiddleCenter };
                 richSmall = new GUIStyle(small) { richText = true, wordWrap = false, clipping = TextClipping.Clip };
+                richRight = new GUIStyle(richSmall) { alignment = TextAnchor.UpperRight };
                 viewHeadStyle = new GUIStyle(label) { fontStyle = FontStyle.Bold, wordWrap = false };
                 viewTitleStyle = new GUIStyle(label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 rightSmall = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
@@ -577,7 +621,7 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 拾う");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン");
-                sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備");
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・捨てる");
                 helpText = sb.ToString();
                 return helpText;
             }
@@ -599,19 +643,21 @@ namespace MeleeDuel
         readonly string[] viewHead = new string[ArmRows], viewName = new string[ArmRows], viewStats = new string[ArmRows], viewUse = new string[ArmRows];
         readonly DuelWeapon[] viewKeyW = new DuelWeapon[ArmRows];
         ProtoInput.Device viewKeyDev;
+        int viewKeyBlock;
         bool viewBuilt;
-        string viewFoot;
+        string viewFoot, viewDropHint, viewDropConfirm;
 
         /// <summary>
         /// 画面の中央:5つの所それぞれの武装(名前・レア度の色・種類・一言)、主な性能(拾うときの比較と同じ値)、使うボタン。空きは「なし」。
-        /// 見るだけ(付け替え・捨てるはしない)。
+        /// 選んでいる所は明るい帯と左の縦線で目立たせ、右上に捨てるボタンを出す(確認の途中は赤い帯と「もう一度押すと捨てる」)。
         /// </summary>
         void DrawEquipView(DuelArms arms)
         {
             var dev = ProtoInput.Current;
-            bool changed = !viewBuilt || viewKeyDev != dev;
+            int block = DropBlock();
+            bool changed = !viewBuilt || viewKeyDev != dev || viewKeyBlock != block;
             for (int i = 0; i < ArmRows && !changed; i++) changed = viewKeyW[i] != arms.Get((DuelSlot)i);
-            if (changed) BuildEquipView(arms, dev);
+            if (changed) BuildEquipView(arms, dev, block);
 
             const float wd = 940f, rowH = 76f, headW = 130f, pad = 18f, titleH = 46f, footH = 34f;
             float h = pad + titleH + rowH * ArmRows + footH + 6f;
@@ -629,6 +675,17 @@ namespace MeleeDuel
             for (int i = 0; i < ArmRows; i++)
             {
                 var w = arms.Get((DuelSlot)i);
+                bool armed = i == viewSel && dropArmed && w != null;
+                if (i == viewSel)
+                {
+                    // 選んでいる所:帯と左の縦線(捨てる確認の途中は赤)
+                    GUI.color = armed ? new Color(0.9f, 0.25f, 0.2f, 0.28f) : new Color(1f, 1f, 1f, 0.09f);
+                    GUI.DrawTexture(new Rect(bx + pad - 8f, y + 1f, wd - pad * 2f + 16f, rowH - 1f), Texture2D.whiteTexture);
+                    GUI.color = armed ? new Color(1f, 0.4f, 0.3f) : new Color(0.45f, 0.8f, 1f);
+                    GUI.DrawTexture(new Rect(bx + pad - 8f, y + 1f, 4f, rowH - 1f), Texture2D.whiteTexture);
+                    GUI.color = Color.white;
+                    if (w != null && block == 0 && !armed) GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewDropHint, richRight);
+                }
                 // 区切りの細い線
                 GUI.color = new Color(1f, 1f, 1f, 0.12f);
                 GUI.DrawTexture(new Rect(bx + pad, y, wd - pad * 2f, 1f), Texture2D.whiteTexture);
@@ -637,8 +694,9 @@ namespace MeleeDuel
                 GUI.color = Color.white;
                 GUI.Label(new Rect(tx, y + 6f, tw, 24f), viewName[i], richSmall);
                 if (w != null) GUI.Label(new Rect(tx, y + 29f, tw, 22f), viewStats[i], richSmall);
-                GUI.color = new Color(1f, 1f, 1f, 0.6f);
-                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), viewUse[i], richSmall);
+                // 3行目:使うボタン(捨てる確認の途中は、その案内に替える)
+                GUI.color = armed ? Color.white : new Color(1f, 1f, 1f, 0.6f);
+                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? viewDropConfirm : viewUse[i], richSmall);
                 GUI.color = Color.white;
                 y += rowH;
             }
@@ -649,10 +707,11 @@ namespace MeleeDuel
             GUI.color = Color.white;
         }
 
-        void BuildEquipView(DuelArms arms, ProtoInput.Device dev)
+        void BuildEquipView(DuelArms arms, ProtoInput.Device dev, int block)
         {
             viewBuilt = true;
             viewKeyDev = dev;
+            viewKeyBlock = block;
             bool kb = dev == ProtoInput.Device.Keyboard;
             string aim = ProtoInput.L(ProtoInput.Btn.Aim);
             for (int i = 0; i < ArmRows; i++)
@@ -688,7 +747,16 @@ namespace MeleeDuel
                 };
             }
             string close = kb ? "I / Esc" : ProtoInput.L(ProtoInput.Btn.EquipView) + " / " + ProtoInput.L(ProtoInput.Btn.Back);
-            viewFoot = $"一時停止中 ― {close} で閉じる(見るだけ。付け替えは落ちている武装の近くで {ProtoInput.L(ProtoInput.Btn.EquipNow)})";
+            string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Esc" : ProtoInput.L(ProtoInput.Btn.Back);
+            viewDropHint = $"<color=#AAAAAA>{drop} 床に捨てる</color>";
+            viewDropConfirm = $"<color=#FF8A70><b>もう一度 {drop} で足もとに捨てる</b>  {back} やめる</color>";
+            string sel = kb ? "↑↓/W・S" : "↑↓";
+            viewFoot = block switch
+            {
+                1 => $"一時停止中 ― {sel} 選ぶ  撃墜中は捨てられない  {close} 閉じる",
+                2 => $"一時停止中 ― {sel} 選ぶ  ボスを倒した後は拾い直せないので、捨てられない  {close} 閉じる",
+                _ => $"一時停止中 ― {sel} 選ぶ  {drop} 床に捨てる(もう一度押して決める。拾い直せる)  {close} 閉じる",
+            };
         }
 
         /// <summary>主な性能の1行。拾うときの比較(DuelWeapon.Stats)と同じ値に、銃は連射・リロードを足す。</summary>

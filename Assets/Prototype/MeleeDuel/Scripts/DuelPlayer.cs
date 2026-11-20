@@ -109,6 +109,8 @@ namespace MeleeDuel
         /// </summary>
         public bool LockOn { get; private set; }
         public bool Guarding => Current is State.Guard or State.GuardStun;
+        /// <summary>構えている盾の手(0=右 / 1=左)。右下の武装の欄で、構えている盾のセルを見分けるのに使う。</summary>
+        public int GuardHand => guardHand;
         /// <summary>ブーストがオン(○で切り替え。ENが0以下になると自動でオフ)。</summary>
         public bool BoostOn { get; private set; }
         /// <summary>このフレームはブーストで移動している(見た目用)。</summary>

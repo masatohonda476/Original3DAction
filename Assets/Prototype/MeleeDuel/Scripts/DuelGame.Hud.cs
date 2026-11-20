@@ -48,13 +48,15 @@ namespace MeleeDuel
                 DrawHitMark(player.Arms);
             }
 
-            // 左下:自機のHP・EN・ガード、その下に操作説明。操作説明は右下の武装の欄の手前で折り返し、
-            // 3行以上になるときは全体を上へずらす(2行までなら今までと同じ高さ)
+            // 左下:自機のHP・EN、その下に操作説明。操作説明は右下の武装の欄の手前で折り返し、
+            // 3行以上になるときは全体を上へずらす(2行までなら今までと同じ高さ)。
+            // ガードのゲージは、ステージでは右下の武装の欄の盾のセルに出す(ArmCell)。武装の欄のない部屋のモードだけ、ここの3本目に出す
             string help = Help();
             float x = 24f;
+            bool guardRow = player.Arms == null;
             float helpW = (player.Arms != null ? ArmsLeft - 16f : SW - x) - x;
             float helpH = HelpHeight(help, helpW);
-            float y = SH - 8f - helpH - 66f;
+            float y = SH - 8f - helpH - (guardRow ? 66f : 44f);
             leftTop = y - 5f;
             Bar(new Rect(x, y, 300f, 14f), player.HP / player.MaxHP, new Color(0.35f, 0.85f, 0.45f));
             GUI.Label(new Rect(x + 308f, y - 5f, 120f, 24f), $"HP {Mathf.CeilToInt(player.HP)}", small);
@@ -74,13 +76,16 @@ namespace MeleeDuel
                 (minus ? $"EN {Mathf.FloorToInt(player.Energy)}(回復待ち)" : $"EN {Mathf.FloorToInt(player.Energy)}") + (player.BoostOn ? "  ブースト" : ""), small);
             GUI.color = Color.white;
             y += 22f;
-            // ガード:ステージで盾を持っていなければ空(ガードできない)
-            bool broken = player.Current == DuelPlayer.State.GuardBroken;
-            float maxGuard = player.MaxGuard;
-            Bar(new Rect(x, y, 300f, 10f), maxGuard > 0f ? player.Guard / maxGuard : 0f,
-                broken ? new Color(1f, 0.4f, 0.2f) : player.Guarding ? new Color(0.5f, 0.8f, 1f) : new Color(0.4f, 0.55f, 0.7f));
-            GUI.Label(new Rect(x + 308f, y - 7f, 200f, 24f), maxGuard <= 0f ? "ガード(盾なし)" : broken ? "ガード崩れ" : player.Guarding ? "ガード中" : "ガード", small);
-            y += 22f;
+            if (guardRow)
+            {
+                // ガード(部屋のモードだけ。素のガード)
+                bool broken = player.Current == DuelPlayer.State.GuardBroken;
+                float maxGuard = player.MaxGuard;
+                Bar(new Rect(x, y, 300f, 10f), maxGuard > 0f ? player.Guard / maxGuard : 0f,
+                    broken ? new Color(1f, 0.4f, 0.2f) : player.Guarding ? new Color(0.5f, 0.8f, 1f) : new Color(0.4f, 0.55f, 0.7f));
+                GUI.Label(new Rect(x + 308f, y - 7f, 200f, 24f), broken ? "ガード崩れ" : player.Guarding ? "ガード中" : "ガード", small);
+                y += 22f;
+            }
             GUI.Label(new Rect(x, y, helpW, helpH), help, small);   // 長ければ折り返す(キーボードの表記は長い)
             if (player.Arms != null)
             {
@@ -637,7 +642,7 @@ namespace MeleeDuel
         // 操作説明の高さ(折り返した行数で決まる。文字列か幅が変わったときだけ測り直す)
         string helpHText;
         float helpHW = -1f, helpHCached = 44f;
-        /// <summary>左下の HP・EN・ガードと操作説明のまとまりの上端(拾う案内をこれより上に出す)。</summary>
+        /// <summary>左下の HP・EN(部屋のモードはガードも)と操作説明のまとまりの上端(拾う案内をこれより上に出す)。</summary>
         float leftTop;
 
         /// <summary>操作説明の高さ(2行分より低くはしない)。</summary>

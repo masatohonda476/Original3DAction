@@ -104,15 +104,15 @@ namespace MeleeDuel
         [Range(0f, 1f)] public float stockWeightRate = 1f;
 
         [Header("共通の弾(実弾の銃・砲・ミサイルが使う。エネルギー武器は弾の代わりにENを使う)")]
-        public float ammoMax = 300f;
+        public float ammoMax = 500f;
         [Tooltip("弧の始め(最初から・F1)の弾")]
         public float ammoStart = 30f;
 
         [Header("分解(落ちている武装・所持品・装備を壊して、弾か回復にする)")]
-        [Tooltip("弾にする量 = 基本 + レア度(0〜2)× これ + 重さ × これ")]
-        public float breakAmmoBase = 15f, breakAmmoPerRarity = 15f, breakAmmoPerWeight = 1.5f;
-        [Tooltip("回復にする量(HP) = 基本 + レア度 × これ + 重さ × これ")]
-        public float breakHealBase = 8f, breakHealPerRarity = 8f, breakHealPerWeight = 0.8f;
+        [Tooltip("弾にする量 = 基本 + レア度(0〜2)× これ。重さは見ない(作者「レア度だけで決めるようにしたいです」)。既定はコモン 25 / レア 45 / エピック 65")]
+        public float breakAmmoBase = 25f, breakAmmoPerRarity = 20f;
+        [Tooltip("回復にする量(HP) = 基本 + レア度 × これ。重さは見ない。既定はコモン 13 / レア 24 / エピック 35")]
+        public float breakHealBase = 13f, breakHealPerRarity = 11f;
 
         /// <summary>今のステージの決まり(ステージがなければ既定の値)。性能表の「枠」などで使う。</summary>
         public static DuelArmsRules Current => Of(DuelGame.I);
@@ -132,8 +132,8 @@ namespace MeleeDuel
             return Mathf.Clamp(deg * frameMul, 0.5f, 70f);
         }
 
-        public int BreakAmmo(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakAmmoBase + breakAmmoPerRarity * w.rarity + breakAmmoPerWeight * w.weight));
-        public int BreakHeal(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakHealBase + breakHealPerRarity * w.rarity + breakHealPerWeight * w.weight));
+        public int BreakAmmo(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakAmmoBase + breakAmmoPerRarity * w.rarity));
+        public int BreakHeal(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakHealBase + breakHealPerRarity * w.rarity));
 
         /// <summary>重さによる推力の倍率(ENを使う移動:ブースト移動・回避の距離・飛ぶときの上昇。歩き・走りには掛けない)。</summary>
         public float MobilityAt(float weight) => Mathf.Clamp(1f - Mathf.Max(0f, weight - freeWeight) * slowPerWeight, minMobility, 1f);

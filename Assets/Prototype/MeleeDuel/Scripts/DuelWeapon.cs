@@ -183,6 +183,8 @@ namespace MeleeDuel
         public bool PaysPerShot => ammoCost > 0f && !(IsGun && magazine > 0);
         /// <summary>共通の弾を使うか(エネルギー武器・振る武装などは使わない)。</summary>
         public bool UsesAmmo => ammoCost > 0f;
+        /// <summary>共通の弾の使う量の表示(弾倉のある銃は「3/発」、撃つたびに使う撃ち方は「6/回」)。使わなければ空。</summary>
+        public string AmmoCostText => !UsesAmmo ? "" : PaysPerShot ? $"{ammoCost:0.#}/回" : $"{ammoCost:0.#}/発";
 
         // ───────── 剣の技(表が空なら素の剣の表) ─────────
 
@@ -366,7 +368,7 @@ namespace MeleeDuel
                 return;
             }
             list.Add(("弾", w.ammoCost > 0f ? w.ammoCost : 0.01f,
-                w.ammoCost <= 0f ? "使わない" : w.IsGun && w.magazine > 0 ? $"{w.ammoCost:0.#}/発" : $"{w.ammoCost:0.#}/回", false));
+                w.UsesAmmo ? w.AmmoCostText : "使わない", false));
             if (w.UsesEnergy) list.Add(("EN", w.enCost, w.EnText.Substring(3), false));
         }
 

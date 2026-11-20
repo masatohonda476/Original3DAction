@@ -51,7 +51,7 @@ namespace MeleeDuel
         public float maxEnergy = 150f;
         public float dodgeCost = 30f;
         public float energyRegen = 60f;
-        [Tooltip("最後にENを使ってから、回復が始まるまでの秒数")]
+        [Tooltip("最後に回避・攻撃・射撃でENを使ってから、回復が始まるまでの秒数。ブースト移動・飛ぶのは待たず、やめた直後から回復する(ENを使い切ったときだけこの秒数を待つ)")]
         public float energyRegenDelay = 0.6f;
 
         [Header("ガード(どの盾でも同じ値。ゲージの量・通す傷・構え歩きの速さなどは盾ごと=DuelWeapon)")]
@@ -312,7 +312,8 @@ namespace MeleeDuel
             if (flying)
             {
                 Energy -= flyCost * EnCostMul * dt;
-                energyUsedAt = now;
+                // 移動は回復を待たせない。使い切ったときだけ待たせる(待たせないと、✗ を押したままENが0のあたりで飛び続けられる)
+                if (Energy <= 0f) energyUsedAt = now;
             }
             if (BoostOn && Energy <= 0f) BoostOn = false;   // ENが0以下になったら自動でオフ
 
@@ -330,8 +331,10 @@ namespace MeleeDuel
             if (now - lastStaggerHitAt >= staggerDecayDelay && Current != State.Hurt)
                 Stagger = Mathf.Max(0f, Stagger - staggerDecay * dt);
 
-            // EN:最後に使ってから少しして戻る(マイナスからでも同じ速さで戻る)
-            if (now - energyUsedAt >= energyRegenDelay) Energy = Mathf.Min(maxEnergy, Energy + energyRegen * dt);
+            // EN:回避・攻撃・射撃は、最後に使ってから少しして戻る(マイナスからでも同じ速さで戻る)。
+            // 移動(ブースト移動・飛ぶ)は、している間は戻らず、やめた直後から戻る(作者「移動は直後からENの回復が始まるようにしたい」)。
+            // Dashing はここではまだ前のフレームの値(すぐ下で決め直す)
+            if (!flying && !Dashing && now - energyUsedAt >= energyRegenDelay) Energy = Mathf.Min(maxEnergy, Energy + energyRegen * dt);
 
             Vector3 vel = Vector3.zero;
             Dashing = false;
@@ -351,7 +354,7 @@ namespace MeleeDuel
                     if (Dashing)
                     {
                         Energy -= dashCost * EnCostMul * dt;
-                        energyUsedAt = now;
+                        if (Energy <= 0f) energyUsedAt = now;   // 使い切ったときだけ回復を待たせる(飛ぶのと同じ)
                     }
                     // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く

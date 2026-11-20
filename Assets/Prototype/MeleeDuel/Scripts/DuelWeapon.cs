@@ -53,13 +53,13 @@ namespace MeleeDuel
         public float knockMul = 1f;
 
         [Header("盾(付けた手のボタンを押している間ガード)")]
-        [Tooltip("ガードのゲージの量(素のガードは100)")]
+        [Tooltip("ガードのゲージの量(やめた部屋のモードの、剣での素のガードは100だった)")]
         public float guardMax = 100f;
         [Tooltip("受けたときのゲージの削れ方(小さいほど削れにくい)")]
         public float guardCostMul = 1f;
-        [Tooltip("ガードで受けたダメージの何割をHPに受けるか(素のガードは0.1)")]
+        [Tooltip("ガードで受けたダメージの何割をHPに受けるか(素のガードは0.1だった)")]
         public float guardChip = 0.1f;
-        [Tooltip("構えたまま歩く速さ(走りの何割。素のガードは0.4)")]
+        [Tooltip("構えたまま歩く速さ(走りの何割。素のガードは0.4だった)")]
         public float guardMoveMul = 0.4f;
         [Tooltip("受けたときに押し戻され・固まる長さの倍率(小さいほどすぐ動ける)")]
         public float guardStunMul = 1f;

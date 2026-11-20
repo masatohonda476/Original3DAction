@@ -231,7 +231,7 @@ namespace MeleeDuel
         public bool CanRearrange => player != null && !player.Dead && player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
 
         /// <summary>今は所持品・装備を床に捨てられるか(付け外しできる間で、ボスを倒した後でない)。</summary>
-        bool CanDrop => CanRearrange && !(game.stage != null && game.stage.Cleared);
+        bool CanDrop => CanRearrange && !game.stage.Cleared;
 
         /// <summary>付けている武装を外して所持品にする(重さの合計は増えない。付け外しできる間だけ)。外したら true。</summary>
         public bool StoreSlot(DuelSlot slot)

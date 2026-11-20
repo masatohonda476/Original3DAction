@@ -98,7 +98,7 @@ namespace MeleeDuel
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? hit.point.y : 0f;
         }
 
-        /// <summary>平面の速度で動かす(ノックバック・重力を足す。部屋のモードでは部屋の外へは出さない)。</summary>
+        /// <summary>平面の速度で動かす(ノックバック・重力を足す)。外へ出ないのは、ステージの壁(見えない壁も)で止める。</summary>
         protected void Move(Vector3 planar, float dt)
         {
             push = Vector3.MoveTowards(push, Vector3.zero, 70f * dt);
@@ -115,17 +115,6 @@ namespace MeleeDuel
             planar.y = 0f;
             cc.Move((planar + push + Vector3.up * vy) * dt);
             UpdateGround();
-            if (game.arenaHalf <= 0f) return;   // ステージ:外へ出ないのは壁で止める
-            Vector3 p = transform.position;
-            float h = game.arenaHalf - Radius;
-            if (Mathf.Abs(p.x) > h || Mathf.Abs(p.z) > h)
-            {
-                p.x = Mathf.Clamp(p.x, -h, h);
-                p.z = Mathf.Clamp(p.z, -h, h);
-                cc.enabled = false;
-                transform.position = p;
-                cc.enabled = true;
-            }
         }
 
         /// <summary>その場所へ瞬間移動する(やり直しの出し直しなど)。</summary>

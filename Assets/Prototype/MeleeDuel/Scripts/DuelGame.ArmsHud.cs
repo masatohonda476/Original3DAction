@@ -16,7 +16,7 @@ namespace MeleeDuel
         float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap;
 
         /// <summary>セルの右上に出す状態。</summary>
-        enum CellState { None, Ammo, Energy, Reload, Loading, Charging, Charged, TwoHand, Starved, NoEnergy }
+        enum CellState { None, Ammo, Energy, Cost, Reload, Loading, Charging, Charged, TwoHand, Starved, NoEnergy }
 
         // セルの文字列(添字は DuelSlot)。名前・ボタンは武装か機器が、状態は武装・状態・残り(弾数か0.1秒単位)が変わったときだけ作り直す
         readonly string[] cellBtn = new string[ArmRows], cellName = new string[ArmRows], cellStatus = new string[ArmRows];
@@ -27,7 +27,8 @@ namespace MeleeDuel
 
         /// <summary>
         /// 右下:付けている武装を肩ボタンの並び(左=L・右=R、上の段=肩・下の段=手)の 2×2 のセルで、その下に背中の1行。
-        /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20」(残りが弾倉の1/4以下で赤っぽく)、エネルギー武器は「EN 20/秒」(ENが0以下で撃てない間は「EN切れ」)。
+        /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20 (1/発)」(弾倉の残りと、1発詰めるごとに使う共通の弾。残りが弾倉の1/4以下で赤っぽく)、
+        /// 砲・ミサイルと L1 の実弾の撃ち方は撃てる間「弾 6/回」(1回で使う共通の弾)、エネルギー武器は「EN 20/秒」(ENが0以下で撃てない間は「EN切れ」)。
         /// 銃のリロード中・砲とミサイルの装填中は、セル全体を左から満ちていくオレンジのゲージにし「リロード 1.2秒」「装填 0.8秒」。
         /// 両手持ちは右手と左手のセルを細い帯でつなぎ、右手のセルに武装名と主の撃ち方の状態、左手のセルに L1 の技名と
         /// L1 の撃ち方の状態(溜めている間は溜まり具合のゲージ、撃った後は次に撃てるまでのゲージ)。
@@ -144,6 +145,7 @@ namespace MeleeDuel
                     val = Mathf.CeilToInt(arms.CooldownLeft(slot) * 10f);
                     gauge = 1f - arms.Cooldown01(slot);
                 }
+                else if (w.PaysPerShot) st = CellState.Cost;   // 弾倉のない実弾(砲・ミサイル):撃てる間は1回で使う共通の弾
             }
             else if (twoL && arms.AltFire != null)
             {
@@ -163,6 +165,7 @@ namespace MeleeDuel
                     val = Mathf.CeilToInt(arms.AltCooldownLeft * 10f);
                     gauge = 1f - arms.AltCooldown01;
                 }
+                else if (arms.AltFire.PaysPerShot) st = CellState.Cost;   // L1 の実弾の撃ち方:撃てる間は1回で使う共通の弾
             }
             if (st == CellState.None && w is { IsTwoHand: true }) st = CellState.TwoHand;
             if (gauge > 0f) Chip(new Rect(r.x, r.y, r.width * Mathf.Clamp01(gauge), r.height), gaugeColor);
@@ -174,8 +177,9 @@ namespace MeleeDuel
                     cellStatusKey[i] = (w, st, val, true);
                     cellStatus[i] = st switch
                     {
-                        CellState.Ammo => $"弾 {val}/{w.magazine}",
-                        CellState.Energy => w.UsesEnergy ? w.EnText : "弾数∞",
+                        CellState.Ammo => w.UsesAmmo ? $"弾 {val}/{w.magazine} ({w.AmmoCostText})" : $"弾 {val}/{w.magazine}",
+                        CellState.Energy => w.UsesEnergy ? w.EnText : w.UsesAmmo ? "弾 " + w.AmmoCostText : "弾数∞",
+                        CellState.Cost => "弾 " + (twoL ? arms.AltFire : w).AmmoCostText,
                         CellState.NoEnergy => "EN切れ",
                         CellState.Reload => $"リロード {val / 10f:0.0}秒",
                         CellState.Loading => $"装填 {val / 10f:0.0}秒",
@@ -189,6 +193,7 @@ namespace MeleeDuel
                 {
                     CellState.Ammo => val <= w.magazine / 4 ? new Color(1f, 0.5f, 0.4f) : new Color(0.85f, 0.87f, 0.9f),
                     CellState.Energy => new Color(1f, 0.6f, 0.95f),
+                    CellState.Cost => new Color(0.85f, 0.87f, 0.9f),
                     CellState.Reload or CellState.Loading => StatusOrange,
                     CellState.Charging => new Color(1f, 0.85f, 0.5f),
                     CellState.Charged => Color.white,

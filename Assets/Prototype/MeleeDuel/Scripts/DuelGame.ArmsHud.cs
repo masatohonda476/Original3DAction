@@ -224,12 +224,12 @@ namespace MeleeDuel
         readonly string[] pickupLines = new string[4];
         int pickupLineCount;
 
-        const string PickRed = "#FF7A6A", PickGrey = "#AAAAAA", PickCyan = "#73CCFF";
+        const string PickRed = "#FF7A6A", PickGrey = "#AAAAAA";
 
         /// <summary>
         /// 画面の下の中央:拾える武装があれば、その案内。無視すればそのまま残る。空中では出ない(DuelArms.Nearby が null)。
         ///   まだ何も押していない間:枠のあるカード(BuildPickCard / DrawPickCard)。名前・その武装の数値・付け先ごとの今の武装との差・操作を最初から並べる。
-        ///   十字右で付け先を選ぶ表示(空きがなく、付け替えになるとき):手・肩なら左右それぞれの今の武装と、背中なら今の背中と比べる(背中は ✗ で付ける)。
+        ///   十字右で付け先を選ぶ表示(付け先が空きでもふさがっていても同じ):手・肩なら左右それぞれの今の武装と、背中なら今の背中と比べる(背中は ✗ で付ける)。
         ///   十字上で分解を選ぶ表示:十字左で弾・十字右で回復・十字上でやめる。
         /// </summary>
         void DrawPickup(DuelArms arms)
@@ -358,7 +358,6 @@ namespace MeleeDuel
         readonly List<string> cardStats = new(), cardActions = new(), cardPack = new();
         readonly string[] cardRowSlot = new string[CardRowMax], cardRowCur = new string[CardRowMax], cardRowWeight = new string[CardRowMax];
         readonly List<string>[] cardRowDiff = { new(), new() };
-        readonly bool[] cardRowQuick = new bool[CardRowMax];
         static readonly GUIContent cardMeasure = new();
 
         /// <summary>その文字の1行の幅(リッチテキストのタグは数えない。OnGUI の中で呼ぶ)。</summary>
@@ -410,8 +409,7 @@ namespace MeleeDuel
         ///   付け先ごとに1行:所の名前(両手持ちは「両手」)・今そこにある武装(なければ「空き」)・差の短い形(DuelWeapon.CompareShort:差のある項目だけ「威力↑↑」。
         ///     良くなるのは緑・悪くなるのは赤)・付けた後の重さ。仲間が違う今の武装とは比べない(付け先を選ぶ表示のグラフと同じ扱い)。
         ///     付けると重さの上限を超える所は赤で「重すぎる」(外れる武装の重さを引いて、所ごとに判定。DuelArms.WeightIfEquipped)。
-        ///     十字右の一押しで付く所(DuelArms.QuickEquipSlot)は水色の帯と「ここに付く」。
-        ///   操作:付ける(一押しで付くときは「左手に付ける」のように付く先。どの所でも重すぎるなら赤)・持つ(重さの変化)・分解(量)。
+        ///   操作:付ける(付け先を選ぶ表示へ。どの所でも重すぎるなら赤)・持つ(重さの変化)・分解(量)。
         /// </summary>
         void BuildPickCard(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool ammoFull, bool hpFull)
         {
@@ -440,8 +438,7 @@ namespace MeleeDuel
 
             // 付け先ごとの行(両手持ち・背中は1行)
             bool curTwo = a is { IsTwoHand: true };
-            bool quick = arms.QuickEquipSlot(w, out var quickSlot);
-            bool anyFits = false, quickFits = false;
+            bool anyFits = false;
             cardRowCount = w.IsTwoHand || to.Length == 1 ? 1 : CardRowMax;
             cardSlotW = cardCurW = cardWeightW = 0f;
             const string emptyPlain = "空き";
@@ -454,12 +451,9 @@ namespace MeleeDuel
                 var cur = i == 0 ? a : b;
                 float after = arms.WeightIfEquipped(w, slot);
                 bool fits = arms.Fits(after);
-                bool here = quick && fits && (w.IsTwoHand || slot == quickSlot);
                 anyFits |= fits;
-                quickFits |= here;
-                cardRowQuick[i] = here;
                 string slotName = w.IsTwoHand ? "両手" : DuelWeapon.SlotName(slot);
-                cardRowSlot[i] = !fits ? "<color=" + PickRed + ">" + slotName + "</color>" : here ? "<color=" + PickCyan + ">" + slotName + "</color>" : slotName;
+                cardRowSlot[i] = fits ? slotName : "<color=" + PickRed + ">" + slotName + "</color>";
                 string weightPlain = (fits ? "→ 重さ " : "重すぎる ") + after.ToString("0") + "/" + maxText;
                 cardRowWeight[i] = "<color=" + (fits ? "#C8C8C8" : PickRed) + ">" + weightPlain + "</color>";
                 // 今そこにある武装と、比べる相手。両手持ちを付けるときは右手・左手の両方が外れ、同じ仲間のほう(右手が先)と比べる
@@ -473,13 +467,10 @@ namespace MeleeDuel
                 // 列の幅は、色のタグを抜いた文字で測る
                 string curPlain = !occupied ? emptyPlain : bothHands ? "右 " + Plain(a) + " ・ 左 " + Plain(b) : Plain(cur) + twoNote;
                 cardPack.Clear();
-                if (!occupied)
-                {
-                    if (here) cardPack.Add("<color=" + PickCyan + ">ここに付く</color>");
-                }
-                else if (cmp == w) cardPack.Add("<color=" + PickGrey + ">同じ武装(性能は同じ)</color>");
-                else if (!DuelWeapon.SameFamily(cmp, w)) cardPack.Add("<color=" + PickGrey + ">仲間が違うので比べない</color>");
-                else
+                // 差の列(空きなら比べる相手がないので、何も出さない)
+                if (occupied && cmp == w) cardPack.Add("<color=" + PickGrey + ">同じ武装(性能は同じ)</color>");
+                else if (occupied && !DuelWeapon.SameFamily(cmp, w)) cardPack.Add("<color=" + PickGrey + ">仲間が違うので比べない</color>");
+                else if (occupied)
                 {
                     if (bothHands && a != null && b != null) cardPack.Add("<color=" + PickGrey + ">" + cmp.name + "と比べて</color>");
                     int n0 = cardPack.Count;
@@ -508,9 +499,7 @@ namespace MeleeDuel
             int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
             float kept = arms.WeightIfStashed(w);
             cardPack.Clear();
-            cardPack.Add(quickFits ? "<color=" + PickCyan + ">" + equipBtn + " " + (w.IsTwoHand ? "両手" : DuelWeapon.SlotName(quickSlot)) + "に付ける</color>"
-                : !anyFits ? "<color=" + PickRed + ">" + equipBtn + " 付ける:重すぎる</color>"
-                : equipBtn + " 付ける");
+            cardPack.Add(anyFits ? equipBtn + " 付ける" : "<color=" + PickRed + ">" + equipBtn + " 付ける:重すぎる</color>");
             cardPack.Add(arms.Fits(kept)
                 ? keepBtn + " 持つ(重さ " + totalText + "→" + kept.ToString("0") + "/" + maxText + ")"
                 : "<color=" + PickRed + ">" + keepBtn + " 持つ:重すぎる(" + kept.ToString("0") + "/" + maxText + ")</color>");
@@ -572,19 +561,12 @@ namespace MeleeDuel
             for (int i = 0; i < cardRowCount; i++)
             {
                 var diff = cardRowDiff[i];
-                float rowH = Mathf.Max(1, diff.Count) * CardLine;
-                if (cardRowQuick[i])
-                {
-                    // 十字右の一押しで付く所:水色の薄い帯と左の線
-                    Chip(new Rect(x - 8f, y, cardInner + 16f, rowH), new Color(0.45f, 0.8f, 1f, 0.13f));
-                    Chip(new Rect(x - 8f, y, 3f, rowH), new Color(0.45f, 0.8f, 1f));
-                }
                 GUI.Label(new Rect(x, y, cardSlotW, CardTextH), cardRowSlot[i], richSmall);
                 GUI.Label(new Rect(curX, y, cardCurW, CardTextH), cardRowCur[i], richSmall);
                 for (int k = 0; k < diff.Count; k++)
                     GUI.Label(new Rect(diffX, y + k * CardLine, diffW, CardTextH), diff[k], richSmall);
                 GUI.Label(new Rect(x + cardInner - cardWeightW, y, cardWeightW, CardTextH), cardRowWeight[i], richRight);
-                y += rowH;
+                y += Mathf.Max(1, diff.Count) * CardLine;
             }
             Chip(new Rect(x, y + 4f, cardInner, 1f), new Color(1f, 1f, 1f, 0.16f));
             y += CardDivider;

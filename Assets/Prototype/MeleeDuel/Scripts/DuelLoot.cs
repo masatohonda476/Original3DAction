@@ -6,10 +6,11 @@ namespace MeleeDuel
 {
     /// <summary>
     /// 落ちている武装(ステージだけ)。倒した敵が落とし、真下の床まで落ちて、レア度の色の光の柱を立てる。時間では消えない。
-    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で付ける(空きがあれば一押し。なければ手・肩は付け先を R1/L1・R2/L2 で選ぶ。DuelArms)、
+    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で付ける(手・肩は付け先を R1/L1・R2/L2 で選ぶ。DuelArms)、
     /// 十字下(G)で所持品へ、十字上(F)で分解(弾か回復)。無視すれば残る。
-    /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。置いた直後は拾う案内の対象にしない
-    /// (HoldGuide。自機が拾える範囲から一度出るか SwapGuideHold 秒たつまで。案内が消えず、続けて押すと外した武装を拾い直してしまうので)。
+    /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。置いた直後から拾えるが、拾う案内の優先度は低い
+    /// (LowerPriority。作者「落とした後すぐ触れるようにはしてほしい(優先度を下げるだけ)」):拾える範囲にふつうの武装があればそちらが対象で、
+    /// なければ外した武装が対象になる。優先度が戻るのは、自機がその武装の拾える範囲から一度出たときだけ(時間では戻さない。RestorePriorities)。
     /// ボスを倒したら全部消える。
     /// </summary>
     public class DuelLoot : MonoBehaviour
@@ -18,8 +19,6 @@ namespace MeleeDuel
         public const float PickRadius = 8f, PickHeight = 12f;
         /// <summary>床からの浮き(見た目の中心の高さ)。</summary>
         const float Hover = 1.5f;
-        /// <summary>付け替えで床に置いた武装を、置いてから拾う案内の対象にしない秒数(自機が拾える範囲から一度出れば、それより早く解ける)。</summary>
-        public const float SwapGuideHold = 3f;
 
         public DuelWeapon Weapon { get; private set; }
         /// <summary>
@@ -33,10 +32,10 @@ namespace MeleeDuel
         float vy, t;
         Vector3 kick;
         bool landed;
-        /// <summary>拾う案内の対象にしない期限(Time.time。負なら抑えていない)。</summary>
-        float guideHoldUntil = -1f;
-        /// <summary>案内を抑えている武装が1つでもあるか(なければ UpdateGuideHolds は何もしない)。</summary>
-        static bool anyHeld;
+        /// <summary>拾う案内の優先度が低い(付け替えで床に置いた武装。自機が拾える範囲から一度出るまで)。</summary>
+        bool lowPriority;
+        /// <summary>優先度の低い武装が1つでもあるか(なければ RestorePriorities は何もしない)。</summary>
+        static bool anyLowPriority;
 
         /// <summary>pos に武装を落とす(少し跳ねて、真下の床まで落ちる)。</summary>
         public static DuelLoot Drop(DuelWeapon w, Vector3 pos, Vector3 kick) => Spawn(w, pos, 12f, kick);
@@ -70,32 +69,31 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// 拾う案内の対象にしばらくしない(付け替えで床に置いた武装。DuelArms.Equip)。
-        /// 解けるのは、自機が拾える範囲から一度出たときか、SwapGuideHold 秒たったときの早いほう(UpdateGuideHolds)。
-        /// ただし、ほかの武装が案内の対象になっている間は時間では解かない(範囲を出たときだけ)。
+        /// 拾う案内の優先度を下げる(付け替えで床に置いた武装。DuelArms.Equip)。置いた直後から拾えるが、
+        /// 拾える範囲にふつうの武装があれば、そちらが先に案内の対象になる(Nearest)。
+        /// 戻るのは、自機がその武装の拾える範囲から一度出たときだけ(RestorePriorities)。
         /// </summary>
-        public void HoldGuide()
+        public void LowerPriority()
         {
-            guideHoldUntil = Time.time + SwapGuideHold;
-            anyHeld = true;
+            lowPriority = true;
+            anyLowPriority = true;
         }
 
         /// <summary>
-        /// 案内を抑えている武装を、解けるか調べる(DuelArms.Tick から毎フレーム。空中にいて Nearest を呼ばない間も、範囲から出たことを数える)。
-        /// 見通しは見ない(拾える距離・高さの外に出たかだけ)。
-        /// timeCanRelease が偽(ほかの武装が案内の対象になっている)の間は、時間では解かない。
-        /// 動いていないのに対象が外した武装へ入れ替わり、読んでいるカードがすり替わる・選んでいる途中の表示が黙って閉じるのを防ぐ。
+        /// 優先度の低い武装のうち、自機が拾える範囲(距離・高さ。見通しは見ない)から出たものを、ふつうの優先度に戻す
+        /// (DuelArms.Tick から毎フレーム。空中にいて Nearest を呼ばない間も、範囲から出たことを数える。範囲の中で空中に出ただけでは戻さない)。
+        /// 時間では戻さない:戻る武装はそのとき範囲の外なので、自機が動いていないのに案内の対象が入れ替わることがない
+        /// (読んでいるカードがすり替わる・付け先や分解を選んでいる途中の表示が Choosing != Nearby で黙って閉じる、を起こさない)。
         /// </summary>
-        public static void UpdateGuideHolds(DuelFighter who, bool timeCanRelease)
+        public static void RestorePriorities(DuelFighter who)
         {
-            if (!anyHeld) return;
-            anyHeld = false;
-            float now = Time.time;
+            if (!anyLowPriority) return;
+            anyLowPriority = false;
             foreach (var l in all)
             {
-                if (l == null || l.guideHoldUntil < 0f) continue;
-                if ((timeCanRelease && now >= l.guideHoldUntil) || !l.InPickRange(who, out _)) l.guideHoldUntil = -1f;
-                else anyHeld = true;
+                if (l == null || !l.lowPriority) continue;
+                if (!l.InPickRange(who, out _)) l.lowPriority = false;
+                else anyLowPriority = true;
             }
         }
 
@@ -109,20 +107,33 @@ namespace MeleeDuel
             return dist <= PickRadius + who.Radius && Mathf.Abs(dy) < PickHeight;
         }
 
-        /// <summary>拾える範囲にある一番近い武装(壁・床ごしのもの、付け替えで置いたばかりで案内を抑えているものは除く。なければ null)。</summary>
+        /// <summary>
+        /// 拾う案内の対象:拾える範囲にあって壁・床ごしでない武装のうち、ふつうの優先度の一番近いもの。
+        /// それがなければ、優先度の低い武装(付け替えで置いたもの。LowerPriority)の一番近いもの。どちらもなければ null。
+        /// </summary>
         public static DuelLoot Nearest(DuelFighter who)
         {
-            DuelLoot best = null;
-            float bestD = float.MaxValue;
+            DuelLoot best = null, bestLow = null;
+            float bestD = float.MaxValue, bestLowD = float.MaxValue;
             foreach (var l in all)
             {
-                if (l == null || l.guideHoldUntil >= 0f) continue;
-                if (!l.InPickRange(who, out float dist) || dist >= bestD) continue;
+                if (l == null) continue;
+                // ふつうの武装が見つかった後は、優先度の低い武装は調べない(見通しのレイを飛ばさない)
+                if (l.lowPriority && best != null) continue;
+                if (!l.InPickRange(who, out float dist) || dist >= (l.lowPriority ? bestLowD : bestD)) continue;
                 if (!DuelSenses.ClearSight(who.Chest, l.transform.position + Vector3.up)) continue;
-                bestD = dist;
-                best = l;
+                if (l.lowPriority)
+                {
+                    bestLowD = dist;
+                    bestLow = l;
+                }
+                else
+                {
+                    bestD = dist;
+                    best = l;
+                }
             }
-            return best;
+            return best != null ? best : bestLow;
         }
 
         /// <summary>拾った:光って消える。</summary>

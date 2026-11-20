@@ -176,7 +176,7 @@ namespace MeleeDuel
                 if (w != null) GUI.Label(new Rect(tx, y + 29f, tw, 22f), viewStats[i], richSmall);
                 // 3行目:使うボタン(処分の途中は、その選び方に替える)
                 GUI.color = armed ? Color.white : new Color(1f, 1f, 1f, 0.6f);
-                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? DisposeLine(arms, w, block, selTwo) : viewUse[i], richSmall);
+                GUI.Label(new Rect(tx, y + (w != null ? 51f : 29f), tw, 22f), armed ? DisposeLine(arms, w, block, selTwo, arms.MagAmmo((DuelSlot)i)) : viewUse[i], richSmall);
                 GUI.color = Color.white;
                 y += rowH;
             }
@@ -200,15 +200,19 @@ namespace MeleeDuel
             GUI.color = Color.white;
         }
 
-        // 処分の1行(捨てる・弾にする・回復にする・やめる)。武装・捨てられない理由・機器が変わったときだけ作る
-        (DuelWeapon w, int block, bool two, ProtoInput.Device dev, bool ammoFull, bool hpFull) disposeKey;
+        // 処分の1行(捨てる・弾にする・回復にする・やめる)。武装・弾倉の残りの分・捨てられない理由・機器が変わったときだけ作る
+        (DuelWeapon w, int block, bool two, ProtoInput.Device dev, bool ammoFull, bool hpFull, float mag) disposeKey;
         string disposeText;
 
-        /// <summary>処分の選び方:「処分  [□] 床に捨てる  [←] 弾にする +24  [→] 回復にする +13  [○] やめる」(捨てられない・回復できないときは灰色で理由)。</summary>
-        string DisposeLine(DuelArms arms, DuelWeapon w, int block, bool two)
+        /// <summary>
+        /// 処分の選び方:「処分  [□] 床に捨てる  [←] 弾にする +24  [→] 回復にする +13  [○] やめる」(捨てられない・回復できないときは灰色で理由)。
+        /// mag は弾倉の残りの分(DuelArms.MagAmmo。分解すると、弾にしても回復にしても共通の弾へ戻る):
+        /// 「弾にする +37(弾倉 12 込み)」「回復にする +13・弾 +12」。
+        /// </summary>
+        string DisposeLine(DuelArms arms, DuelWeapon w, int block, bool two, float mag)
         {
             bool ammoFull = arms.SalvageUseless(false), hpFull = arms.SalvageUseless(true);
-            var key = (w, block, two, ProtoInput.Current, ammoFull, hpFull);
+            var key = (w, block, two, ProtoInput.Current, ammoFull, hpFull, mag);
             if (disposeText != null && disposeKey == key) return disposeText;
             disposeKey = key;
             bool kb = ProtoInput.Current == ProtoInput.Device.Keyboard;
@@ -223,8 +227,10 @@ namespace MeleeDuel
             string why = block switch { 2 => "ボスの後は捨てられない", 3 => "真下に床がない", _ => "" };
             string dropPart = block == 0 ? $"[{drop}] {(two ? "両手の武装を" : "")}床に捨てる" : $"<color=#888888>[{drop}] {why}</color>";
             // 弾が上限・HP が満タンなら、分解しても何も得ないので赤く「上限」「満タン」(押しても分解しない)
-            string ammoPart = ammoFull ? $"<color=#FF7A6A>[{left}] 弾は上限</color>" : $"[{left}] 弾にする +{arms.SalvageAmmo(w)}";
-            string healPart = hpFull ? $"<color=#FF7A6A>[{right}] HP は満タン</color>" : $"[{right}] 回復にする +{arms.SalvageHeal(w)}";
+            string ammoPart = ammoFull ? $"<color=#FF7A6A>[{left}] 弾は上限</color>"
+                : $"[{left}] 弾にする +{arms.SalvageAmmo(w) + mag:0.#}" + (mag > 0f ? $"(弾倉 {mag:0.#} 込み)" : "");
+            string healPart = hpFull ? $"<color=#FF7A6A>[{right}] HP は満タン</color>"
+                : $"[{right}] 回復にする +{arms.SalvageHeal(w)}" + (mag > 0f && !ammoFull ? $"・弾 +{mag:0.#}" : "");
             disposeText = $"<color=#FF8A70><b>処分</b></color>  {dropPart}   {ammoPart}   {healPart}   [{back}] やめる";
             return disposeText;
         }
@@ -233,7 +239,7 @@ namespace MeleeDuel
         readonly List<DuelArms.Carried> stashRowKey = new();
         readonly List<string> stashRowName = new(), stashRowWeight = new();
         ProtoInput.Device stashRowDev;
-        (DuelWeapon w, bool armed, int block, ProtoInput.Device dev) stashHintKey;
+        (DuelWeapon w, bool armed, int block, ProtoInput.Device dev, float mag) stashHintKey;
         string stashHint, stashHead, stashTitle, stashEmpty, stashRange;
         int stashTitleN = -1;
         ProtoInput.Device stashEmptyDev;
@@ -337,12 +343,13 @@ namespace MeleeDuel
             GUI.DrawTexture(new Rect(x + pad, y + h - hintH, w - pad * 2f, 1f), Texture2D.whiteTexture);
             GUI.color = Color.white;
             var sw = sel >= 0 && sel < stash.Count ? stash[sel].w : null;
-            var key = (sw, dropArmed, block, ProtoInput.Current);
+            float smag = sw != null ? arms.MagAmmo(stash[sel]) : 0f;   // 同じ種類の銃でも、弾倉の残りで分解の量が変わる
+            var key = (sw, dropArmed, block, ProtoInput.Current, smag);
             if (stashHint == null || stashHintKey != key)
             {
                 stashHintKey = key;
                 if (sw == null) stashHint = $"<color=#999999>{(ProtoInput.Current == ProtoInput.Device.Keyboard ? "↓/S" : "↓")} で所持品を選ぶ</color>";
-                else if (dropArmed) stashHint = DisposeLine(arms, sw, block, false);
+                else if (dropArmed) stashHint = DisposeLine(arms, sw, block, false, smag);
                 else
                 {
                     var sb = new System.Text.StringBuilder();

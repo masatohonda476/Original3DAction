@@ -198,14 +198,13 @@ namespace MeleeDuel
                 GUI.Label(new Rect(cx - hw, cy - hh - 16f, 200f, 16f), label, cellTiny);
             }
             // 真ん中の十字:弾が飛んでいく所(吸い付きを入れた狙いの先。DuelArms.ShotPoint)に出す。4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
-            if (spread >= 0f)
+            // 弾が飛んでいく所がカメラの後ろ(自機がカメラの方を向いている。射撃では向き直らない)なら、十字は出さない
+            // (作者「視界外に十字がいくと画面中央に十字が表示されるのをやめてください」。前は画面の中央に出ていた)。カメラの前で画面の外なら、画面の外に描かれて見えない
+            Vector3 shotSp = arms.ShotPoint is Vector3 shot ? cam.WorldToScreenPoint(shot) : Vector3.forward;
+            if (spread >= 0f && shotSp.z > 0f)
             {
                 float sx = cx, sy = cy;
-                if (arms.ShotPoint is Vector3 shot)
-                {
-                    Vector3 sp = cam.WorldToScreenPoint(shot);
-                    if (sp.z > 0f) { sx = sp.x / uiScale; sy = SH - sp.y / uiScale; }
-                }
+                if (arms.ShotPoint != null) { sx = shotSp.x / uiScale; sy = SH - shotSp.y / uiScale; }
                 // 見た目だけ、出す所へ CrossFollowTime 秒ほどで追いつかせる(狙いが急に変わっても跳ばずに滑る。弾の向きは変えない。作者「見た目だけでも間を補正とかできますか？」)
                 float now = Time.unscaledTime;
                 if (crossShownAt < 0f || now - crossShownAt > 0.2f) crossPos = new Vector2(sx, sy);   // しばらく出していなければ、その場に出す

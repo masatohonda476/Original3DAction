@@ -133,7 +133,7 @@ namespace MeleeDuel
                 if (RawHeld(b) || RawPressed(b)) suppress[b] = true;
         }
 
-        /// <summary>付け先を選ぶ表示の途中なら取り消す(装備の確認を開いたとき)。L1 の溜めもやめる(閉じた後に、離したことになって撃たないように)。</summary>
+        /// <summary>付け先を選ぶ表示の途中なら取り消す(メニューを開いたとき)。L1 の溜めもやめる(閉じた後に、離したことになって撃たないように)。</summary>
         public void CancelChoice()
         {
             StopCharge();
@@ -141,7 +141,7 @@ namespace MeleeDuel
             if (Choosing != null) EndChoice();
         }
 
-        /// <summary>先行入力(押してからの受付時間内の射撃)を捨てる。装備の確認を開いたとき(閉じた直後に撃たないように)。</summary>
+        /// <summary>先行入力(押してからの受付時間内の射撃)を捨てる。メニューを開いたとき(閉じた直後に撃たないように)。</summary>
         public void ClearBufferedInput()
         {
             for (int i = 0; i < StateCount; i++) pressedAt[i] = -10f;

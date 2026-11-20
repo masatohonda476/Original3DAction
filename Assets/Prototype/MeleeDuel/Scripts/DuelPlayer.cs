@@ -292,7 +292,7 @@ namespace MeleeDuel
 
         void Update()
         {
-            if (DuelGame.Paused) return;   // 装備の確認を開いている間は止める
+            if (DuelGame.Paused) return;   // メニュー(装備の確認・操作方法)を開いている間は止める
             float dt = Time.deltaTime;
             float now = Time.time;
             stateT += dt;
@@ -430,7 +430,7 @@ namespace MeleeDuel
             if (ProtoInput.Dodge) dodgePressedAt = now;
         }
 
-        /// <summary>先行入力(押してからの受付時間内の攻撃・回避)を捨てる。装備の確認を開いたとき(閉じた直後に出ないように)。</summary>
+        /// <summary>先行入力(押してからの受付時間内の攻撃・回避)を捨てる。メニューを開いたとき(閉じた直後に出ないように)。</summary>
         public void ClearBufferedInput()
         {
             lightPressedAt = -10f;

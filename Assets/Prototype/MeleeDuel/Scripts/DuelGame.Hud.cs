@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace MeleeDuel
 {
-    // DuelGame の画面の表示:ゲージ・照準・ロックオンの印と照準枠・頭上のゲージ・ステージの知らせ・操作説明(partial。本体は DuelGame.cs)
+    // DuelGame の画面の表示:ゲージ・照準・ロックオンの印と照準枠・頭上のゲージ・ステージの知らせ・左下のメニューの案内(partial。本体は DuelGame.cs)
     public partial class DuelGame
     {
         // ───────── 画面 ─────────
@@ -42,20 +42,18 @@ namespace MeleeDuel
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
             ProtoDamageText.Draw(cam, uiScale, SH);
             if (player == null) return;
-            if (!equipOpen)
+            if (!MenuOpen)
             {
                 DrawAimFrames(player.Arms, cam);   // 照準の枠は、ほかの表示より奥に描く
                 DrawHitMark(player.Arms);
             }
 
-            // 左下:自機のHP・EN、その下に操作説明。操作説明は右下の武装の欄の手前で折り返し、
-            // 3行以上になるときは全体を上へずらす(2行までなら今までと同じ高さ)。
+            // 左下:自機のHP・EN、その下にメニューを開くボタンの短い案内を1行。
+            // 操作方法は出し続けず、メニューの「操作方法」のページで見せる(作者「操作方法は常に出すのではなく、オプションにメニューを出してください」。DuelGame.Menu.cs)。
             // ガードのゲージは、右下の武装の欄の盾のセルに出す(ArmCell)。左下には出さない
-            string help = Help();
+            const float hintH = 24f;
             float x = 24f;
-            float helpW = ArmsLeft - 16f - x;
-            float helpH = HelpHeight(help, helpW);
-            float y = SH - 8f - helpH - 44f;
+            float y = SH - 8f - hintH - 44f;
             leftTop = y - 5f;
             Bar(new Rect(x, y, 300f, 14f), player.HP / player.MaxHP, new Color(0.35f, 0.85f, 0.45f));
             GUI.Label(new Rect(x + 308f, y - 5f, 120f, 24f), $"HP {Mathf.CeilToInt(player.HP)}", small);
@@ -75,13 +73,15 @@ namespace MeleeDuel
                 (minus ? $"EN {Mathf.FloorToInt(player.Energy)}(回復待ち)" : $"EN {Mathf.FloorToInt(player.Energy)}") + (player.BoostOn ? "  ブースト" : ""), small);
             GUI.color = Color.white;
             y += 22f;
-            GUI.Label(new Rect(x, y, helpW, helpH), help, small);   // 長ければ折り返す(キーボードの表記は長い)
+            GUI.color = new Color(1f, 1f, 1f, 0.8f);   // HP・EN より控えめに
+            GUI.Label(new Rect(x, y - 2f, ArmsLeft - 16f - x, hintH), MenuHint(), small);
+            GUI.color = Color.white;
             DrawArms(player.Arms);
-            if (!equipOpen) DrawPickup(player.Arms);
+            if (!MenuOpen) DrawPickup(player.Arms);
             // 両手の銃・砲の溜め撃ち:照準の少し下に溜まり具合(溜まったら白)
             float charge = player.Arms.Charge01;
             Vector2 cc = CursorScreen(player.Arms);
-            if (charge > 0f && !equipOpen) Bar(new Rect(cc.x - 60f, cc.y + 46f, 120f, 6f), charge, charge >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
+            if (charge > 0f && !MenuOpen) Bar(new Rect(cc.x - 60f, cc.y + 46f, 120f, 6f), charge, charge >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
 
             // ロックオンの印は四つの角の枠だけ(敵を囲む。DrawLockCorners)。胸の上の白い十字は、枠と二重になるのでやめた(作者「敵の上で印が重なる」→「A」)
             var e = player.Target;
@@ -130,7 +130,7 @@ namespace MeleeDuel
 
             DrawStage();
             if (player.Dead) GUI.Label(new Rect(0f, SH * 0.4f, SW, 50f), "撃墜 ― セーブポイントから再開します", big);
-            if (equipOpen) DrawEquipView(player.Arms);
+            if (MenuOpen) DrawMenu(player.Arms);   // メニュー(項目・装備の確認・操作方法)は、ほかの表示の上に描く
         }
 
         // ───────── 照準の枠(射撃だけ) ─────────
@@ -374,7 +374,7 @@ namespace MeleeDuel
                 lockOnAt = on ? now : -1f;
                 lockOffAt = on ? -1f : now;
             }
-            if (player.Dead || equipOpen)
+            if (player.Dead || MenuOpen)
             {
                 lockOnAt = lockOffAt = -1f;
                 lockCornersShown = false;
@@ -621,26 +621,8 @@ namespace MeleeDuel
             }
         }
 
-        // 操作説明の文字列は、中身が変わったときだけ作り直す(OnGUI は1フレームに何度も呼ばれる)
-        (ProtoInput.Device dev, DuelWeapon two, bool reload) helpKey;
-        string helpText;
-        // 操作説明の高さ(折り返した行数で決まる。文字列か幅が変わったときだけ測り直す)
-        string helpHText;
-        float helpHW = -1f, helpHCached = 44f;
-        /// <summary>左下の HP・EN と操作説明のまとまりの上端(拾う案内をこれより上に出す)。</summary>
+        /// <summary>左下の HP・EN とメニューの案内のまとまりの上端(拾う案内をこれより上に出す)。</summary>
         float leftTop;
-
-        /// <summary>操作説明の高さ(2行分より低くはしない)。</summary>
-        float HelpHeight(string help, float w)
-        {
-            if (!ReferenceEquals(help, helpHText) || !Mathf.Approximately(w, helpHW))
-            {
-                helpHText = help;
-                helpHW = w;
-                helpHCached = Mathf.Max(44f, small.CalcHeight(new GUIContent(help), w));
-            }
-            return helpHCached;
-        }
 
         /// <summary>その所を使うボタンの名前(背中はなし)。</summary>
         static string SlotButton(DuelSlot s) => s switch
@@ -663,50 +645,6 @@ namespace MeleeDuel
                 return $"{r1} {w.MainMoveName}  {l1} {w.altMove}  {ProtoInput.L(ProtoInput.Btn.Aim)}+{r1}/{l1} 強攻撃  回避の後に {r1} 回避斬り・{l1} {w.altMove}  (ガードなし)";
             string alt = w.alt is { charge: > 0f } ? $"{w.altMove}(押して溜め、離して撃つ)" : w.altMove;
             return $"{r1} {w.MainMoveName}  {l1} {alt}  (ガードなし)";
-        }
-
-        /// <summary>操作説明。ボタン名は使っているコントローラー(キーボード / PlayStation / Xbox)に合わせる。変わったときだけ作り直す。</summary>
-        string Help()
-        {
-            var dev = ProtoInput.Current;
-            var two = player.Arms.TwoHanded ? player.Arms.Get(DuelSlot.RightHand) : null;
-            bool reload = player.Arms.AnyReloadable;   // 弾倉のある銃を付けているときだけ「△+撃つボタン リロード」を出す
-            var key = (dev, two, reload);
-            if (helpKey == key && helpText != null) return helpText;
-            helpKey = key;
-            static string B(ProtoInput.Btn b) => ProtoInput.L(b);
-            bool kb = dev == ProtoInput.Device.Keyboard;
-            // ロックオンのボタンはオン・オフの切り替え(電脳斬禅と同じ)。狙う敵の切り替え:撃っていないときに右スティック(マウスは左右に振る)を左右に弾く。
-            // R3 / Tab でも切り替わる(オフのときに押すとオンに戻る)。ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない
-            string lockSwitch = kb ? "  ロックオン中にマウスを左右に振る/Tab 狙う敵を変更" : "  ロックオン中に右スティックを左右に弾く/R3 狙う敵を変更";
-            // 銃・砲のボタンを押している間(と撃ってから少しの間)は、右スティック・マウスで画面の上の照準を動かす(カメラは回さない)
-            string aimMove = !DuelArmsRules.Current.cursorMovable ? "" : kb ? "  撃つボタンを押している間 マウス 照準を動かす" : "  撃つボタンを押している間 右スティック 照準を動かす";
-            var sb = new System.Text.StringBuilder();
-            if (two != null)
-            {
-                // 両手持ち:R1 が主の技、L1 が別の技
-                sb.Append(B(ProtoInput.Btn.R1)).Append(' ').Append(two.MainMoveName);
-                sb.Append("  ").Append(B(ProtoInput.Btn.L1)).Append(' ').Append(two.altMove).Append(two.alt is { charge: > 0f } ? "(溜めて離す)" : "");
-                if (two.IsBlade) sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 強攻撃");
-            }
-            else
-            {
-                // 手のボタンはその手の武装(剣=攻撃 / 盾=ガード / 銃=射撃)
-                sb.Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 右手/左手の武装");
-                sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append('+').Append(B(ProtoInput.Btn.R1)).Append('/').Append(B(ProtoInput.Btn.L1)).Append(" 強攻撃");
-            }
-            if (reload) sb.Append("  ").Append(B(ProtoInput.Btn.Aim)).Append("+撃つボタン リロード");
-            sb.Append(aimMove);
-            sb.Append("  ").Append(B(ProtoInput.Btn.R2)).Append('/').Append(B(ProtoInput.Btn.L2)).Append(" 右肩/左肩");
-            sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
-            sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
-            sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
-            sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 付ける→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
-            sb.Append("  ").Append(B(ProtoInput.Btn.Stash)).Append(" 持つ  ").Append(B(ProtoInput.Btn.Break)).Append(" 分解(弾か回復)");
-            sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン切替").Append(lockSwitch);
-            sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・所持品");
-            helpText = sb.ToString();
-            return helpText;
         }
 
         void Bar(Rect r, float k, Color c)

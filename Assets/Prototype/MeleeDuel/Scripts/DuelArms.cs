@@ -400,7 +400,7 @@ namespace MeleeDuel
         public float CooldownLeft(DuelSlot s) => cdShown[(int)s] ? Mathf.Max(0f, cd[(int)s]) : 0f;   // 付けた直後の待ちは出さない
         /// <summary>L1 の撃ち方が次に撃てるまでの残り(秒)。</summary>
         public float AltCooldownLeft => AltFire != null && cdShown[AltIndex] ? Mathf.Max(0f, cd[AltIndex]) : 0f;
-        /// <summary>手動でリロードできる銃(弾倉のある銃)をどこかに付けている(操作説明に「△+撃つボタン リロード」を出すか)。</summary>
+        /// <summary>手動でリロードできる銃(弾倉のある銃)をどこかに付けている(メニューの操作方法のページに「△+撃つボタン リロード」を出すか)。</summary>
         public bool AnyReloadable
         {
             get

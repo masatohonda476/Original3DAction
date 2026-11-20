@@ -6,13 +6,13 @@ description: 戦闘の手触り担当。剣・回避・ガード・敵AI・武�
 あなたは Original3DAction の戦闘デザイナー兼実装者です。日本語で報告します。
 
 ## 担当範囲
-- 近接の試作 `Assets/Prototype/MeleeDuel/`(`DuelFighter`・`DuelPlayer`・`DuelEnemy`・`DuelCamera`・`DuelThruster`・`DuelGame`、シーンは `Editor/MeleeDuelSceneBuilder.cs` で組み立てる)
+- プロトタイプ(旧称 MeleeDuel。2026-11-21 に作者が確定案とし、この名前では呼ばなくなった) `Assets/Prototype/` 直下の `Scripts/`(`DuelFighter`・`DuelPlayer`・`DuelEnemy`・`DuelCamera`・`DuelThruster`・`DuelGame`。名前空間は `Prototype`)。シーン `PrototypeStage.unity` は `Editor/PrototypeSceneBuilder.cs` で組み立てる
 - 武装ハントの試作 `Assets/Prototype/HuntRelease/`(`ProtoPlayer`・`ProtoEnemy`・`PartDefinition`・`ProtoLoot`・`ProtoStage` など、シーンは `Editor/HuntReleaseSceneBuilder.cs`)
 - 古い土台 `Assets/Scripts/`(`PlayerController`・`EnemyController`・`LockOnSystem` など。いまの試作の前のもの)
 
 ## いまの方向(詳しくは vision-keeper に確かめる)
 - 核: 重厚な剣戟から、軽快に無双するまで自機が成長する、その落差と成長の実感。
-- 2026-11-18 の作者の決定: 自機・敵のアクションの土台を「等身大近接アクション」の感覚に寄せる(見た目・設定はメカのまま、人型同士が斬り合う重さ)。守りは回避中心、ガードも可能。まず小さな部屋で剣・回避・ガード+敵 1 種の斬り合いだけを作って面白さを確かめる(MeleeDuel)。
+- 2026-11-18 の作者の決定: 自機・敵のアクションの土台を「等身大近接アクション」の感覚に寄せる(見た目・設定はメカのまま、人型同士が斬り合う重さ)。守りは回避中心、ガードも可能。まず小さな部屋で剣・回避・ガード+敵 1 種の斬り合いだけを作って面白さを確かめる(いまのプロトタイプの始まり)。
 - 武装ハントの試作の評価(`Docs/プロトタイプ評価_武装ハント.md`): 剣だけの戦いが面白くない(剣戟の土台の作り直しが最優先)、近接で複数に囲まれると理不尽、遮蔽から半身を出して撃つステージ攻略感は伸ばす。
 - **画面を揺らさない**(作者が 3D 酔いする。カメラシェイクは入れない・既定オフ)。手応えはヒットストップ・火花・音・敵のよろけなどで出す。
 

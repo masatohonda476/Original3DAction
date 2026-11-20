@@ -19,7 +19,7 @@ model: sonnet
 
 ## 衝突の解き方(Unity 特有)
 - `.cs`: 両方の意図を読んで手で合わせる。どちらの意図か分からないものは勝手に選ばず報告する。
-- `.unity` / `.prefab` / `.asset`(YAML): 手で混ぜると壊れやすい。試作のシーンはシーンビルダー(`Assets/Prototype/*/Editor/*SceneBuilder.cs`)で組み立て直せるので、ビルダーのコードを合わせて、シーンは片方を採ったうえで組み立て直す方針を提案する。
+- `.unity` / `.prefab` / `.asset`(YAML): 手で混ぜると壊れやすい。試作のシーンはシーンビルダー(`Assets/Prototype/**/Editor/*SceneBuilder.cs`)で組み立て直せるので、ビルダーのコードを合わせて、シーンは片方を採ったうえで組み立て直す方針を提案する。
 - `ProjectSettings/`・`Packages/manifest.json`・`packages-lock.json`: エディターが自動で書き換えることが多い。片方の意図(パッケージの追加・版上げ)がはっきりしていればそれを採り、分からなければ報告する。
 - `.meta`: GUID が食い違うと参照が切れる。どちらの GUID が他から参照されているかを `grep -r <guid> Assets` で確かめてから選ぶ。
 - `.fbx`・画像などの LFS のバイナリ: 混ぜられない。どちらを採るか作者に確認する。

@@ -31,6 +31,8 @@ namespace MeleeDuel
         public float dashSpeed = 35f;
         [Tooltip("ブーストで移動している間に1秒あたり使うEN(止まっている間は使わない)")]
         public float dashCost = 30f;
+        [Tooltip("空中でブースト移動している間の、dashCost への倍率(0.5 で半分)。上昇(flyCost)には掛からない")]
+        public float airDashCostMul = 0.5f;
         [Tooltip("✗長押しで飛んでいる間に1秒あたり使うEN")]
         public float flyCost = 25f;
         [Tooltip("飛ぶときの上昇の速さ")]
@@ -358,7 +360,8 @@ namespace MeleeDuel
                     vel = worldMove * spd;
                     if (Dashing)
                     {
-                        Energy -= dashCost * EnCostMul * dt;
+                        // 空中の横移動は半分(作者「空中のブースト移動(上昇ではない)はエネルギー消費を半減」)。✗ で上昇する分(flyCost)はそのまま
+                        Energy -= dashCost * (Airborne ? airDashCostMul : 1f) * EnCostMul * dt;
                         if (Energy <= 0f) energyUsedAt = now;   // 使い切ったときだけ回復を待たせる(飛ぶのと同じ)
                     }
                     // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)

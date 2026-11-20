@@ -34,7 +34,7 @@ namespace MeleeDuel
         [Tooltip("空中でブースト移動している間の、dashCost への倍率(0.5 で半分)。上昇(flyCost)には掛からない")]
         public float airDashCostMul = 0.5f;
         [Tooltip("✗長押しで飛んでいる間に1秒あたり使うEN")]
-        public float flyCost = 25f;
+        public float flyCost = 35f;
         [Tooltip("飛ぶときの上昇の速さ")]
         public float flyRiseSpeed = 20f;
         [Tooltip("飛び始めの上昇の加速(小さいほど、ふわっと浮き上がる)")]

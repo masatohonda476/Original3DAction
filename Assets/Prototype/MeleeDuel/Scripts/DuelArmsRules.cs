@@ -104,7 +104,7 @@ namespace MeleeDuel
         [Range(0f, 1f)] public float stockWeightRate = 1f;
 
         [Header("共通の弾(実弾の銃・砲・ミサイルが使う。エネルギー武器は弾の代わりにENを使う)")]
-        public float ammoMax = 300f;
+        public float ammoMax = 500f;
         [Tooltip("弧の始め(最初から・F1)の弾")]
         public float ammoStart = 30f;
 

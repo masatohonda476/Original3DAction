@@ -57,7 +57,7 @@ namespace MeleeDuel
                 float jitter = w.spread + bloom[i];
                 for (int p = 0; p < n; p++)
                 {
-                    if (speed > 0f) StartCoroutine(Fly(from, Jitter(dir, jitter), w, c, n > 1, speed, false));   // 見える弾が速さを持って飛ぶ
+                    if (speed > 0f) StartCoroutine(Fly(from, Jitter(dir, jitter), w, c, n > 1, speed, false, CursorInView));   // 見える弾が速さを持って飛ぶ
                     else Shot(from, Jitter(dir, jitter), w, c, n > 1);
                 }
                 AddRecoil(i, w);
@@ -77,29 +77,31 @@ namespace MeleeDuel
             bloom[i] = Mathf.Min(Mathf.Max(0f, w.recoilMax) * mul, bloom[i] + w.recoilPerShot * mul);
         }
 
-        /// <summary>銃の弾が敵 e の at に当たった:当てて、当たった所から火花を出し、ヒットマーカー(Shot・Fly で同じ)。</summary>
-        void BulletHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelWeapon w, Color c, bool pellet)
+        /// <summary>銃の弾が敵 e の at に当たった:当てて、当たった所から火花を出し、ヒットマーカー(Shot・Fly で同じ。mark は NoteHit)。</summary>
+        void BulletHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelWeapon w, Color c, bool pellet, bool mark)
         {
             e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f);
             DuelSpark.Burst(at, -dir, c, pellet ? 2 : 3, 0.6f);
-            NoteHit(e);
+            NoteHit(e, mark);
         }
 
-        /// <summary>貫く弾が敵 e の at に当たった:当てて、太さに応じた火花を出し、ヒットマーカー(PierceShot・PierceSegment で同じ)。</summary>
-        void PierceHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelWeapon w, Color c)
+        /// <summary>貫く弾が敵 e の at に当たった:当てて、太さに応じた火花を出し、ヒットマーカー(PierceShot・PierceSegment で同じ。mark は NoteHit)。</summary>
+        void PierceHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelWeapon w, Color c, bool mark)
         {
             e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f);
             DuelSpark.Burst(at, -dir, c, 3, 0.6f + w.beamWidth * 0.2f);
-            NoteHit(e);
+            NoteHit(e, mark);
         }
 
         /// <summary>
         /// 射撃(銃・砲)が敵 e に当たった:照準の真ん中のヒットマーカーを出す。同じ瞬間に何発も当たったら(散弾・貫く弾・爆発)強い方の印。
         /// TakeRangedHit の後に呼ぶ(倒した・崩れている・崩せるを見分ける)。
+        /// mark は、その弾を撃ったときに照準の先が視界の中だったか(CursorInView)。視界の外へ撃った弾は、当たっても印を出さない
+        /// (撃ったあと向きを変えて照準の先が画面に戻っても、敵のいない所に印が出ないように。作者が 2 案から「撃ったときに視界外だった弾では出さない」)。
         /// </summary>
-        void NoteHit(DuelEnemy e)
+        void NoteHit(DuelEnemy e, bool mark)
         {
-            if (e == null) return;
+            if (e == null || !mark) return;
             float cap = game.rangedStaggerCap;
             int kind = e.Dead ? 3 : e.Flinching ? 2 : cap < 1f && e.Stagger >= e.maxStagger * cap - 0.01f ? 1 : 0;
             float now = Time.unscaledTime;
@@ -165,7 +167,7 @@ namespace MeleeDuel
             if (hitEnemy)
             {
                 end = from + dir * d;
-                BulletHit(e, end, dir, w, c, pellet);
+                BulletHit(e, end, dir, w, c, pellet, CursorInView);   // すぐ届く光線は、撃ったフレームに当たる(今の照準の先 = 撃ったときの照準の先)
             }
             else if (wall) DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
             Tracer(from, end, c, pellet ? 0.15f : 0.25f, !hitEnemy);
@@ -181,7 +183,7 @@ namespace MeleeDuel
                 if (e == null || e.Dead) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
-                PierceHit(e, from + dir * (s * len), dir, w, c);
+                PierceHit(e, from + dir * (s * len), dir, w, c, CursorInView);
                 any = true;
             }
             if (!any && wall is { } wh) DuelSpark.Burst(wh.point, wh.normal, c, 1, 0.45f);   // 外れて地形に当たった:小さな火花
@@ -237,7 +239,7 @@ namespace MeleeDuel
             AddRecoil(i, w);
             Kick(w);   // 照準そのものが上へずれる(カメラは動かさない)
             float speed = SpeedOf(w);
-            StartCoroutine(Fly(from, dir, w, ShellColor, false, speed > 0f ? speed : FallbackShellSpeed, true));
+            StartCoroutine(Fly(from, dir, w, ShellColor, false, speed > 0f ? speed : FallbackShellSpeed, true, CursorInView));
             return true;
         }
 
@@ -309,8 +311,9 @@ namespace MeleeDuel
         ///   銃の弾:最初に当たった敵に当てて火花とヒットマーカー、地形なら小さな火花で消える。貫く弾は地形・射程の端まで飛び、線の上の敵に1回ずつ当てる。
         ///   砲弾(explosive):敵・地形に当たるか射程の端で爆発する。
         /// 弾の筋は弾の尾(TrailRenderer)。止まったら球を隠して尾だけ消えていく。ヒットストップ中は止まる(Time.deltaTime)。
+        /// mark は、撃ったときに照準の先が視界の中だったか(当たったときにヒットマーカーを出すか。NoteHit)。弾ごとに覚えておく。
         /// </summary>
-        IEnumerator Fly(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet, float speed, bool explosive)
+        IEnumerator Fly(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet, float speed, bool explosive, bool mark)
         {
             var r = Rules;
             // 撃った自機の速度を弾が受け継ぐ(作者「弾は、停止中を狙うより、相対速度を合わせる方が楽しそうです」):
@@ -340,13 +343,13 @@ namespace MeleeDuel
                 float len = wall ? hit.distance : step;
                 if (pierced != null)
                 {
-                    if (PierceSegment(pos, dir, len, w, c, pierced) && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
+                    if (PierceSegment(pos, dir, len, w, c, pierced, mark) && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
                 }
                 else if (RayHitsEnemy(pos, dir, len, out var e, out float d))
                 {
                     Vector3 at = pos + dir * d;
-                    if (explosive) Explode(at, w, true);
-                    else BulletHit(e, at, dir, w, c, pellet);
+                    if (explosive) Explode(at, w, true, mark);
+                    else BulletHit(e, at, dir, w, c, pellet, mark);
                     EndProjectile(p, at, trail);
                     yield break;
                 }
@@ -355,14 +358,14 @@ namespace MeleeDuel
                 p.position = pos;
                 if (wall)
                 {
-                    if (explosive) Explode(hit.point, w, true);
+                    if (explosive) Explode(hit.point, w, true, mark);
                     else DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
                     EndProjectile(p, hit.point, trail);
                     yield break;
                 }
                 if (last)
                 {
-                    if (explosive) Explode(pos, w, true);   // 射程の端で爆発(前と同じ)
+                    if (explosive) Explode(pos, w, true, mark);   // 射程の端で爆発(前と同じ)
                     EndProjectile(p, pos, trail);
                     yield break;
                 }
@@ -384,7 +387,7 @@ namespace MeleeDuel
         /// <summary>
         /// 貫く弾が from から len 進む間に、線から(敵の半径 + 太さ)の内にいる敵に当てる(1発で同じ敵には1回。pierced に覚える)。当たったら true。
         /// </summary>
-        bool PierceSegment(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c, List<DuelEnemy> pierced)
+        bool PierceSegment(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c, List<DuelEnemy> pierced, bool mark)
         {
             if (len <= 0f) return false;
             Vector3 to = from + dir * len;
@@ -397,7 +400,7 @@ namespace MeleeDuel
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
                 pierced.Add(e);
-                PierceHit(e, from + dir * (s * len), dir, w, c);
+                PierceHit(e, from + dir * (s * len), dir, w, c, mark);
                 any = true;
             }
             return any;
@@ -420,11 +423,11 @@ namespace MeleeDuel
                 yield return null;
             }
             Destroy(p.gameObject);
-            Explode(goal, w, false);
+            Explode(goal, w, false, false);
         }
 
-        /// <summary>爆発:半径の中の敵に当てる(上下に離れすぎた敵には当たらない)。自機には当たらない。</summary>
-        void Explode(Vector3 at, DuelWeapon w, bool shell)
+        /// <summary>爆発:半径の中の敵に当てる(上下に離れすぎた敵には当たらない)。自機には当たらない。mark は、砲弾を撃ったときに照準の先が視界の中だったか(NoteHit)。</summary>
+        void Explode(Vector3 at, DuelWeapon w, bool shell, bool mark)
         {
             ProtoFx.Blast(at, w.radius, shell ? ShellColor : BlastColor, shell ? 0.35f : 0.25f);
             DuelSpark.Burst(at, Vector3.zero, new Color(1f, 0.75f, 0.4f), shell ? 20 : 6, shell ? 1.2f : 0.7f);
@@ -440,7 +443,7 @@ namespace MeleeDuel
                 if (d.magnitude - e.Radius > w.radius) continue;
                 if (dy < -w.radius || dy > game.mechHeight * e.Size + w.radius) continue;
                 e.TakeRangedHit(w.damage, w.stagger, (d.sqrMagnitude > 0.01f ? d.normalized : player.transform.forward) * w.knock, 0.6f);
-                if (shell) NoteHit(e);   // 砲だけヒットマーカー(ミサイルは自動で飛ぶので出さない)
+                if (shell) NoteHit(e, mark);   // 砲だけヒットマーカー(ミサイルは自動で飛ぶので出さない)
                 any = true;
             }
             if (any && shell) game.HitStop(0.05f);   // 砲だけ。ミサイルは何発も当たるので止めない

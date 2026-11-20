@@ -345,7 +345,9 @@ namespace MeleeDuel
 
         // 中の幅は中身に合わせる(CardMinInner〜CardMaxInner)。項目の多い行(その武装の数値・付け先ごとの差・操作)は、幅を測って項目の切れ目で折り返す(文字を枠で切らない)
         const float CardMaxInner = 860f, CardMinInner = 560f, CardPadX = 14f, CardPadY = 8f, CardLine = 22f, CardAccent = 4f, CardColGap = 14f;
-        const float CardTitleH = 26f, CardDivider = 9f, CardActionH = 24f, CardCurMax = 340f;
+        const float CardTitleH = 26f, CardDivider = 9f, CardActionH = 24f, CardCurMax = 380f;
+        /// <summary>カードの文字 1 行を描く枠の高さ。行の送り(CardLine)より高くする(同じ高さだと「↓」の下が切れる。上寄せなので文字の位置は変わらない)。</summary>
+        const float CardTextH = 28f;
         const int CardRowMax = 2;
         string cardName, cardKind, cardWeight, cardFeel, cardMoves;
         float cardNameW, cardMovesH, cardInner, cardH, cardSlotW, cardCurW, cardWeightW;
@@ -545,12 +547,12 @@ namespace MeleeDuel
             GUI.color = cardColor;
             GUI.Label(new Rect(x, y, cardNameW, CardTitleH), cardName, cardTitleStyle);
             GUI.color = dim;
-            GUI.Label(new Rect(x + cardNameW + 8f, y + 3f, cardInner - cardNameW - 8f, CardLine), cardKind, richSmall);
-            GUI.Label(new Rect(x, y + 3f, cardInner, CardLine), cardWeight, richRight);
+            GUI.Label(new Rect(x + cardNameW + 8f, y + 3f, cardInner - cardNameW - 8f, CardTextH), cardKind, richSmall);
+            GUI.Label(new Rect(x, y + 3f, cardInner, CardTextH), cardWeight, richRight);
             y += CardTitleH;
             if (!cardFeelInline)
             {
-                GUI.Label(new Rect(x, y, cardInner, CardLine), cardFeel, richSmall);
+                GUI.Label(new Rect(x, y, cardInner, CardTextH), cardFeel, richSmall);
                 y += CardLine;
             }
             if (cardMoves != null)
@@ -561,7 +563,7 @@ namespace MeleeDuel
             // その武装自身の数値
             GUI.color = Color.white;
             for (int i = 0; i < cardStats.Count; i++, y += CardLine)
-                GUI.Label(new Rect(x, y, cardInner, CardLine), cardStats[i], richSmall);
+                GUI.Label(new Rect(x, y, cardInner, CardTextH), cardStats[i], richSmall);
             Chip(new Rect(x, y + 4f, cardInner, 1f), new Color(1f, 1f, 1f, 0.16f));
             y += CardDivider;
 
@@ -577,11 +579,11 @@ namespace MeleeDuel
                     Chip(new Rect(x - 8f, y, cardInner + 16f, rowH), new Color(0.45f, 0.8f, 1f, 0.13f));
                     Chip(new Rect(x - 8f, y, 3f, rowH), new Color(0.45f, 0.8f, 1f));
                 }
-                GUI.Label(new Rect(x, y, cardSlotW, CardLine), cardRowSlot[i], richSmall);
-                GUI.Label(new Rect(curX, y, cardCurW, CardLine), cardRowCur[i], richSmall);
+                GUI.Label(new Rect(x, y, cardSlotW, CardTextH), cardRowSlot[i], richSmall);
+                GUI.Label(new Rect(curX, y, cardCurW, CardTextH), cardRowCur[i], richSmall);
                 for (int k = 0; k < diff.Count; k++)
-                    GUI.Label(new Rect(diffX, y + k * CardLine, diffW, CardLine), diff[k], richSmall);
-                GUI.Label(new Rect(x + cardInner - cardWeightW, y, cardWeightW, CardLine), cardRowWeight[i], richRight);
+                    GUI.Label(new Rect(diffX, y + k * CardLine, diffW, CardTextH), diff[k], richSmall);
+                GUI.Label(new Rect(x + cardInner - cardWeightW, y, cardWeightW, CardTextH), cardRowWeight[i], richRight);
                 y += rowH;
             }
             Chip(new Rect(x, y + 4f, cardInner, 1f), new Color(1f, 1f, 1f, 0.16f));

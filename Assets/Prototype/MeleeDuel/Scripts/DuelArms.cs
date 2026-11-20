@@ -556,7 +556,9 @@ namespace MeleeDuel
             // ボスを倒した後(武装が消し飛んだ後)は拾えない
             // 空中では拾う案内も付け先を選ぶ表示も出さない(作者「空中では拾うメニューが開かないようにしてください」)。
             // 選んでいる途中で空中に出たら、Choosing != Nearby で取り消しになる
-            DuelLoot.UpdateGuideHolds(player);   // 付け替えで置いた武装の案内の抑えを解くか(空中にいる間も数える)
+            // 付け替えで置いた武装の案内の抑えを解くか(空中にいる間も数える)。
+            // ほかの武装が案内の対象になっている間(前のフレームの Nearby がある)は、時間では解かない
+            DuelLoot.UpdateGuideHolds(player, Nearby == null);
             Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null : DuelLoot.Nearest(player);
             UpdateChoice();
             TryManualReload();

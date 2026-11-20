@@ -72,6 +72,7 @@ namespace MeleeDuel
         /// <summary>
         /// 拾う案内の対象にしばらくしない(付け替えで床に置いた武装。DuelArms.Equip)。
         /// 解けるのは、自機が拾える範囲から一度出たときか、SwapGuideHold 秒たったときの早いほう(UpdateGuideHolds)。
+        /// ただし、ほかの武装が案内の対象になっている間は時間では解かない(範囲を出たときだけ)。
         /// </summary>
         public void HoldGuide()
         {
@@ -82,8 +83,10 @@ namespace MeleeDuel
         /// <summary>
         /// 案内を抑えている武装を、解けるか調べる(DuelArms.Tick から毎フレーム。空中にいて Nearest を呼ばない間も、範囲から出たことを数える)。
         /// 見通しは見ない(拾える距離・高さの外に出たかだけ)。
+        /// timeCanRelease が偽(ほかの武装が案内の対象になっている)の間は、時間では解かない。
+        /// 動いていないのに対象が外した武装へ入れ替わり、読んでいるカードがすり替わる・選んでいる途中の表示が黙って閉じるのを防ぐ。
         /// </summary>
-        public static void UpdateGuideHolds(DuelFighter who)
+        public static void UpdateGuideHolds(DuelFighter who, bool timeCanRelease)
         {
             if (!anyHeld) return;
             anyHeld = false;
@@ -91,7 +94,7 @@ namespace MeleeDuel
             foreach (var l in all)
             {
                 if (l == null || l.guideHoldUntil < 0f) continue;
-                if (now >= l.guideHoldUntil || !l.InPickRange(who, out _)) l.guideHoldUntil = -1f;
+                if ((timeCanRelease && now >= l.guideHoldUntil) || !l.InPickRange(who, out _)) l.guideHoldUntil = -1f;
                 else anyHeld = true;
             }
         }

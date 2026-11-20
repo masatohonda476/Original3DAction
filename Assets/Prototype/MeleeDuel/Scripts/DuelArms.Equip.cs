@@ -98,7 +98,7 @@ namespace MeleeDuel
             return true;
         }
 
-        /// <summary>武装を分解して、共通の弾(上限まで)か HP の回復にする。量は DuelArmsRules(レア度と重さ)。</summary>
+        /// <summary>武装を分解して、共通の弾(上限まで)か HP の回復にする。量は DuelArmsRules(レア度だけで決まる)。</summary>
         void Salvage(DuelWeapon w, bool heal)
         {
             var r = Rules;

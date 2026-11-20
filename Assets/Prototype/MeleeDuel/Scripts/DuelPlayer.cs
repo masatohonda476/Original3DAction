@@ -359,14 +359,12 @@ namespace MeleeDuel
                         Energy -= dashCost * (Airborne ? airDashCostMul : 1f) * EnCostMul * dt;
                         if (Energy <= 0f) energyUsedAt = now;   // 使い切ったときだけ回復を待たせる(飛ぶのと同じ)
                     }
-                    // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
-                    // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
-                    if (Arms.Aiming && DuelArmsRules.Current.aimByFacing && !DuelArmsRules.Current.cursorMovable)
-                    {
-                        // 弾は自機の向いている方へ飛ぶ:構えの間は、ロックオン中なら相手、していなければカメラの向きを向く(向いた方へ撃つ)
-                        Face(Target != null ? Target.transform.position - transform.position : camFwd, 14f, dt);
-                    }
-                    else if (Arms.Aiming)
+                    // 向き:ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。していなければ進む向きを向く(止まっていれば今の向きのまま)。
+                    // 既定の形(弾は自機の向いている方へ飛ぶ。DuelArmsRules.FacingAim)では、射撃の構えで向き直らない
+                    // (作者「ノーロック射撃時自機とカメラの向きを変えないようにしたいです」→ 動いたときは「撃たないときと同じ」。
+                    //  前は、ロックオンしていない構えの間はカメラの向きへ向き直っていた。カメラは射撃では回さない)。
+                    // 照準を動かせる形だけ、構えの間は照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(銃口と弾の向きがずれないように)
+                    if (Arms.Aiming && !DuelArmsRules.Current.FacingAim)
                     {
                         Vector3 af = Arms.AimFacing;
                         Face(af != Vector3.zero ? af : camFwd, 14f, dt);

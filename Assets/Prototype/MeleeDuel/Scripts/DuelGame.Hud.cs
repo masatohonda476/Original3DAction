@@ -11,7 +11,7 @@ namespace MeleeDuel
 
         void OnGUI()
         {
-            uiScale = Mathf.Min(Screen.width / 1280f, Screen.height / 720f);
+            RefreshUiScale();
             GUI.matrix = Matrix4x4.Scale(new Vector3(uiScale, uiScale, 1f));
             if (small == null)
             {
@@ -51,10 +51,9 @@ namespace MeleeDuel
             // 左下:自機のHP・EN、その下にメニューを開くボタンの短い案内を1行。
             // 操作方法は出し続けず、メニューの「操作方法」のページで見せる(作者「操作方法は常に出すのではなく、オプションにメニューを出してください」。DuelGame.Menu.cs)。
             // ガードのゲージは、右下の武装の欄の盾のセルに出す(ArmCell)。左下には出さない
-            const float hintH = 24f;
+            const float hintH = LeftHintH;
             float x = 24f;
-            float y = SH - 8f - hintH - 44f;
-            leftTop = y - 5f;
+            float y = leftTop + 5f;
             Bar(new Rect(x, y, 300f, 14f), player.HP / player.MaxHP, new Color(0.35f, 0.85f, 0.45f));
             GUI.Label(new Rect(x + 308f, y - 5f, 120f, 24f), $"HP {Mathf.CeilToInt(player.HP)}", small);
             // 怯みゲージ(HPの右、HPのバーの1/4の長さ)
@@ -380,6 +379,7 @@ namespace MeleeDuel
                 lockCornersShown = false;
                 lockFollow = lockAssist = 0f;
                 lockHudAt = -1f;
+                lockGaugeShow = lockMarkShow = 0f;
                 return;
             }
             if (on)
@@ -400,6 +400,7 @@ namespace MeleeDuel
                     lockCornersShown = false;
                     lockFollow = lockAssist = 0f;
                     lockHudAt = -1f;
+                    lockGaugeShow = lockMarkShow = 0f;
                     return;
                 }
                 float t = Mathf.Clamp01((now - lockOffAt) / LockOffTime);
@@ -430,12 +431,16 @@ namespace MeleeDuel
             bool assist = onEnemy && player.Arms.Marks.Contains(target);
             lockAssist = Mathf.MoveTowards(lockAssist, assist ? 1f : 0f, dt / LockAssistTime);
 
-            // 画面の縁寄りの枠:縦は上の敵のゲージ・右上の知らせと、下の自機のゲージ・武装の欄の手前まで(低い画面では縮める。なめらかに)
-            float bottom = Mathf.Min(leftTop, ArmsTop) - 12f;
-            float wantH = Mathf.Max(53f, Mathf.Min(LockCornerHalfH, bottom - SH * 0.5f));
+            // 画面の縁寄りの枠(待機中に止まっている大きさは LockRestHalf。付け始めの判定と同じ値):縦が変わるときはなめらかに
+            Vector2 rest = LockRestHalf();
+            float wantH = rest.y;
             lockHalfH = dt <= 0f ? wantH : Mathf.MoveTowards(lockHalfH, wantH, 267f * dt);
-            float baseW = Mathf.Max(80f, Mathf.Min(LockCornerHalfW, SW * 0.5f - LockCornerEdge));
+            float baseW = rest.x;
             float hw = baseW + lockOffset, hh = lockHalfH + lockOffset * (lockHalfH / baseW);
+            // 右辺の距離の目盛り:待機中の枠(敵を囲みに縮む前の大きさ。オン・オフの出入りには付いていく)の右辺に出す。
+            // 出すのは、オンで狙う敵がいない(付く相手を探している)間だけ。付いている間は、相手が遮られた・画面の外に出たときも出さない
+            // (枠を出し始めたフレーム=オンにした瞬間・メニューを閉じた直後に、もう付いていれば最初から出さない)。枠が敵から戻る途中は、戻るのに合わせて濃くなる
+            DrawLockGauge(on && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
             hw = Mathf.Lerp(hw, lockFollowHalf.x + lockOffset * 0.35f, e);
             hh = Mathf.Lerp(hh, lockFollowHalf.y + lockOffset * 0.35f, e);
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
@@ -453,6 +458,132 @@ namespace MeleeDuel
             LockCornerLines(c, hw, hh, e < 0.5f, 2.7f * thin, new Color(0f, 0.025f, 0.04f, col.a * 0.8f));
             LockCornerLines(c, hw, hh, e < 0.5f, 1.35f * thin, col);
             GUI.color = Color.white;
+        }
+
+        // ───────── ロックオン距離の目盛り(待機中の照準枠の右辺。値は 1280×720 の画面の単位) ─────────
+        // 作者「ロックオン可能な距離も枠のUIで表現したいです」→ 見せ方は「枠の辺に距離の目盛り」(右辺に 0〜ロックオン距離の目盛りを付け、
+        //   枠に掛かった敵までの距離を小さな印で示す。印が目盛りの内に入ると付く。あとどれだけ近づけばよいかが続けて読める)。
+        // 縦の目盛り:下が 0m(近い)・上が遠い(上端 = ロックオン距離 × LockGaugeFarMul)。ロックオン距離(DuelStage.lockOnRange)の所に目立つ刻み、
+        //   その間はロックオン距離を LockGaugeDivs 等分した小さな刻み。刻みより下(付く距離)の軸は少し太く濃い。
+        // 印(◀。軸の外側から軸を指す):DuelPlayer.LockCandidate(体が枠に掛かり・遮られていない敵のうち、一番近い敵)までの距離。
+        //   印の敵は、係の質問「距離の目盛りの印は、どの敵の距離を示しますか?」に作者が選んだ「一番近い敵」
+        //   (「枠に掛かって遮られていない敵のうち、一番近い敵の距離を示す。『印が刻みに届いたら必ず付く』がいつも成り立つ。」)。
+        //   測り方は付け始めの判定と同じ(LockCandidateDistance)。印が刻みに届いたフレームにどれかの敵に付き(付く敵は点数で選ぶので、印の敵とは限らない)、
+        //   枠が敵を囲みに縮むのと一緒に目盛りごと消える。
+        //   上端より遠い敵は上端に止めて薄くする(上端の 1.5 倍より遠い敵は見ない。DuelPlayer.LockCandidateBeyond)。該当する敵がいなければ印は出さず、目盛りだけ薄く残す。
+        // 出すのはロックオンがオンで、狙う敵がいない(付く相手を探している)間だけ(付いている間・オフ・メニュー・撃破では出さない)。揺らさない・点滅させない:
+        //   印は敵の距離のとおりに動き、印の相手が替わったときだけ、今の位置から新しい位置へなめらかに滑らせる(跳ばない)。出入りは濃さだけ。文字は出さない。
+        /// <summary>目盛りの上端の距離 = ロックオン距離 × これ(印に出す敵を探す距離の上限も、これから決める。DuelPlayer.PickBest)。</summary>
+        public const float LockGaugeFarMul = 2f;
+        const float LockGaugeAlpha = 0.9f, LockGaugeIdleAlpha = 0.55f, LockGaugeBeyondAlpha = 0.4f;
+        const int LockGaugeDivs = 4;
+        const float LockGaugeFadeTime = 0.2f, LockMarkFadeTime = 0.15f, LockMarkSettle = 10f;
+        /// <summary>目盛りの濃さ(0〜1。オンで狙う敵がいない間に出て、付く・オフで消える)・印の濃さ(0〜1)・印の位置(0 = 0m 〜 1 = 上端)・相手が替わったときに残る位置のずれ(0 へ戻る)。</summary>
+        float lockGaugeShow, lockMarkShow, lockMarkPos, lockMarkSlip;
+        DuelEnemy lockMarkEnemy;
+
+        /// <summary>
+        /// 待機中の照準枠(中心 c・横の半分 hw・縦の半分 hh。オン・オフの出入りの広がりを含む)の右辺に、ロックオン距離の目盛りと敵までの距離の印を描く。
+        /// seeking はロックオンがオンで狙う敵がいない(付く相手を探している)か。この間だけ出す。
+        /// rest は枠が待機している度合い(1 = 待機、0 = 敵を囲んでいる)。dt は前に描いてからの秒数(0 なら濃さ・位置をその場で合わせる)。
+        /// </summary>
+        void DrawLockGauge(bool seeking, Vector2 c, float hw, float hh, float rest, float dt)
+        {
+            float range = stage != null ? stage.lockOnRange : 0f;
+            lockGaugeShow = dt <= 0f ? (seeking ? 1f : 0f) : Mathf.MoveTowards(lockGaugeShow, seeking ? 1f : 0f, dt / LockGaugeFadeTime);
+            float show = lockGaugeShow * rest * rest;
+            // 印:相手がいる間は距離のとおりの位置へ。相手が替わったら、今の位置からのずれを残して 0 へ戻す(なめらかに滑る)。いなくなったら、その場で薄くして消す
+            var cand = seeking ? player.LockCandidate : null;
+            bool has = range > 0f && cand != null && !cand.Dead;
+            float beyond = 0f;
+            if (has)
+            {
+                float far = range * LockGaugeFarMul, d = player.LockCandidateDistance;
+                float want = Mathf.Clamp01(d / far);
+                if (lockMarkShow <= 0f || show <= 0f || dt <= 0f) lockMarkSlip = 0f;   // 出し始めは、その位置に出す(滑らせない)
+                else if (cand != lockMarkEnemy) lockMarkSlip = lockMarkPos - want;
+                else lockMarkSlip *= Mathf.Exp(-dt * LockMarkSettle);
+                lockMarkEnemy = cand;
+                lockMarkPos = want + lockMarkSlip;
+                beyond = Mathf.InverseLerp(far * 0.92f, far, d);   // 上端の手前からなめらかに薄く(上端より遠ければ薄いまま)
+            }
+            else if (lockMarkShow <= 0f) lockMarkEnemy = null;
+            lockMarkShow = dt <= 0f ? (has ? 1f : 0f) : Mathf.MoveTowards(lockMarkShow, has ? 1f : 0f, dt / LockMarkFadeTime);
+            if (range <= 0f || show <= 0.01f) return;
+
+            // 軸は右辺の、上下の角の腕の間
+            float arm = Mathf.Min(LockCornerArm, Mathf.Min(hw, hh) * 0.3f);
+            float half = hh - arm - 8f;
+            if (half < 20f) return;
+            float x = c.x + hw, yNear = c.y + half, yFar = c.y - half;
+            float yRange = Mathf.Lerp(yNear, yFar, 1f / LockGaugeFarMul);
+            float a = LockRestAlpha * show * Mathf.Lerp(LockGaugeIdleAlpha, LockGaugeAlpha, lockMarkShow);
+            var tex = Texture2D.whiteTexture;
+            // 明るい床の上でも読めるよう、暗い縁を下に敷いてから水色で描く(枠の角と同じ)
+            for (int pass = 0; pass < 2; pass++)
+            {
+                float o = pass == 0 ? 0.7f : 0f;
+                Color ink = pass == 0 ? new Color(0f, 0.025f, 0.04f, 0.8f) : LockInk;
+                void Box(float x0, float y0, float w, float h, float alpha)
+                {
+                    GUI.color = new Color(ink.r, ink.g, ink.b, ink.a * alpha);
+                    GUI.DrawTexture(new Rect(x0 - o, y0 - o, w + o * 2f, h + o * 2f), tex);
+                }
+                // 軸:ロックオン距離より遠い側は細く薄く、内側(付く距離)は少し太く濃く
+                Box(x - 0.5f, yFar, 1f, yRange - yFar, a * 0.55f);
+                Box(x - 1f, yRange, 2f, yNear - yRange, a);
+                // 小さな刻み(枠の内向き):ロックオン距離を LockGaugeDivs 等分。上端と 0m も入る
+                int n = Mathf.RoundToInt(LockGaugeDivs * LockGaugeFarMul);
+                for (int i = 0; i <= n; i++)
+                {
+                    if (i == LockGaugeDivs) continue;
+                    float y = Mathf.Lerp(yNear, yFar, i / (float)n);
+                    Box(x - 5f, y - 0.5f, 5f, 1f, a * (i < LockGaugeDivs ? 1f : 0.55f));
+                }
+                // ロックオン距離の刻み(目立たせる:長く・太く、軸の外側へも出す)
+                Box(x - 13f, yRange - 1f, 19f, 2f, Mathf.Min(1f, a * 1.5f));
+                // 敵までの距離の印(軸の外側から軸を指す、段々の三角 ◀)
+                if (lockMarkShow > 0f)
+                {
+                    float ma = Mathf.Min(1f, show * lockMarkShow * Mathf.Lerp(1f, LockGaugeBeyondAlpha, beyond));
+                    float y = Mathf.Lerp(yNear, yFar, Mathf.Clamp01(lockMarkPos));
+                    Box(x + 4f, y - 1f, 2f, 2f, ma);
+                    Box(x + 6f, y - 3f, 3f, 6f, ma);
+                    Box(x + 9f, y - 5f, 4f, 10f, ma);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 待機中に止まっている照準枠の、横・縦の半分(1280×720 の画面の単位。中心は画面の中央)。表示(DrawLockCorners)と付け始めの判定(LockSightTan)がこの1か所を使う。
+        /// 横は画面の縁から LockCornerEdge 内側まで(上限 LockCornerHalfW)。縦は LockCornerHalfH で、下の自機のゲージ・武装の欄の手前まで(低い画面では縮める)。
+        /// オン・オフの出入り(lockOffset)と、付いた敵を囲む枠へ縮む動き(lockFollow)は入れない。
+        /// </summary>
+        Vector2 LockRestHalf()
+        {
+            float bottom = Mathf.Min(leftTop, ArmsTop) - 12f;
+            float h = Mathf.Max(53f, Mathf.Min(LockCornerHalfH, bottom - SH * 0.5f));
+            float w = Mathf.Max(80f, Mathf.Min(LockCornerHalfW, SW * 0.5f - LockCornerEdge));
+            return new Vector2(w, h);
+        }
+
+        /// <summary>
+        /// ロックオンの付け始めの判定に使う枠:待機中に止まっている照準枠(LockRestHalf)の横・縦の半分を、画面の中央からの tan で返す
+        /// (作者「ロックオンで出てくるサイトの枠内に入った場合のみロックオン開始する」。見えている枠と判定を合わせる)。
+        /// Update から呼ばれるので、画面の表示の倍率はここでも求め直す(OnGUI に頼らない)。カメラが画面いっぱいに映している前提(照準の枠 DrawAimFrames と同じ)。
+        /// 枠が出ていない間(メニュー・オンにした瞬間の締まる途中)も、止まっている枠の大きさを返す。カメラがなければ false。
+        /// </summary>
+        public bool LockSightTan(Camera cam, out float halfW, out float halfH)
+        {
+            halfW = halfH = 0f;
+            if (cam == null) return false;
+            RefreshUiScale();
+            Vector2 rest = LockRestHalf();
+            float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ(DrawAimFrames と同じ)
+            if (!(k > 0f)) return false;
+            halfW = rest.x / k;
+            halfH = rest.y / k;
+            return true;
         }
 
         /// <summary>狙う敵の体を囲む画面上の枠(中心は画面の中央から、下向きが +y。横・縦の半分)。敵が画面に映っていて、自機から遮られていないときだけ true。</summary>
@@ -621,8 +752,13 @@ namespace MeleeDuel
             }
         }
 
-        /// <summary>左下の HP・EN とメニューの案内のまとまりの上端(拾う案内をこれより上に出す)。</summary>
-        float leftTop;
+        /// <summary>左下のメニューの案内の1行の高さ。</summary>
+        const float LeftHintH = 24f;
+        /// <summary>
+        /// 左下の HP・EN とメニューの案内のまとまりの上端(拾う案内をこれより上に出す。ロックオンの照準枠の縦もこれより上まで)。
+        /// 画面の高さだけで決まる(OnGUI の外=ロックオンの付け始めの判定からも同じ値を読めるよう、OnGUI で入れる値にしない)。
+        /// </summary>
+        float leftTop => SH - 8f - LeftHintH - 44f - 5f;
 
         /// <summary>その所を使うボタンの名前(背中はなし)。</summary>
         static string SlotButton(DuelSlot s) => s switch

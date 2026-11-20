@@ -11,6 +11,12 @@ Dock のアイコンにカーソルを合わせたときの名前は、アプリ
   python3 -I Tools/open_unity.py --list                  # 開いている Unity と名前
   python3 -I Tools/open_unity.py 作業用 --dry-run        # 開かずに、何をするかだけ出す
 
+  python3 -I Tools/open_unity.py 作業用 --scene Assets/…/X.unity   # 初めて開くときのシーンを指定
+
+初めて開くフォルダ(作ったばかりのワークツリー)は「最後に開いていたシーン」の記録がなく、Unity が名前なしの
+空のシーンを開く(作者「また空です」)。そこで、記録がないときだけ、開く前にステージのシーン(DEFAULT_SCENE。
+--scene で替えられる)を記録に書いておく。記録があるフォルダは、前に開いていたシーンのまま開く。
+
 止めるとき(終了コード 2): Unity がすでに 2 つ開いている / 同じプロジェクトが開いている / 同じ名前が使われている。
 """
 import argparse
@@ -21,6 +27,26 @@ import sys
 
 MAX_EDITORS = 2
 HUB_EDITORS = "/Applications/Unity/Hub/Editor"
+# 初めて開くフォルダで開くシーン(いま試しているステージ)
+DEFAULT_SCENE = "Assets/Prototype/MeleeDuel/MeleeDuelStage.unity"
+# Unity が「最後に開いていたシーン」を覚えるファイル(起動のときに読んで開き直す)
+LAST_SCENES = os.path.join("Library", "LastSceneManagerSetup.txt")
+
+
+def first_scene(project, scene):
+    """初めて開くフォルダで開くシーンを返す。記録がもうある・シーンのファイルがないなら ""(何もしない)。"""
+    if os.path.isfile(os.path.join(project, LAST_SCENES)):
+        return ""
+    scene = (scene or DEFAULT_SCENE).strip().replace(os.sep, "/")
+    return scene if os.path.isfile(os.path.join(project, scene)) else ""
+
+
+def write_first_scene(project, scene):
+    """Unity が起動のときに scene を開くよう、「最後に開いていたシーン」の記録を書く(Unity が書くのと同じ形)。"""
+    path = os.path.join(project, LAST_SCENES)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"sceneSetups:\n- path: {scene}\n  isLoaded: 1\n  isActive: 1\n  isSubScene: 0\n")
 
 
 def git_root(path):
@@ -63,6 +89,7 @@ def main():
     ap.add_argument("--project", help="開くプロジェクトのフォルダ(省くとこのワークツリー/本体)")
     ap.add_argument("--list", action="store_true", help="開いている Unity と名前を出す")
     ap.add_argument("--dry-run", action="store_true", help="開かずに、何をするかだけ出す")
+    ap.add_argument("--scene", help=f"初めて開くフォルダで開くシーン(省くと {DEFAULT_SCENE})。前に開いたことのあるフォルダでは使わない")
     a = ap.parse_args()
 
     editors = running_editors()
@@ -104,14 +131,22 @@ def main():
     # 複製は元と同じフォルダに置く(PlaybackEngines など、隣のフォルダを Unity が使うため)
     app = os.path.join(vdir, f"Unity {name}.app")
 
+    scene = first_scene(project, a.scene)
+    if a.scene and not scene:
+        print(f"--scene は使いません(前に開いたことのあるフォルダか、シーンが見つかりません): {a.scene}")
+
     if a.dry_run:
         print(("作る: " if not os.path.isdir(app) else "使う: ") + app)
         print(f"開く: {project}")
+        print(f"シーン: {scene}(初めて開くフォルダ)" if scene else "シーン: 前に開いていたまま")
         return 0
 
     if not os.path.isdir(app):
         print(f"「Unity {name}.app」を作ります(APFS の複製なので容量はほぼ増えません)…")
         subprocess.run(["cp", "-cR", src, app], check=True)
+    if scene:
+        write_first_scene(project, scene)
+        print(f"初めて開くフォルダなので、シーン {scene} を開くようにしました。")
     subprocess.run(["open", "-n", "-a", app, "--args", "-projectPath", project], check=True)
     print(f"「Unity {name}」で開きました: {project}")
     return 0

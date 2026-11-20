@@ -35,6 +35,8 @@ namespace MeleeDuel
                 cellNameStyle = new GUIStyle(cellTiny) { fontSize = 17 };
                 cellNameSmall = new GUIStyle(cellTiny) { fontSize = 14 };
                 cellBack = new GUIStyle(cellTiny) { fontSize = 14 };
+                // 拾う案内のカードの見出し(武装の名前。色は GUI.color で付けるので文字は白)
+                cardTitleStyle = new GUIStyle(cellTiny) { fontSize = 18, fontStyle = FontStyle.Bold };
             }
             var cam = Camera.main;
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
@@ -712,7 +714,8 @@ namespace MeleeDuel
                 sb.Append("  ").Append(B(ProtoInput.Btn.Dodge)).Append(" 回避");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Fly)).Append("長押し 飛行");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Boost)).Append(" ブースト");
-                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 付ける→付ける所のボタン(背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
+                // 付ける:付け先に空きがあれば一押しで付く。空きがなければ付け先を選ぶ表示で、付ける所のボタン(背中は ✗)
+                sb.Append("  ").Append(B(ProtoInput.Btn.EquipNow)).Append(" 付ける(空きがなければ付ける所のボタン・背中は ").Append(B(ProtoInput.Btn.Fly)).Append(')');
                 sb.Append("  ").Append(B(ProtoInput.Btn.Stash)).Append(" 持つ  ").Append(B(ProtoInput.Btn.Break)).Append(" 分解(弾か回復)");
                 sb.Append("  ").Append(B(ProtoInput.Btn.Lock)).Append(" ロックオン切替").Append(lockSwitch);
                 sb.Append("  ").Append(B(ProtoInput.Btn.EquipView)).Append(" 装備・所持品");

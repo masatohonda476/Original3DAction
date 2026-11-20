@@ -11,25 +11,29 @@ namespace MeleeDuel
         // ───────── 付ける・外す ─────────
 
         /// <summary>
-        /// 十字右:付け先を選ぶ表示にする(手・肩・背中・両手持ちとも同じ流れ)。
+        /// 十字右:付け先に空きがあれば、一押しでそこに付ける(QuickEquipSlot。選ぶ手順を飛ばす)。空きがなければ付け先を選ぶ表示にする
+        /// (手・肩・背中・両手持ちとも同じ流れ)。
         /// 選んでいる間は R1/L1(手)・R2/L2(肩)・✗(背中)で決める(背中は R1〜L2 では付かず、手・肩は ✗ では付かない)。
         /// ✗ は押し始めだけ数える(飛んでいて押し続けていた ✗ では付かない)。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
         /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
-        /// 拾う案内(選んでいない間)では、十字右で付け先を選ぶ表示、十字下でそのまま所持品へ(重さの上限を超えるなら持てない)、
-        /// 十字上で分解を選ぶ表示(十字上で弾・十字下で回復・十字右でやめる。離れる・動ける状態でなくなるでも取り消し)。
-        /// 付け先を選ぶ表示で、付けると重さの上限を超える所のボタンを押したら、付けずに知らせる(表示はそのまま)。
+        /// 拾う案内(選んでいない間)では、十字右で付ける(空きへ一押し、または付け先を選ぶ表示)、十字下でそのまま所持品へ(重さの上限を超えるなら持てない)、
+        /// 十字上で分解を選ぶ表示。分解を選ぶ表示では、十字左(←)で弾・十字右(→)で回復・十字上(F。入ったのと同じボタン)でやめる
+        /// (離れる・動ける状態でなくなるでも取り消し)。十字上を続けて押しても分解されない(作者が選んだ形:押し間違いで武装が消えないように)。
+        /// 十字左はふだんロックオンの切り替えなので、この間と、抜けた後に離すまでは切り替えにしない(LockDpadTaken)。
+        /// 付け先を選ぶ表示で、付けると重さの上限を超える所のボタンを押したら、付けずに知らせる(表示はそのまま)。一押しで付けるときも同じ。
         /// </summary>
         void UpdateChoice()
         {
             bool ready = player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
             if (Breaking != null)
             {
-                if (Breaking != Nearby || ProtoInput.EquipNow || !ready)
+                breakLeftHold = true;   // 抜けた後も、十字左を離すまでロックオンの切り替えにしない(Tick で離したら下ろす)
+                if (Breaking != Nearby || ProtoInput.BreakNow || !ready)
                 {
                     Breaking = null;
                     return;
                 }
-                bool toAmmo = ProtoInput.BreakNow, toHeal = !toAmmo && ProtoInput.StashNow;
+                bool toAmmo = ProtoInput.BreakAmmoNow, toHeal = !toAmmo && ProtoInput.BreakHealNow;
                 if (!toAmmo && !toHeal) return;
                 if (SalvageFull(toHeal)) return;   // 弾が上限・HP が満タン:武装だけ消えないよう、分解しない(選ぶ表示はそのまま)
                 var loot = Breaking;
@@ -64,9 +68,56 @@ namespace MeleeDuel
                 return;
             }
             if (!ready || Nearby == null) return;
-            if (ProtoInput.EquipNow) Choosing = Nearby;
+            if (ProtoInput.EquipNow) EquipPressed(Nearby);
             else if (ProtoInput.StashNow) StashLoot(Nearby);
             else if (ProtoInput.BreakNow) Breaking = Nearby;
+        }
+
+        /// <summary>
+        /// 拾う案内で十字右を押した:一押しで付く所(QuickEquipSlot)があればそこに付け、なければ付け先を選ぶ表示にする。
+        /// 一押しで付けるときも、重さの上限を超えるなら付けずに知らせ(選ぶ表示のときと同じ)、押していた R1/L1/R2/L2/✗ は離すまで効かせない
+        /// (空いていた手に銃が付いた瞬間に、押していたボタンで撃ち出さないように。EndChoice)。
+        /// </summary>
+        void EquipPressed(DuelLoot loot)
+        {
+            var w = loot.Weapon;
+            if (!QuickEquipSlot(w, out var slot))
+            {
+                Choosing = loot;
+                return;
+            }
+            float after = WeightIfEquipped(w, slot);
+            if (!Fits(after))
+            {
+                TooHeavy(after, "付けられない");
+                return;
+            }
+            EndChoice();
+            Equip(loot, slot);
+        }
+
+        /// <summary>
+        /// 落ちている武装 w が、十字右の一押しで付く所(付け先の空き。作者が選んだ形:「空きには一押しで付く」)。なければ false(付け先を選ぶ表示へ)。
+        ///   手・肩:空いている側(両方空きなら右)。背中:空いていれば背中(今の背中があれば今までどおり ✗ で決める)。
+        ///   両手持ち:両手とも空いているときだけ。片手の武装は、両手持ちを付けている間は両手ともふさがっている扱い。
+        /// 空きに付けると重さの上限を超えるのに、ほかの所(今の武装と付け替え)なら収まるときは false(選ぶ表示から付け替えられるように。
+        /// 一押しにすると断られるだけで、付け替える手がなくなるため)。どの所でも超えるなら空きを返し、押したときに断る(EquipPressed)。
+        /// 拾う案内(DuelGame.DrawPickup)も同じ答えで「◯◯に付ける」と出す。
+        /// </summary>
+        public bool QuickEquipSlot(DuelWeapon w, out DuelSlot slot)
+        {
+            slot = DuelSlot.RightHand;
+            var to = DuelWeapon.SlotsFor(w.kind);
+            if (w.IsTwoHand) return slots[R] == null && slots[L] == null;   // 両手に付く(付け先は1つなので、重さは押したときに確かめる)
+            int free = -1;
+            for (int k = 0; k < to.Length && free < 0; k++)
+                if (slots[(int)to[k]] == null) free = k;
+            if (free < 0) return false;
+            slot = to[free];
+            if (Fits(WeightIfEquipped(w, slot))) return true;
+            for (int k = 0; k < to.Length; k++)
+                if (k != free && Fits(WeightIfEquipped(w, to[k]))) return false;
+            return true;
         }
 
         /// <summary>落ちている武装を所持品に入れる(重さの上限を超えるなら入れない)。弾倉の残りも覚える。</summary>
@@ -120,7 +171,7 @@ namespace MeleeDuel
         public int SalvageHeal(DuelWeapon w) => Rules.BreakHeal(w);
 
         /// <summary>
-        /// 付け先を選ぶ表示を終える(決めた・取り消した)。その時に押している R1/L1/R2/L2 は全部、離すまで攻撃・射撃・ガードにしない
+        /// 付け先を選ぶ表示を終える(決めた・取り消した・十字右の一押しで付けた)。その時に押している R1/L1/R2/L2/✗ は全部、離すまで攻撃・射撃・ガード・飛行にしない
         /// (決めたボタンと同時に押したボタンや、選んでいる間に押し続けていたボタンが、終わった瞬間に効かないように)。
         /// </summary>
         void EndChoice()
@@ -350,6 +401,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// 落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。
+        /// 置いた武装は、置いた直後は拾う案内の対象にしない(DuelLoot.HoldGuide。両手持ちで2つ置くときは2つとも)。
         /// 両手持ちを付けるときは(R1/L1 のどちらで決めても)両手に付け、右手・左手の今の武装を両方置く(素の剣も。同じ武装を2つ持っていれば2つとも)。
         /// 両手持ちのまま片手の武装を付けるときは、両手持ちを外して置き、選んだ手に付ける(もう片方の手は空になる)。
         /// </summary>
@@ -361,7 +413,12 @@ namespace MeleeDuel
             bool wasTwo = TwoHanded;
             var removed = Mount(w, loot.Memo, slot, true);
             // 外した武装を置く:1つ目は拾った所、2つ目は自機の側へ少し寄せて(重ならないように)
-            for (int k = 0; k < removed.Count; k++) DuelLoot.Place(removed[k].w, k == 0 ? at : Beside(at)).Memo = removed[k].memo;
+            for (int k = 0; k < removed.Count; k++)
+            {
+                var placed = DuelLoot.Place(removed[k].w, k == 0 ? at : Beside(at));
+                placed.Memo = removed[k].memo;
+                placed.HoldGuide();
+            }
             game.Log(w.IsTwoHand ? $"両手に{w.name}({w.RarityName})を付けた"
                      : wasTwo && w.IsHand ? $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた(両手の{removed[0].w.name}は外した)"
                      : $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");

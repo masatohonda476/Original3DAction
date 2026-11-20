@@ -35,10 +35,12 @@ namespace MeleeDuel
     ///   溜め撃ちは溜め始めにENが残っていれば溜められ、離して撃つときに使う(溜めている間に0以下になっても撃てる)。
     /// 所持:付けずに持っておける(Stash)。付けている武装と所持品の重さの合計で、持てる上限と推力(ENを使う移動:ブースト移動・回避の距離・
     ///   飛ぶときの上昇の速さ)が決まる(Mobility)。歩き・走りには効かない(作者「歩きには効かないようにして、ENを使った移動に効くようにします」)。
-    /// 拾う:落ちている武装の近くで、十字下(G)で所持品へ、十字上(F)で分解(十字上で弾・十字下で回復)、十字右(V)で付ける。付け先を選ぶ表示が出て、R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
-    ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
+    /// 拾う:落ちている武装の近くで、十字下(G)で所持品へ、十字上(F)で分解(選ぶ表示で十字左(←)が弾・十字右(→)が回復・十字上(F)でやめる)、十字右(V)で付ける。
+    ///   付け先に空きがあれば、十字右の一押しでそこに付く(QuickEquipSlot。作者が選んだ形)。空きがなければ付け先を選ぶ表示が出て、
+    ///   R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
+    ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない。一押しで付けたときも同じ)。
     ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
-    ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も)。装備の確認の画面から、外して持つ・所持品を付ける・
+    ///   同じ所の今の武装は、拾った武装のあった所に置く(拾い直せる。素の剣も。置いた直後は拾う案内の対象にしない。DuelLoot.HoldGuide)。装備の確認の画面から、外して持つ・所持品を付ける・
     ///   足もとの床に捨てる(Drop)・分解する。
     /// 撃墜されても武装・所持品・弾は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。両手持ちも消え、右手は素の剣、左手は空に戻る。所持品も消え、弾は0)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
     /// 両手持ち(両手の近接・両手の銃・砲):右手と左手の両方の所に同じ武装を入れる。R1 が主の技、L1 が別の技(近接は別の振り、射撃は別の撃ち方)。
@@ -104,8 +106,15 @@ namespace MeleeDuel
         public DuelLoot Nearby { get; private set; }
         /// <summary>付け先を選んでいる武装(選んでいなければ null)。</summary>
         public DuelLoot Choosing { get; private set; }
-        /// <summary>分解(弾にするか回復にするか)を選んでいる武装(選んでいなければ null)。十字上で弾、十字下で回復、十字右でやめる。</summary>
+        /// <summary>分解(弾にするか回復にするか)を選んでいる武装(選んでいなければ null)。十字左(←)で弾、十字右(→)で回復、十字上(F)でやめる。</summary>
         public DuelLoot Breaking { get; private set; }
+        /// <summary>分解を選ぶ表示を抜けた後、「弾にする」のボタン(十字左 / ←)を離すまで立てておく(押しっぱなしの十字左でロックオンが切り替わらないように)。</summary>
+        bool breakLeftHold;
+        /// <summary>
+        /// 十字左を分解の「弾にする」に使っている(分解を選んでいる間と、抜けた後に離すまで)。この間、DuelPlayer は十字左でロックオンを切り替えない
+        /// (Q・中クリックでは切り替わる)。Tick は DuelPlayer.UpdateLock より先に呼ばれるので、「弾にする」を押したそのフレームも効く。
+        /// </summary>
+        public bool LockDpadTaken => Breaking != null || breakLeftHold;
 
         // ───────── 所持品・共通の弾 ─────────
 
@@ -191,7 +200,8 @@ namespace MeleeDuel
         public float CarryMax => Rules.carryMax;
         /// <summary>重さによる推力の倍率(ブースト移動・回避の距離・上昇の速さ。歩き・走りには掛けない)。</summary>
         public float Mobility => Rules.MobilityAt(TotalWeight);
-        bool Fits(float total) => total <= CarryMax + 0.001f;
+        /// <summary>その重さの合計が、持てる上限に収まるか(拾う案内で、押す前に重すぎる所を赤くするのにも使う)。</summary>
+        public bool Fits(float total) => total <= CarryMax + 0.001f;
 
         /// <summary>その所に w を付けたときに外れる武装の重さ(両手持ちが絡むときは両手の分。DuelArms.Mount と同じ決まり)。</summary>
         float RemovedWeight(DuelWeapon w, DuelSlot slot)
@@ -530,6 +540,7 @@ namespace MeleeDuel
             }
             for (int b = 0; b < suppress.Length; b++)
                 if (suppress[b] && !RawHeld(b)) suppress[b] = false;
+            if (breakLeftHold && Breaking == null && !ProtoInput.BreakAmmoHeld) breakLeftHold = false;
             UpdateCursor();   // 画面の上の照準(撃つ向きと枠の中心。撃つ前に決める)
 
             if (player == null || player.Dead)
@@ -545,6 +556,7 @@ namespace MeleeDuel
             // ボスを倒した後(武装が消し飛んだ後)は拾えない
             // 空中では拾う案内も付け先を選ぶ表示も出さない(作者「空中では拾うメニューが開かないようにしてください」)。
             // 選んでいる途中で空中に出たら、Choosing != Nearby で取り消しになる
+            DuelLoot.UpdateGuideHolds(player);   // 付け替えで置いた武装の案内の抑えを解くか(空中にいる間も数える)
             Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null : DuelLoot.Nearest(player);
             UpdateChoice();
             TryManualReload();

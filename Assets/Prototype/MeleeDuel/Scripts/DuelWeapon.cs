@@ -410,6 +410,29 @@ namespace MeleeDuel
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 比べの短い形(拾う案内のカードの、付け先ごとの1行):差のある項目だけを「威力↑↑」「速さ↓」のように items に足す
+        /// (矢印は値の上がり下がり、色は良くなる=緑・悪くなる=赤。CompareText と同じ決まり:6%未満の差は出さない、25%以上は二重)。
+        /// 今が空き・違う仲間、片方にしかない項目は何も足さない。
+        /// </summary>
+        public static void CompareShort(DuelWeapon next, DuelWeapon cur, List<string> items)
+        {
+            if (!SameFamily(cur, next)) return;
+            var a = Stats(next);
+            var b = Stats(cur);
+            for (int i = 0; i < a.Count; i++)
+            {
+                string nm = a[i].name;
+                int j = b.FindIndex(x => x.name == nm);
+                if (j < 0) continue;
+                float ratio = a[i].value / Mathf.Max(0.0001f, b[j].value);
+                string arrow = Arrow(ratio);
+                if (arrow.Length == 0) continue;
+                bool better = (ratio > 1f) == a[i].higherBetter;
+                items.Add("<color=" + (better ? "#7CFC8A" : "#FF7A6A") + ">" + nm + arrow + "</color>");
+            }
+        }
+
         /// <summary>比(新/今)の大きさを矢印に:6%未満は無印、25%以上は二重(武装ハントの PartDefinition.Arrow と同じ決まり)。</summary>
         public static string Arrow(float r)
         {

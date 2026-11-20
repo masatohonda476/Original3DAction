@@ -72,7 +72,7 @@ namespace MeleeDuel
         float startTime, restartAt = -1f, warpUntil, nextSpawnAt = -1f;
         readonly List<(string msg, float t)> log = new();
         GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, richRight, viewHeadStyle, viewTitleStyle, chartHeadStyle, chartLegendStyle, chartNoteStyle;
-        GUIStyle cellTiny, cellTinyRight, cellNameStyle, cellNameSmall, cellBack;
+        GUIStyle cellTiny, cellTinyRight, cellNameStyle, cellNameSmall, cellBack, cardTitleStyle;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;

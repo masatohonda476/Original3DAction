@@ -17,7 +17,8 @@ namespace HuntProto
     ///               ロックオン中は右スティックを左右に弾く・マウスを左右に大きく振っても変わる。ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない)
     ///   装備の確認: OPTIONS・≡ / I(近接の試作だけ。時間が止まる。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
     ///               □・X / X で処分(もう一度で床に捨てる・← で弾・→ で回復)。○・B / Backspace でも閉じる。Esc はカメラのマウスの固定を外すので使わない)
-    ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(近接の試作だけ)
+    ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(近接の試作だけ)。
+    ///               分解を選んでいる間は 十字左 / ← で弾、十字右 / → で回復、十字上 / F でやめる(十字左はこの間ロックオンの切り替えにならない)
     ///   やり直し  : F1 / SHARE を押しながら△(電脳斬禅のデバッグメニューと同じ)
     ///   モード切替: F2 / SHARE を押しながら□
     /// </summary>
@@ -208,7 +209,7 @@ namespace HuntProto
 
         public enum Device { Keyboard, PlayStation, Xbox }
         public enum Btn { R1, L1, R2, L2, Menu, Dodge, Boost, Fly, Confirm, Back, Lock, Switch, Restart, ModeToggle, Select, Move, Heal, Aim, Discard, PickUp, EquipNow, Delete, EquipView,
-                          Stash, Break, MenuLeft, MenuRight }
+                          Stash, Break, MenuLeft, MenuRight, BreakAmmo, BreakHeal }
 
         /// <summary>今使っている機器。パッドに触ればパッド、キーかマウスに触ればキーボードに切り替わる。</summary>
         public static Device Current { get; private set; } = Gamepad.current != null ? PadKind() : Device.Keyboard;
@@ -267,6 +268,8 @@ namespace HuntProto
                 Btn.Break => new[] { "F", "十字上", "十字上" },
                 Btn.MenuLeft => new[] { "←", "←", "←" },
                 Btn.MenuRight => new[] { "→", "→", "→" },
+                Btn.BreakAmmo => new[] { "←", "十字左", "十字左" },
+                Btn.BreakHeal => new[] { "→", "十字右", "十字右" },
                 _ => new[] { "WASD", "左スティック", "左スティック" },
             };
             return n[i];
@@ -284,11 +287,24 @@ namespace HuntProto
         /// </summary>
         public static bool EquipNow => !BtnBlocked && (K(k => k.vKey) || P(p => p.dpad.right));
 
-        /// <summary>近接の試作:落ちている武装を所持品に入れる(十字キー下 / G)。分解を選ぶ表示の間は「回復にする」。</summary>
+        /// <summary>近接の試作:落ちている武装を所持品に入れる(十字キー下 / G)。</summary>
         public static bool StashNow => !BtnBlocked && (K(k => k.gKey) || P(p => p.dpad.down));
 
-        /// <summary>近接の試作:落ちている武装を分解する(十字キー上 / F)。分解を選ぶ表示の間は「弾にする」。</summary>
+        /// <summary>近接の試作:落ちている武装の分解を選ぶ表示にする(十字キー上 / F)。分解を選ぶ表示の間は「やめる」(入ったのと同じボタンで戻る)。</summary>
         public static bool BreakNow => !BtnBlocked && (K(k => k.fKey) || P(p => p.dpad.up));
+
+        /// <summary>
+        /// 近接の試作:分解を選ぶ表示の間の「弾にする」(十字キー左 / ←)。装備の確認の「← 弾 / → 回復」と左右をそろえる。
+        /// 十字キー左はふだんロックオンの切り替え(LockToggle)なので、分解を選んでいる間は DuelPlayer が LockToggleNoDpad を読む。
+        /// キーボードは ←(ロックオンの Q・中クリックとぶつからない)。
+        /// </summary>
+        public static bool BreakAmmoNow => !BtnBlocked && (K(k => k.leftArrowKey) || P(p => p.dpad.left));
+
+        /// <summary>近接の試作:分解を選ぶ表示の間の「回復にする」(十字キー右 / →)。</summary>
+        public static bool BreakHealNow => !BtnBlocked && (K(k => k.rightArrowKey) || P(p => p.dpad.right));
+
+        /// <summary>近接の試作:「弾にする」のボタン(十字キー左 / ←)を押している(止めずに読む。分解を抜けた後、離すまでロックオンの切り替えにしないため)。</summary>
+        public static bool BreakAmmoHeld => (Kb != null && Kb.leftArrowKey.isPressed) || (Pad != null && Pad.dpad.left.isPressed);
 
         /// <summary>メニュー内:選んでいる在庫を完全に削除する(△ / C 長押し)。</summary>
         public static bool MenuDeleteHeld => (Kb != null && Kb.cKey.isPressed) || (Pad != null && !DebugMod && Pad.buttonNorth.isPressed);
@@ -296,6 +312,8 @@ namespace HuntProto
         /// <summary>回復アイテムを使う(十字キー上 / H)。</summary>
         public static bool Heal => !BtnBlocked && (K(k => k.hKey) || P(p => p.dpad.up));
         public static bool LockToggle => !BtnBlocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame) || P(p => p.dpad.left));
+        /// <summary>近接の試作:十字キー左を除いたロックオンの切り替え(Q・中クリックだけ)。十字キー左を分解の「弾にする」に使っている間に読む。</summary>
+        public static bool LockToggleNoDpad => !BtnBlocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame));
         public static bool SwitchTarget => !BtnBlocked && (K(k => k.tabKey) || P(p => p.rightStickButton));
         public static bool Restart => K(k => k.f1Key) || (DebugMod && P(p => p.buttonNorth));
         public static bool ToggleMode => K(k => k.f2Key) || (DebugMod && P(p => p.buttonWest));

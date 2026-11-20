@@ -60,8 +60,10 @@ namespace MeleeDuel
         void UpdateLock()
         {
             // ロックオンのボタン:オン・オフを切り替える。切り替えのボタンは、オフならオンに戻す(電脳斬禅の Cycle)
+            // 落ちている武装の分解を選んでいる間と、抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
             bool turnedOn = false;
-            if (ProtoInput.LockToggle) SetLockOn(!LockOn);
+            bool toggle = Arms != null && Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle;
+            if (toggle) SetLockOn(!LockOn);
             else if (ProtoInput.SwitchTarget && !LockOn) { SetLockOn(true); turnedOn = true; }
             if (!LockOn)
             {

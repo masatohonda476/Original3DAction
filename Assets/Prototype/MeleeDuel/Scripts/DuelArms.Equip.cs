@@ -11,12 +11,14 @@ namespace MeleeDuel
         // ───────── 付ける・外す ─────────
 
         /// <summary>
-        /// 十字右:付け先を選ぶ表示にする(手・肩・背中・両手持ちとも同じ流れ)。
+        /// 十字右:付け先を選ぶ表示にする(手・肩・背中・両手持ちとも同じ流れ。付け先が空きでもふさがっていても同じ)。
         /// 選んでいる間は R1/L1(手)・R2/L2(肩)・✗(背中)で決める(背中は R1〜L2 では付かず、手・肩は ✗ では付かない)。
         /// ✗ は押し始めだけ数える(飛んでいて押し続けていた ✗ では付かない)。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
         /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
         /// 拾う案内(選んでいない間)では、十字右で付け先を選ぶ表示、十字下でそのまま所持品へ(重さの上限を超えるなら持てない)、
-        /// 十字上で分解を選ぶ表示(十字上で弾・十字下で回復・十字右でやめる。離れる・動ける状態でなくなるでも取り消し)。
+        /// 十字上で分解を選ぶ表示。分解を選ぶ表示では、十字左(←)で弾・十字右(→)で回復・十字上(F。入ったのと同じボタン)でやめる
+        /// (離れる・動ける状態でなくなるでも取り消し)。十字上を続けて押しても分解されない(作者が選んだ形:押し間違いで武装が消えないように)。
+        /// 十字左はふだんロックオンの切り替えなので、この間と、抜けた後に離すまでは切り替えにしない(LockDpadTaken)。
         /// 付け先を選ぶ表示で、付けると重さの上限を超える所のボタンを押したら、付けずに知らせる(表示はそのまま)。
         /// </summary>
         void UpdateChoice()
@@ -24,12 +26,13 @@ namespace MeleeDuel
             bool ready = player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
             if (Breaking != null)
             {
-                if (Breaking != Nearby || ProtoInput.EquipNow || !ready)
+                breakLeftHold = true;   // 抜けた後も、十字左を離すまでロックオンの切り替えにしない(Tick で離したら下ろす)
+                if (Breaking != Nearby || ProtoInput.BreakNow || !ready)
                 {
                     Breaking = null;
                     return;
                 }
-                bool toAmmo = ProtoInput.BreakNow, toHeal = !toAmmo && ProtoInput.StashNow;
+                bool toAmmo = ProtoInput.BreakAmmoNow, toHeal = !toAmmo && ProtoInput.BreakHealNow;
                 if (!toAmmo && !toHeal) return;
                 if (SalvageFull(toHeal)) return;   // 弾が上限・HP が満タン:武装だけ消えないよう、分解しない(選ぶ表示はそのまま)
                 var loot = Breaking;
@@ -350,6 +353,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// 落ちている武装をその所に付ける。今の武装は、拾った武装のあった所にそのまま置く(その場で入れ替え。拾い直せる)。
+        /// 置いた武装は、すぐ拾えるが拾う案内の優先度を下げる(DuelLoot.LowerPriority。両手持ちで2つ置くときは2つとも)。
         /// 両手持ちを付けるときは(R1/L1 のどちらで決めても)両手に付け、右手・左手の今の武装を両方置く(素の剣も。同じ武装を2つ持っていれば2つとも)。
         /// 両手持ちのまま片手の武装を付けるときは、両手持ちを外して置き、選んだ手に付ける(もう片方の手は空になる)。
         /// </summary>
@@ -361,7 +365,12 @@ namespace MeleeDuel
             bool wasTwo = TwoHanded;
             var removed = Mount(w, loot.Memo, slot, true);
             // 外した武装を置く:1つ目は拾った所、2つ目は自機の側へ少し寄せて(重ならないように)
-            for (int k = 0; k < removed.Count; k++) DuelLoot.Place(removed[k].w, k == 0 ? at : Beside(at)).Memo = removed[k].memo;
+            for (int k = 0; k < removed.Count; k++)
+            {
+                var placed = DuelLoot.Place(removed[k].w, k == 0 ? at : Beside(at));
+                placed.Memo = removed[k].memo;
+                placed.LowerPriority();
+            }
             game.Log(w.IsTwoHand ? $"両手に{w.name}({w.RarityName})を付けた"
                      : wasTwo && w.IsHand ? $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた(両手の{removed[0].w.name}は外した)"
                      : $"{DuelWeapon.SlotName(slot)}に{w.name}({w.RarityName})を付けた");

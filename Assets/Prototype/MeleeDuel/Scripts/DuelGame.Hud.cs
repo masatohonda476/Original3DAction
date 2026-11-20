@@ -35,6 +35,8 @@ namespace MeleeDuel
                 cellNameStyle = new GUIStyle(cellTiny) { fontSize = 17 };
                 cellNameSmall = new GUIStyle(cellTiny) { fontSize = 14 };
                 cellBack = new GUIStyle(cellTiny) { fontSize = 14 };
+                // 拾う案内のカードの見出し(武装の名前。色は GUI.color で付けるので文字は白)
+                cardTitleStyle = new GUIStyle(cellTiny) { fontSize = 18, fontStyle = FontStyle.Bold };
             }
             var cam = Camera.main;
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く

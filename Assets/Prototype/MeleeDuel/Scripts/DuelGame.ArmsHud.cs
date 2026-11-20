@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using HuntProto;
 using UnityEngine;
 
 namespace MeleeDuel
 {
-    // DuelGame の武装の表示:右下の武装の欄・拾う案内・付け先を選ぶ表示の性能のグラフ(partial。本体は DuelGame.cs)
+    // DuelGame の武装の表示:右下の武装の欄・拾う案内(カード・付け先を選ぶ表示・分解を選ぶ表示)・付け先を選ぶ表示の性能のグラフ(partial。本体は DuelGame.cs)
     public partial class DuelGame
     {
         // ───────── 右下の武装の欄(武装ハントの DrawWeapons / WeaponCell と同じ見せ方) ─────────
@@ -217,14 +218,19 @@ namespace MeleeDuel
         // 拾う案内の文字列は、中身が変わったときだけ作り直す(OnGUI は1フレームに何度も呼ばれる)。
         // 弾・HP は分解を選んでいる間だけ値で、ほかは上限・満タンかどうかだけ入れる(撃つ・被弾するたびに作り直さないように)
         (DuelLoot loot, DuelLoot choosing, DuelLoot breaking, DuelWeapon a, DuelWeapon b, ProtoInput.Device dev, int ammo, int hp, int weight) pickupKey;
+        bool pickupBuilt;
         // 付け先を選ぶ表示のグラフは、武装・比べる相手・機器が変わったときだけ作り直す
         (DuelLoot loot, DuelLoot choosing, DuelWeapon a, DuelWeapon b, ProtoInput.Device dev) pickChartKey;
         readonly string[] pickupLines = new string[4];
         int pickupLineCount;
 
+        const string PickRed = "#FF7A6A", PickGrey = "#AAAAAA";
+
         /// <summary>
-        /// 画面の下の中央:拾える武装があれば、名前と今の装備と比べた内容。無視すればそのまま残る。
-        /// 十字右で付け先を選ぶ表示にして、手・肩なら左右それぞれの今の武装と、背中なら今の背中と比べる(背中は ✗ で付ける)。
+        /// 画面の下の中央:拾える武装があれば、その案内。無視すればそのまま残る。空中では出ない(DuelArms.Nearby が null)。
+        ///   まだ何も押していない間:枠のあるカード(BuildPickCard / DrawPickCard)。名前・その武装の数値・付け先ごとの今の武装との差・操作を最初から並べる。
+        ///   十字右で付け先を選ぶ表示(付け先が空きでもふさがっていても同じ):手・肩なら左右それぞれの今の武装と、背中なら今の背中と比べる(背中は ✗ で付ける)。
+        ///   十字上で分解を選ぶ表示:十字左で弾・十字右で回復・十字上でやめる。
         /// </summary>
         void DrawPickup(DuelArms arms)
         {
@@ -236,107 +242,17 @@ namespace MeleeDuel
             var b = to.Length > 1 ? arms.Get(to[1]) : null;
             bool ammoFull = arms.SalvageUseless(false), hpFull = arms.SalvageUseless(true);
             bool breaking = arms.Breaking != null;
+            bool card = arms.Choosing == null && !breaking;   // まだ何も押していない:カード
             var key = (loot, arms.Choosing, arms.Breaking, a, b, ProtoInput.Current,
                        breaking ? Mathf.FloorToInt(arms.Ammo + 0.0001f) : ammoFull ? -2 : -1, breaking ? Mathf.CeilToInt(player.HP) : hpFull ? -2 : -1,
-                       arms.Choosing == null && !breaking ? Mathf.RoundToInt(arms.TotalWeight * 10f) : 0);
-            if (pickupKey != key || pickupLines[0] == null)
+                       card ? Mathf.RoundToInt(arms.TotalWeight * 10f) : 0);
+            if (pickupKey != key || !pickupBuilt)
             {
                 pickupKey = key;
-                string col = ColorUtility.ToHtmlStringRGB(w.Color);
-                string name = "<color=#" + col + ">" + w.name + "〈" + w.RarityName + "〉</color>";
-                string mode = w.FireMode.Length > 0 ? "・" + w.FireMode : "";
-                string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
-                string keepBtn = "[" + ProtoInput.L(ProtoInput.Btn.Stash) + "]", breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "]";
+                pickupBuilt = true;
                 bool curTwo = a is { IsTwoHand: true };   // 今、両手持ちを付けている(右手と左手に同じ武装)
-                int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
-                if (arms.Breaking != null)
-                {
-                    // 分解を選ぶ:十字上で弾、十字下で回復、十字右でやめる
-                    var rules = arms.Rules;
-                    float a1 = Mathf.Min(rules.ammoMax, arms.Ammo + salAmmo), h1 = Mathf.Min(player.MaxHP, player.HP + salHeal);
-                    // 弾が上限・HP が満タンの選択肢は赤く(押しても分解しない。武装だけ消えないように)
-                    string ammoOpt = ammoFull
-                        ? "<color=#FF7A6A>" + breakBtn + " 弾は上限(" + rules.ammoMax.ToString("0") + ")</color>"
-                        : breakBtn + " 弾にする +" + salAmmo + "(弾 " + Mathf.FloorToInt(arms.Ammo + 0.0001f) + "→" + Mathf.FloorToInt(a1 + 0.0001f) + "/" + rules.ammoMax.ToString("0") + ")";
-                    string healOpt = hpFull
-                        ? "<color=#FF7A6A>" + keepBtn + " HP は満タン</color>"
-                        : keepBtn + " 回復にする +" + salHeal + "(HP " + Mathf.CeilToInt(player.HP) + "→" + Mathf.CeilToInt(h1) + "/" + player.MaxHP.ToString("0") + ")";
-                    pickupLines[0] = name + " を分解する?   " + ammoOpt + "    " + healOpt + "    " + equip + " やめる";
-                    pickupLines[1] = "<color=#AAAAAA>分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)</color>";
-                    pickupLineCount = 2;
-                }
-                else if (w.IsTwoHand)
-                {
-                    // 両手持ち:付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、今の右手・左手の武装は両方とも置かれる
-                    string r1 = SlotButton(DuelSlot.RightHand), l1 = SlotButton(DuelSlot.LeftHand);
-                    var cmp = DuelWeapon.SameFamily(a, w) ? a : DuelWeapon.SameFamily(b, w) ? b : null;
-                    if (arms.Choosing == null)
-                    {
-                        pickupLines[0] = "拾える:" + name + "(" + DuelWeapon.KindName(w.kind) + "・両手持ち)  ― " + w.feel;
-                        pickupLines[1] = TwoHandMoves(w);
-                        pickupLines[2] = DuelWeapon.CompareText(w, cmp);
-                        pickupLineCount = 3;
-                    }
-                    else
-                    {
-                        string off = curTwo ? "両手の" + a.name : "右手の" + (a != null ? a.name : "なし") + "・左手の" + (b != null ? b.name : "なし");
-                        pickupLines[0] = name + " を両手に付ける?  [" + r1 + "] / [" + l1 + "] どちらでも両手に付く    " + equip + " やめる";
-                        pickupLines[1] = (a == null && b == null ? "<color=#AAAAAA>両手とも空いている</color>"
-                                             : "<color=#FFB070>" + off + " は足もとに置かれる(拾い直せる)</color>");
-                        pickupLines[2] = (cmp != null ? (cmp == a ? (curTwo ? "両手の" : "右手の") : "左手の") + cmp.name + "と比べて  " : "") + DuelWeapon.CompareText(w, cmp);
-                        pickupLines[3] = TwoHandMoves(w);
-                        pickupLineCount = 4;
-                    }
-                }
-                else if (to.Length == 1)
-                {
-                    // 背中:付け先を選ぶ表示で ✗ を押すと付く(✗ は飛行と同じボタン。選んでいる間は飛ばない)
-                    string fly = "[" + ProtoInput.L(ProtoInput.Btn.Fly) + "]";
-                    if (arms.Choosing == null)
-                    {
-                        pickupLines[0] = "拾える:" + name + "(" + DuelWeapon.KindName(w.kind) + ")  ― " + w.feel + "(今:" + CurName(a) + ")";
-                        pickupLines[1] = DuelWeapon.CompareText(w, a);
-                        pickupLineCount = 2;
-                    }
-                    else
-                    {
-                        pickupLines[0] = name + " を背中に付ける?  " + fly + " " + DuelWeapon.SlotName(to[0]) + "に付ける(今:" + (a != null ? a.name : "なし") + ")    " + equip + " やめる";
-                        pickupLines[1] = DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
-                        pickupLines[2] = "<color=#AAAAAA>選んでいる間は " + ProtoInput.L(ProtoInput.Btn.Fly) + " で飛ばない</color>";
-                        pickupLineCount = 3;
-                    }
-                }
-                else if (arms.Choosing == null)
-                {
-                    pickupLines[0] = "拾える:" + name + "(" + DuelWeapon.KindName(w.kind) + mode + ")  ― " + w.feel;
-                    pickupLines[1] = DuelWeapon.CompareText(w, null);
-                    pickupLineCount = 2;
-                }
-                else
-                {
-                    pickupLines[0] = name + " をどちらに付ける?  [" + SlotButton(to[0]) + "] " + DuelWeapon.SlotName(to[0]) + "(今:" + (a != null ? a.name : "なし")
-                                     + ") / [" + SlotButton(to[1]) + "] " + DuelWeapon.SlotName(to[1]) + "(今:" + (b != null ? b.name : "なし") + ")    " + equip + " やめる";
-                    pickupLines[1] = "[" + SlotButton(to[0]) + "] " + DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
-                    pickupLines[2] = "[" + SlotButton(to[1]) + "] " + DuelWeapon.SlotName(to[1]) + "と比べて  " + DuelWeapon.CompareText(w, b);
-                    pickupLineCount = 3;
-                    if (curTwo && w.IsHand)
-                    {
-                        // 両手持ちのまま片手の武装を付ける:両手持ちは外れて置かれ、もう片方の手は空になる
-                        pickupLines[3] = "<color=#FFB070>両手の" + a.name + " は外れて足もとに置かれ、もう片方の手は空になる</color>";
-                        pickupLineCount = 4;
-                    }
-                }
-                if (arms.Choosing == null && arms.Breaking == null && pickupLineCount < pickupLines.Length)
-                {
-                    // 拾う案内の操作:付ける(付け先を選ぶ)/ 持つ(所持品へ。重さの上限を超えるなら持てない)/ 分解(弾か回復を選ぶ)
-                    float after = arms.WeightIfStashed(w), max = arms.CarryMax;
-                    string keep = after <= max + 0.001f
-                        ? keepBtn + " 持つ(重さ " + arms.TotalWeight.ToString("0") + "→" + after.ToString("0") + "/" + max.ToString("0") + ")"
-                        : "<color=#FF7A6A>" + keepBtn + " 持つ:重すぎる(" + after.ToString("0") + "/" + max.ToString("0") + ")</color>";
-                    string sal = ammoFull && hpFull ? "<color=#FF7A6A>" + breakBtn + " 分解(弾は上限・HP は満タン)</color>"
-                        : breakBtn + " 分解(" + (ammoFull ? "<color=#FF7A6A>弾は上限</color>" : "弾 +" + salAmmo) + " / " + (hpFull ? "<color=#FF7A6A>HP は満タン</color>" : "回復 +" + salHeal) + ")";
-                    pickupLines[pickupLineCount++] = equip + " 付ける    " + keep + "    " + sal;
-                }
+                if (card) BuildPickCard(arms, w, to, a, b, ammoFull, hpFull);
+                else BuildPickLines(arms, w, to, a, b, curTwo, ammoFull, hpFull);
                 var ck = (loot, arms.Choosing, a, b, ProtoInput.Current);
                 if (pickChartKey != ck)
                 {
@@ -345,14 +261,331 @@ namespace MeleeDuel
                 }
             }
             // 右下の武装の欄と左下の HP・操作説明に重ならない高さ(行が多いときは上へずらす)
+            float limit = Mathf.Min(ArmsTop, leftTop) - 8f;
+            if (card)
+            {
+                DrawPickCard(limit);
+                return;
+            }
             float h = 6f + 26f * pickupLineCount, wd = 1200f, bx = (SW - wd) / 2f;
-            float by = Mathf.Min(SH * 0.56f, Mathf.Min(ArmsTop, leftTop) - 8f - h);
-            GUI.color = new Color(0f, 0f, 0f, arms.Choosing != null || arms.Breaking != null ? 0.7f : 0.55f);
-            GUI.DrawTexture(new Rect(bx, by, wd, h), Texture2D.whiteTexture);
-            GUI.color = Color.white;
+            float by = Mathf.Min(SH * 0.56f, limit - h);
+            CardFrame(new Rect(bx, by, wd, h), w.Color, 0.74f);
             for (int i = 0; i < pickupLineCount; i++)
                 GUI.Label(new Rect(bx, by + 4f + i * 26f, wd, 24f), pickupLines[i], richCenter);
             if (arms.Choosing != null) DrawPickCharts(by);
+        }
+
+        /// <summary>
+        /// 付け先を選ぶ表示・分解を選ぶ表示の文字(中央寄せの行。pickupLines)。
+        /// 付け先を選ぶ表示では、付けると重さの上限を超える所に赤で「重すぎる」を添える(押すと断られる。DuelArms.UpdateChoice)。
+        /// </summary>
+        void BuildPickLines(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool curTwo, bool ammoFull, bool hpFull)
+        {
+            string name = "<color=#" + ColorUtility.ToHtmlStringRGB(w.Color) + ">" + w.name + "〈" + w.RarityName + "〉</color>";
+            string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
+            string Heavy(DuelSlot s) => arms.Fits(arms.WeightIfEquipped(w, s)) ? "" : " <color=" + PickRed + ">重すぎる</color>";
+            if (arms.Breaking != null)
+            {
+                // 分解を選ぶ:十字左で弾、十字右で回復(装備の確認の「← 弾 / → 回復」と同じ左右)、十字上(入ったのと同じボタン)でやめる
+                string ammoBtn = "[" + ProtoInput.L(ProtoInput.Btn.BreakAmmo) + "]", healBtn = "[" + ProtoInput.L(ProtoInput.Btn.BreakHeal) + "]";
+                string breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "]";
+                int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
+                var rules = arms.Rules;
+                float a1 = Mathf.Min(rules.ammoMax, arms.Ammo + salAmmo), h1 = Mathf.Min(player.MaxHP, player.HP + salHeal);
+                // 弾が上限・HP が満タンの選択肢は赤く(押しても分解しない。武装だけ消えないように)
+                string ammoOpt = ammoFull
+                    ? "<color=" + PickRed + ">" + ammoBtn + " 弾は上限(" + rules.ammoMax.ToString("0") + ")</color>"
+                    : ammoBtn + " 弾にする +" + salAmmo + "(弾 " + Mathf.FloorToInt(arms.Ammo + 0.0001f) + "→" + Mathf.FloorToInt(a1 + 0.0001f) + "/" + rules.ammoMax.ToString("0") + ")";
+                string healOpt = hpFull
+                    ? "<color=" + PickRed + ">" + healBtn + " HP は満タン</color>"
+                    : healBtn + " 回復にする +" + salHeal + "(HP " + Mathf.CeilToInt(player.HP) + "→" + Mathf.CeilToInt(h1) + "/" + player.MaxHP.ToString("0") + ")";
+                pickupLines[0] = name + " を分解する?   " + ammoOpt + "    " + healOpt + "    " + breakBtn + " やめる";
+                pickupLines[1] = "<color=" + PickGrey + ">分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)</color>";
+                pickupLineCount = 2;
+            }
+            else if (w.IsTwoHand)
+            {
+                // 両手持ち:R1/L1 のどちらを押しても両手に付き、今の右手・左手の武装は両方とも置かれる
+                string r1 = SlotButton(DuelSlot.RightHand), l1 = SlotButton(DuelSlot.LeftHand);
+                var cmp = DuelWeapon.SameFamily(a, w) ? a : DuelWeapon.SameFamily(b, w) ? b : null;
+                string off = curTwo ? "両手の" + a.name : "右手の" + (a != null ? a.name : "なし") + "・左手の" + (b != null ? b.name : "なし");
+                pickupLines[0] = name + " を両手に付ける?  [" + r1 + "] / [" + l1 + "] どちらでも両手に付く" + Heavy(DuelSlot.RightHand) + "    " + equip + " やめる";
+                pickupLines[1] = (a == null && b == null ? "<color=" + PickGrey + ">両手とも空いている</color>"
+                                     : "<color=#FFB070>" + off + " は足もとに置かれる(拾い直せる)</color>");
+                pickupLines[2] = (cmp != null ? (cmp == a ? (curTwo ? "両手の" : "右手の") : "左手の") + cmp.name + "と比べて  " : "") + DuelWeapon.CompareText(w, cmp);
+                pickupLines[3] = TwoHandMoves(w);
+                pickupLineCount = 4;
+            }
+            else if (to.Length == 1)
+            {
+                // 背中:✗ を押すと付く(✗ は飛行と同じボタン。選んでいる間は飛ばない)
+                string fly = "[" + ProtoInput.L(ProtoInput.Btn.Fly) + "]";
+                pickupLines[0] = name + " を背中に付ける?  " + fly + " " + DuelWeapon.SlotName(to[0]) + "に付ける(今:" + (a != null ? a.name : "なし") + ")" + Heavy(to[0]) + "    " + equip + " やめる";
+                pickupLines[1] = DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
+                pickupLines[2] = "<color=" + PickGrey + ">選んでいる間は " + ProtoInput.L(ProtoInput.Btn.Fly) + " で飛ばない</color>";
+                pickupLineCount = 3;
+            }
+            else
+            {
+                pickupLines[0] = name + " をどちらに付ける?  [" + SlotButton(to[0]) + "] " + DuelWeapon.SlotName(to[0]) + "(今:" + (a != null ? a.name : "なし") + ")" + Heavy(to[0])
+                                 + " / [" + SlotButton(to[1]) + "] " + DuelWeapon.SlotName(to[1]) + "(今:" + (b != null ? b.name : "なし") + ")" + Heavy(to[1]) + "    " + equip + " やめる";
+                pickupLines[1] = "[" + SlotButton(to[0]) + "] " + DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);
+                pickupLines[2] = "[" + SlotButton(to[1]) + "] " + DuelWeapon.SlotName(to[1]) + "と比べて  " + DuelWeapon.CompareText(w, b);
+                pickupLineCount = 3;
+                if (curTwo && w.IsHand)
+                {
+                    // 両手持ちのまま片手の武装を付ける:両手持ちは外れて置かれ、もう片方の手は空になる
+                    pickupLines[3] = "<color=#FFB070>両手の" + a.name + " は外れて足もとに置かれ、もう片方の手は空になる</color>";
+                    pickupLineCount = 4;
+                }
+            }
+        }
+
+        // ───────── 拾う案内のカード(まだ何も押していない間) ─────────
+
+        // 中の幅は中身に合わせる(CardMinInner〜CardMaxInner)。項目の多い行(その武装の数値・付け先ごとの差・操作)は、幅を測って項目の切れ目で折り返す(文字を枠で切らない)
+        const float CardMaxInner = 860f, CardMinInner = 560f, CardPadX = 14f, CardPadY = 8f, CardLine = 22f, CardAccent = 4f, CardColGap = 14f;
+        const float CardTitleH = 26f, CardDivider = 9f, CardActionH = 24f, CardCurMax = 380f;
+        /// <summary>カードの文字 1 行を描く枠の高さ。行の送り(CardLine)より高くする(同じ高さだと「↓」の下が切れる。上寄せなので文字の位置は変わらない)。</summary>
+        const float CardTextH = 28f;
+        const int CardRowMax = 2;
+        string cardName, cardKind, cardWeight, cardFeel, cardMoves;
+        float cardNameW, cardMovesH, cardInner, cardH, cardSlotW, cardCurW, cardWeightW;
+        Color cardColor;
+        int cardRowCount;
+        /// <summary>一言を見出しの行(種類の右)に続けて出しているか(収まらなければ次の行に出す)。</summary>
+        bool cardFeelInline;
+        readonly List<string> cardStats = new(), cardActions = new(), cardPack = new();
+        readonly string[] cardRowSlot = new string[CardRowMax], cardRowCur = new string[CardRowMax], cardRowWeight = new string[CardRowMax];
+        readonly List<string>[] cardRowDiff = { new(), new() };
+        static readonly GUIContent cardMeasure = new();
+
+        /// <summary>その文字の1行の幅(リッチテキストのタグは数えない。OnGUI の中で呼ぶ)。</summary>
+        static float TextW(GUIStyle style, string text)
+        {
+            cardMeasure.text = text;
+            return style.CalcSize(cardMeasure).x;
+        }
+
+        /// <summary>
+        /// items を sep でつなぎ、幅 maxW に収まるところで行を分けて lines に入れる(項目の途中では切らない。1つで幅を超える項目はそのまま1行)。
+        /// 一番広い行の幅を返す。
+        /// </summary>
+        static float PackLines(List<string> items, string sep, float maxW, GUIStyle style, List<string> lines)
+        {
+            lines.Clear();
+            float widest = 0f, curW = 0f;
+            string cur = null;
+            foreach (var it in items)
+            {
+                if (cur != null)
+                {
+                    string joined = cur + sep + it;
+                    float jw = TextW(style, joined);
+                    if (jw <= maxW)
+                    {
+                        cur = joined;
+                        curW = jw;
+                        continue;
+                    }
+                    lines.Add(cur);
+                    widest = Mathf.Max(widest, curW);
+                }
+                cur = it;
+                curW = TextW(style, cur);
+            }
+            if (cur != null)
+            {
+                lines.Add(cur);
+                widest = Mathf.Max(widest, curW);
+            }
+            return widest;
+        }
+
+        /// <summary>
+        /// カードの中身を作る(作者が選んだ形:文字の帯をやめ、最初から付け先ごとの差を並べる)。上から:
+        ///   見出し:名前〈レア度〉(レア度の色)・種類と撃ち方・一言(見出しの行に収まらなければ次の行)、右に今の重さの合計。両手持ちはその下に R1/L1 の技。
+        ///   その武装自身の数値(付け先が全部空きでも性能が分かるように)。
+        ///   付け先ごとに1行:所の名前(両手持ちは「両手」)・今そこにある武装(なければ「空き」)・差の短い形(DuelWeapon.CompareShort:差のある項目だけ「威力↑↑」。
+        ///     良くなるのは緑・悪くなるのは赤)・付けた後の重さ。仲間が違う今の武装とは比べない(付け先を選ぶ表示のグラフと同じ扱い)。
+        ///     付けると重さの上限を超える所は赤で「重すぎる」(外れる武装の重さを引いて、所ごとに判定。DuelArms.WeightIfEquipped)。
+        ///   操作:付ける(付け先を選ぶ表示へ。どの所でも重すぎるなら赤)・持つ(重さの変化)・分解(量)。
+        /// </summary>
+        void BuildPickCard(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool ammoFull, bool hpFull)
+        {
+            float max = arms.CarryMax, total = arms.TotalWeight;
+            string maxText = max.ToString("0"), totalText = total.ToString("0");
+            cardColor = w.Color;
+            cardName = w.name + "〈" + w.RarityName + "〉";
+            cardNameW = TextW(cardTitleStyle, cardName);
+            cardKind = DuelWeapon.KindName(w.kind) + (w.IsTwoHand ? "・両手持ち" : w.FireMode.Length > 0 ? "・" + w.FireMode : "");
+            cardWeight = "今の重さ " + totalText + "/" + maxText;
+            cardFeel = w.feel;
+            cardMoves = w.IsTwoHand ? TwoHandMoves(w) : null;
+            // 一言は、見出しの行に収まるなら種類の右に続ける(カードを低くして、画面の真ん中を隠しにくくする)。収まらなければ次の行
+            float headW = cardNameW + 8f + TextW(richSmall, cardKind) + 24f + TextW(richSmall, cardWeight);
+            string kindFeel = cardFeel.Length > 0 ? cardKind + "  ―  " + cardFeel : cardKind;
+            float headFeelW = cardNameW + 8f + TextW(richSmall, kindFeel) + 24f + TextW(richSmall, cardWeight);
+            cardFeelInline = headFeelW <= CardMaxInner;
+            if (cardFeelInline) cardKind = kindFeel;
+            float inner = cardFeelInline ? headFeelW : Mathf.Max(headW, TextW(richSmall, cardFeel));
+            if (cardMoves != null) inner = Mathf.Max(inner, Mathf.Min(CardMaxInner, TextW(chartNoteStyle, cardMoves)));
+
+            // その武装自身の数値
+            cardPack.Clear();
+            foreach (var st in DuelWeapon.Stats(w)) cardPack.Add(st.name + " " + st.text);
+            inner = Mathf.Max(inner, PackLines(cardPack, "   ", CardMaxInner, richSmall, cardStats));
+
+            // 付け先ごとの行(両手持ち・背中は1行)
+            bool curTwo = a is { IsTwoHand: true };
+            bool anyFits = false;
+            cardRowCount = w.IsTwoHand || to.Length == 1 ? 1 : CardRowMax;
+            cardSlotW = cardCurW = cardWeightW = 0f;
+            const string emptyPlain = "空き";
+            string empty = "<color=" + PickGrey + ">" + emptyPlain + "</color>";
+            static string Named(DuelWeapon x, string none) => x == null ? none : "<color=#" + ColorUtility.ToHtmlStringRGB(x.Color) + ">" + x.name + "</color>";
+            static string Plain(DuelWeapon x) => x == null ? emptyPlain : x.name;
+            for (int i = 0; i < cardRowCount; i++)
+            {
+                var slot = to[i];
+                var cur = i == 0 ? a : b;
+                float after = arms.WeightIfEquipped(w, slot);
+                bool fits = arms.Fits(after);
+                anyFits |= fits;
+                string slotName = w.IsTwoHand ? "両手" : DuelWeapon.SlotName(slot);
+                cardRowSlot[i] = fits ? slotName : "<color=" + PickRed + ">" + slotName + "</color>";
+                string weightPlain = (fits ? "→ 重さ " : "重すぎる ") + after.ToString("0") + "/" + maxText;
+                cardRowWeight[i] = "<color=" + (fits ? "#C8C8C8" : PickRed) + ">" + weightPlain + "</color>";
+                // 今そこにある武装と、比べる相手。両手持ちを付けるときは右手・左手の両方が外れ、同じ仲間のほう(右手が先)と比べる
+                bool bothHands = w.IsTwoHand && !curTwo;
+                var cmp = bothHands ? (DuelWeapon.SameFamily(a, w) ? a : DuelWeapon.SameFamily(b, w) ? b : null) : cur;
+                bool occupied = bothHands ? a != null || b != null : cur != null;
+                string twoNote = curTwo && !w.IsTwoHand ? "(両手持ち)" : "";   // 片手の武装を付けると、今の両手持ちが外れる(どちらの手に付けても)
+                cardRowCur[i] = !occupied ? empty
+                    : bothHands ? "右 " + Named(a, empty) + " ・ 左 " + Named(b, empty)
+                    : Named(cur, empty) + twoNote;
+                // 列の幅は、色のタグを抜いた文字で測る
+                string curPlain = !occupied ? emptyPlain : bothHands ? "右 " + Plain(a) + " ・ 左 " + Plain(b) : Plain(cur) + twoNote;
+                cardPack.Clear();
+                // 差の列(空きなら比べる相手がないので、何も出さない)
+                if (occupied && cmp == w) cardPack.Add("<color=" + PickGrey + ">同じ武装(性能は同じ)</color>");
+                else if (occupied && !DuelWeapon.SameFamily(cmp, w)) cardPack.Add("<color=" + PickGrey + ">仲間が違うので比べない</color>");
+                else if (occupied)
+                {
+                    if (bothHands && a != null && b != null) cardPack.Add("<color=" + PickGrey + ">" + cmp.name + "と比べて</color>");
+                    int n0 = cardPack.Count;
+                    DuelWeapon.CompareShort(w, cmp, cardPack);
+                    if (cardPack.Count == n0) cardPack.Add("<color=" + PickGrey + ">ほぼ同じ</color>");
+                }
+                cardSlotW = Mathf.Max(cardSlotW, TextW(richSmall, slotName));
+                cardCurW = Mathf.Max(cardCurW, Mathf.Min(CardCurMax, TextW(richSmall, curPlain)));
+                cardWeightW = Mathf.Max(cardWeightW, TextW(richSmall, weightPlain));
+                // 差の項目は、列の幅が全部の行で決まってから詰める(下の回り)。それまで cardRowDiff に預ける
+                cardRowDiff[i].Clear();
+                cardRowDiff[i].AddRange(cardPack);
+            }
+            float diffMax = Mathf.Max(120f, CardMaxInner - cardSlotW - cardCurW - cardWeightW - CardColGap * 3f), diffW = 0f;
+            for (int i = 0; i < cardRowCount; i++)
+            {
+                cardPack.Clear();
+                cardPack.AddRange(cardRowDiff[i]);
+                diffW = Mathf.Max(diffW, PackLines(cardPack, "  ", diffMax, richSmall, cardRowDiff[i]));
+            }
+            inner = Mathf.Max(inner, cardSlotW + cardCurW + diffW + cardWeightW + CardColGap * 3f);
+
+            // 操作:付ける / 持つ(所持品へ。重さの上限を超えるなら持てない)/ 分解(弾か回復を選ぶ)
+            string equipBtn = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
+            string keepBtn = "[" + ProtoInput.L(ProtoInput.Btn.Stash) + "]", breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "]";
+            int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
+            float kept = arms.WeightIfStashed(w);
+            cardPack.Clear();
+            cardPack.Add(anyFits ? equipBtn + " 付ける" : "<color=" + PickRed + ">" + equipBtn + " 付ける:重すぎる</color>");
+            cardPack.Add(arms.Fits(kept)
+                ? keepBtn + " 持つ(重さ " + totalText + "→" + kept.ToString("0") + "/" + maxText + ")"
+                : "<color=" + PickRed + ">" + keepBtn + " 持つ:重すぎる(" + kept.ToString("0") + "/" + maxText + ")</color>");
+            cardPack.Add(ammoFull && hpFull ? "<color=" + PickRed + ">" + breakBtn + " 分解(弾は上限・HP は満タン)</color>"
+                : breakBtn + " 分解(" + (ammoFull ? "<color=" + PickRed + ">弾は上限</color>" : "弾 +" + salAmmo) + " / "
+                  + (hpFull ? "<color=" + PickRed + ">HP は満タン</color>" : "回復 +" + salHeal) + ")");
+            inner = Mathf.Max(inner, PackLines(cardPack, "     ", CardMaxInner, richSmall, cardActions));
+
+            cardInner = Mathf.Clamp(Mathf.Ceil(inner), CardMinInner, CardMaxInner);
+            cardMovesH = 0f;
+            if (cardMoves != null)
+            {
+                cardMeasure.text = cardMoves;
+                cardMovesH = Mathf.Ceil(chartNoteStyle.CalcHeight(cardMeasure, cardInner));
+            }
+            float h = CardPadY + CardTitleH + (cardFeelInline ? 0f : CardLine) + cardMovesH + cardStats.Count * CardLine + CardDivider;
+            for (int i = 0; i < cardRowCount; i++) h += Mathf.Max(1, cardRowDiff[i].Count) * CardLine;
+            cardH = h + CardDivider + cardActions.Count * CardActionH + CardPadY;
+        }
+
+        /// <summary>
+        /// カードを描く:画面の下の中央、右下の武装の欄・左下の HP と操作説明より上(limitY がカードの下端の上限)。
+        /// 文字列・幅・高さは BuildPickCard で作ってあるものを並べるだけ(毎フレーム作り直さない)。
+        /// </summary>
+        void DrawPickCard(float limitY)
+        {
+            float wd = cardInner + CardPadX * 2f + CardAccent, bx = (SW - wd) / 2f;
+            float by = Mathf.Min(SH * 0.56f, limitY - cardH);
+            CardFrame(new Rect(bx, by, wd, cardH), cardColor, 0.74f);
+            float x = bx + CardAccent + CardPadX, y = by + CardPadY;
+            var dim = new Color(1f, 1f, 1f, 0.78f);
+
+            // 見出し:名前〈レア度〉・種類と撃ち方、右に今の重さ
+            GUI.color = cardColor;
+            GUI.Label(new Rect(x, y, cardNameW, CardTitleH), cardName, cardTitleStyle);
+            GUI.color = dim;
+            GUI.Label(new Rect(x + cardNameW + 8f, y + 3f, cardInner - cardNameW - 8f, CardTextH), cardKind, richSmall);
+            GUI.Label(new Rect(x, y + 3f, cardInner, CardTextH), cardWeight, richRight);
+            y += CardTitleH;
+            if (!cardFeelInline)
+            {
+                GUI.Label(new Rect(x, y, cardInner, CardTextH), cardFeel, richSmall);
+                y += CardLine;
+            }
+            if (cardMoves != null)
+            {
+                GUI.Label(new Rect(x, y, cardInner, cardMovesH), cardMoves, chartNoteStyle);
+                y += cardMovesH;
+            }
+            // その武装自身の数値
+            GUI.color = Color.white;
+            for (int i = 0; i < cardStats.Count; i++, y += CardLine)
+                GUI.Label(new Rect(x, y, cardInner, CardTextH), cardStats[i], richSmall);
+            Chip(new Rect(x, y + 4f, cardInner, 1f), new Color(1f, 1f, 1f, 0.16f));
+            y += CardDivider;
+
+            // 付け先ごとの行
+            float curX = x + cardSlotW + CardColGap, diffX = curX + cardCurW + CardColGap, diffW = x + cardInner - cardWeightW - CardColGap - diffX;
+            for (int i = 0; i < cardRowCount; i++)
+            {
+                var diff = cardRowDiff[i];
+                GUI.Label(new Rect(x, y, cardSlotW, CardTextH), cardRowSlot[i], richSmall);
+                GUI.Label(new Rect(curX, y, cardCurW, CardTextH), cardRowCur[i], richSmall);
+                for (int k = 0; k < diff.Count; k++)
+                    GUI.Label(new Rect(diffX, y + k * CardLine, diffW, CardTextH), diff[k], richSmall);
+                GUI.Label(new Rect(x + cardInner - cardWeightW, y, cardWeightW, CardTextH), cardRowWeight[i], richRight);
+                y += Mathf.Max(1, diff.Count) * CardLine;
+            }
+            Chip(new Rect(x, y + 4f, cardInner, 1f), new Color(1f, 1f, 1f, 0.16f));
+            y += CardDivider;
+
+            // 操作
+            for (int i = 0; i < cardActions.Count; i++, y += CardActionH)
+                GUI.Label(new Rect(x, y, cardInner, CardActionH), cardActions[i], richSmall);
+        }
+
+        /// <summary>カードの地:暗い半透明の地・細い枠線・左端に色の線(武装のレア度の色)。拾う案内のカードと、付け先・分解を選ぶ表示で同じ。</summary>
+        void CardFrame(Rect r, Color accent, float alpha)
+        {
+            Chip(r, new Color(0.03f, 0.04f, 0.06f, alpha));
+            var line = new Color(1f, 1f, 1f, 0.3f);
+            Chip(new Rect(r.x, r.y, r.width, 1f), line);
+            Chip(new Rect(r.x, r.yMax - 1f, r.width, 1f), line);
+            Chip(new Rect(r.xMax - 1f, r.y, 1f, r.height), line);
+            accent.a = 1f;
+            Chip(new Rect(r.x, r.y, CardAccent, r.height), accent);
         }
 
         // ───────── 付け先を選ぶ表示の性能のグラフ ─────────

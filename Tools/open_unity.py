@@ -28,7 +28,7 @@ import sys
 MAX_EDITORS = 2
 HUB_EDITORS = "/Applications/Unity/Hub/Editor"
 # 初めて開くフォルダで開くシーン(いま試しているステージ)
-DEFAULT_SCENE = "Assets/Prototype/MeleeDuel/MeleeDuelStage.unity"
+DEFAULT_SCENE = "Assets/Prototype/PrototypeStage.unity"
 # Unity が「最後に開いていたシーン」を覚えるファイル(起動のときに読んで開き直す)
 LAST_SCENES = os.path.join("Library", "LastSceneManagerSetup.txt")
 

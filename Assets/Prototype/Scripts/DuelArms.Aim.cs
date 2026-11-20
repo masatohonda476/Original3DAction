@@ -219,6 +219,11 @@ namespace Prototype
         /// 撃っている・撃ったばかり・溜めている武装を先に選ぶ。銃・砲を付けていなければ null。毎フレーム UpdateFrames で求める。
         /// </summary>
         public Vector3? ShotPoint { get; private set; }
+        /// <summary>
+        /// ShotPoint へ飛ぶ弾が敵の体に当たる(銃口から ShotPoint への線が、敵の体のカプセルを通る)。真ん中の十字が敵に重なっているときで、十字を橙にする
+        /// (作者「ロックオン中の弾道を示す十字は、敵と重なったらオレンジとかになるようにしてください」)。ばらつきは入れない。毎フレーム UpdateFrames で求める。
+        /// </summary>
+        public bool ShotOnEnemy { get; private set; }
         readonly List<DuelEnemy> missileBuf = new();
 
         /// <summary>両手の銃・砲の L1 の撃ち方なら、その両手の武装(枠の大きさを借りる)。</summary>
@@ -472,6 +477,7 @@ namespace Prototype
             Frames.Clear();
             Marks.Clear();
             ShotPoint = null;
+            ShotOnEnemy = false;
             bool shotHot = false;
             var cam = Camera.main;
             if (cam == null || Choosing != null) return;
@@ -514,7 +520,9 @@ namespace Prototype
                     // 弾が飛んでいく所(自機の速度を受け継いで流れる分も入れる):撃っている・撃ったばかり・溜めている武装を先に、なければ最初の銃・砲
                     if (ShotPoint == null || (hot && !shotHot))
                     {
-                        ShotPoint = PredictShot(w, i, at, t);
+                        Vector3 shot = PredictShot(w, i, at, t);
+                        ShotPoint = shot;
+                        ShotOnEnemy = PathOnEnemy(Muzzle(at), shot);
                         shotHot = hot;
                     }
                 }
@@ -593,6 +601,25 @@ namespace Prototype
                 hitEnemy = e;
             }
             return hitEnemy != null;
+        }
+
+        /// <summary>
+        /// from から p へ飛ぶ弾が、p のあたりまでに敵の体(縦長のカプセル)を通るか(十字の色。ShotOnEnemy)。
+        /// p は狙いの先と同じ奥行き(体の手前の面のあたり)に置かれるので、体の太さの分(半径の2倍)だけ先まで見る(p が体の面の少し手前で止まっても、そのまま当たる弾を拾う)。
+        /// </summary>
+        bool PathOnEnemy(Vector3 from, Vector3 p)
+        {
+            Vector3 d = p - from;
+            float len = d.magnitude;
+            if (len < 0.01f) return false;
+            d /= len;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead) continue;
+                float r = BodyAxis(e, out Vector3 a, out Vector3 b);
+                if (SegSegDistance(from, from + d * (len + r * 2f), a, b, out _) <= r) return true;
+            }
+            return false;
         }
 
         /// <summary>敵 e の体(縦長のカプセル)の芯の、下と上の球の中心(a・b)。半径を返す。</summary>

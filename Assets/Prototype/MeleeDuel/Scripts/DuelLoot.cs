@@ -108,6 +108,13 @@ namespace MeleeDuel
         }
 
         /// <summary>
+        /// この武装をいま拾えるか(拾える距離・高さの内で、壁・床ごしでない。Nearest と同じ条件)。
+        /// 付け先・分解を選んでいる途中の武装を、対象のまま保つかの判定に使う(DuelArms.Tick)。
+        /// </summary>
+        public bool CanPick(DuelFighter who) =>
+            InPickRange(who, out _) && DuelSenses.ClearSight(who.Chest, transform.position + Vector3.up);
+
+        /// <summary>
         /// 拾う案内の対象:拾える範囲にあって壁・床ごしでない武装のうち、ふつうの優先度の一番近いもの。
         /// それがなければ、優先度の低い武装(付け替えで置いたもの。LowerPriority)の一番近いもの。どちらもなければ null。
         /// </summary>

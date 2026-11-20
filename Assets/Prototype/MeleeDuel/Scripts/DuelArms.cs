@@ -559,7 +559,13 @@ namespace MeleeDuel
             // 選んでいる途中で空中に出たら、Choosing != Nearby で取り消しになる
             // 付け替えで置いた武装の、下げた案内の優先度を戻すか(拾える範囲から出たときだけ。空中にいる間も数える)
             DuelLoot.RestorePriorities(player);
-            Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null : DuelLoot.Nearest(player);
+            // 付け先を選ぶ表示・分解の選択の途中は、その武装を拾える間は対象を替えない
+            // (敵が近くへ別の武装を落とした・別の武装へ近づいた、で表示が黙って閉じないように。作者の指示)。
+            // 範囲を出る・壁の陰に入る・空中に出ると対象から外れ、今までどおり取り消しになる
+            var keep = Choosing != null ? Choosing : Breaking;
+            Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null
+                : keep != null && keep.CanPick(player) ? keep
+                : DuelLoot.Nearest(player);
             UpdateChoice();
             TryManualReload();
             UpdateFrames();   // 照準の枠と当てる相手(撃つときもこの結果を使う。同じ探索をし直さない)

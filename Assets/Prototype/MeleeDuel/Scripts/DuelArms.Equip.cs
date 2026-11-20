@@ -38,8 +38,9 @@ namespace MeleeDuel
                 var loot = Breaking;
                 Breaking = null;
                 var w = loot.Weapon;
+                int left = loot.Memo.mag;
                 loot.Take();
-                Salvage(w, toHeal);
+                Salvage(w, left, toHeal);
                 return;
             }
             if (Choosing != null)
@@ -98,29 +99,54 @@ namespace MeleeDuel
             return true;
         }
 
-        /// <summary>武装を分解して、共通の弾(上限まで)か HP の回復にする。量は DuelArmsRules(レア度だけで決まる)。</summary>
-        void Salvage(DuelWeapon w, bool heal)
+        /// <summary>
+        /// 武装を分解して、共通の弾(上限まで)か HP の回復にする。量は DuelArmsRules(レア度だけで決まる)。
+        /// 弾倉のある銃は、それに加えて弾倉の残り(magLeft。-1=満タン)が共通の弾へ戻る(弾にしても回復にしても。上限まで。MagAmmo)。
+        /// </summary>
+        void Salvage(DuelWeapon w, int magLeft, bool heal)
         {
             var r = Rules;
+            float back = MagAmmo(w, magLeft);
             if (heal)
             {
-                float before = player.HP;
+                float before = player.HP, ammoBefore = Ammo;
                 player.Heal(r.BreakHeal(w));
-                game.Log($"{w.name}を分解して回復 +{player.HP - before:0}(HP {player.HP:0}/{player.MaxHP:0})");
+                Refund(back);
+                game.Log($"{w.name}を分解して回復 +{player.HP - before:0}(HP {player.HP:0}/{player.MaxHP:0})"
+                         + (Ammo > ammoBefore ? $" 弾倉の残りは弾へ +{Ammo - ammoBefore:0.#}" : ""));
                 DuelSpark.Burst(player.Chest, Vector3.up, new Color(0.45f, 1f, 0.55f), 14, 0.9f);
             }
             else
             {
                 float before = Ammo;
-                Ammo = Mathf.Min(r.ammoMax, Ammo + r.BreakAmmo(w));
-                game.Log($"{w.name}を分解して弾 +{Ammo - before:0}(弾 {Ammo:0}/{r.ammoMax:0})" + (Ammo >= r.ammoMax ? " 上限" : ""));
+                Ammo = Mathf.Min(r.ammoMax, Ammo + r.BreakAmmo(w) + back);
+                game.Log($"{w.name}を分解して弾 +{Ammo - before:0.#}" + (back > 0f ? $"(弾倉の残り {back:0.#} 込み)" : "")
+                         + $"(弾 {Ammo:0}/{r.ammoMax:0})" + (Ammo >= r.ammoMax ? " 上限" : ""));
                 DuelSpark.Burst(player.Chest, Vector3.up, new Color(1f, 0.85f, 0.35f), 14, 0.9f);
             }
         }
 
-        /// <summary>分解したときの量(弾・回復)。案内に出す。</summary>
+        /// <summary>分解したときの量(弾・回復)。案内に出す。弾倉の残りの分は入らない(MagAmmo を足す)。</summary>
         public int SalvageAmmo(DuelWeapon w) => Rules.BreakAmmo(w);
         public int SalvageHeal(DuelWeapon w) => Rules.BreakHeal(w);
+
+        /// <summary>
+        /// 分解したときに共通の弾へ戻る、弾倉の残りの分(残りの数 × 1発の消費。作者「解体時は弾倉の残りは弾薬として戻るようにしてください」)。
+        /// left は弾倉の残り(-1=満タン)。敵が落としたばかりの銃の最初の満タンの弾倉も数える(作者「入っている分は全部返す」)。
+        /// 弾倉のない武装・弾を使わない銃は 0。
+        /// </summary>
+        public float MagAmmo(DuelWeapon w, int left) =>
+            w is { IsGun: true, magazine: > 0 } && w.ammoCost > 0f ? (left < 0 ? w.magazine : Mathf.Min(left, w.magazine)) * w.ammoCost : 0f;
+        /// <summary>落ちている武装を分解したときに戻る、弾倉の残りの分。</summary>
+        public float MagAmmo(DuelLoot loot) => loot != null ? MagAmmo(loot.Weapon, loot.Memo.mag) : 0f;
+        /// <summary>所持品を分解したときに戻る、弾倉の残りの分。</summary>
+        public float MagAmmo(Carried c) => c != null ? MagAmmo(c.w, c.memo.mag) : 0f;
+        /// <summary>付けている武装を分解したときに戻る、弾倉の残りの分(両手の銃は右手の所の状態。リロード中に取り置いた分は別に戻る:ResetState)。</summary>
+        public float MagAmmo(DuelSlot slot)
+        {
+            var w = slots[(int)slot];
+            return w == null ? 0f : MagAmmo(w, MagOf(w.IsTwoHand && slot is DuelSlot.RightHand or DuelSlot.LeftHand ? R : (int)slot));
+        }
 
         /// <summary>
         /// 付け先を選ぶ表示を終える(決めた・取り消した)。その時に押している R1/L1/R2/L2 は全部、離すまで攻撃・射撃・ガードにしない
@@ -248,7 +274,8 @@ namespace MeleeDuel
         public bool SalvageSlot(DuelSlot slot, bool heal)
         {
             if (!CanRearrange || slots[(int)slot] == null || SalvageFull(heal)) return false;
-            Salvage(Unequip(slot, out _, out _), heal);
+            var w = Unequip(slot, out var memo, out _);   // memo.mag:外す直前の弾倉の残り
+            Salvage(w, memo.mag, heal);
             return true;
         }
 
@@ -299,7 +326,7 @@ namespace MeleeDuel
             if (!CanRearrange || index < 0 || index >= stash.Count || SalvageFull(heal)) return false;
             var c = stash[index];
             stash.RemoveAt(index);
-            Salvage(c.w, heal);
+            Salvage(c.w, c.memo.mag, heal);
             return true;
         }
 

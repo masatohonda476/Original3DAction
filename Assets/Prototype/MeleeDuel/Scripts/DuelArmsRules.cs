@@ -109,7 +109,8 @@ namespace MeleeDuel
         public float ammoStart = 30f;
 
         [Header("分解(落ちている武装・所持品・装備を壊して、弾か回復にする)")]
-        [Tooltip("弾にする量 = 基本 + レア度(0〜2)× これ。重さは見ない(作者「レア度だけで決めるようにしたいです」)。既定はコモン 25 / レア 45 / エピック 65")]
+        [Tooltip("弾にする量 = 基本 + レア度(0〜2)× これ。重さは見ない(作者「レア度だけで決めるようにしたいです」)。既定はコモン 25 / レア 45 / エピック 65。" +
+                 "弾倉のある銃は、これとは別に弾倉の残り(残りの数 × 1発の消費。落ちたばかりの銃は満タン)が共通の弾へ戻る(DuelArms.MagAmmo)")]
         public float breakAmmoBase = 25f, breakAmmoPerRarity = 20f;
         [Tooltip("回復にする量(HP) = 基本 + レア度 × これ。重さは見ない。既定はコモン 13 / レア 24 / エピック 35")]
         public float breakHealBase = 13f, breakHealPerRarity = 11f;

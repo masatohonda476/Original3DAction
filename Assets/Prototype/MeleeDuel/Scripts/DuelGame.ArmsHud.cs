@@ -276,8 +276,9 @@ namespace MeleeDuel
                 pickupKey = key;
                 pickupBuilt = true;
                 bool curTwo = a is { IsTwoHand: true };   // 今、両手持ちを付けている(右手と左手に同じ武装)
-                if (card) BuildPickCard(arms, w, to, a, b, ammoFull, hpFull);
-                else BuildPickLines(arms, w, to, a, b, curTwo, ammoFull, hpFull);
+                float magBack = arms.MagAmmo(loot);   // 分解すると共通の弾へ戻る、弾倉の残りの分(床にある間は変わらない)
+                if (card) BuildPickCard(arms, w, to, a, b, ammoFull, hpFull, magBack);
+                else BuildPickLines(arms, w, to, a, b, curTwo, ammoFull, hpFull, magBack);
                 var ck = (loot, arms.Choosing, a, b, ProtoInput.Current);
                 if (pickChartKey != ck)
                 {
@@ -304,7 +305,7 @@ namespace MeleeDuel
         /// 付け先を選ぶ表示・分解を選ぶ表示の文字(中央寄せの行。pickupLines)。
         /// 付け先を選ぶ表示では、付けると重さの上限を超える所に赤で「重すぎる」を添える(押すと断られる。DuelArms.UpdateChoice)。
         /// </summary>
-        void BuildPickLines(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool curTwo, bool ammoFull, bool hpFull)
+        void BuildPickLines(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool curTwo, bool ammoFull, bool hpFull, float magBack)
         {
             string name = "<color=#" + ColorUtility.ToHtmlStringRGB(w.Color) + ">" + w.name + "〈" + w.RarityName + "〉</color>";
             string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
@@ -316,16 +317,21 @@ namespace MeleeDuel
                 string breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "]";
                 int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
                 var rules = arms.Rules;
-                float a1 = Mathf.Min(rules.ammoMax, arms.Ammo + salAmmo), h1 = Mathf.Min(player.MaxHP, player.HP + salHeal);
+                // 弾倉の残りの分(magBack)は、弾にしても回復にしても共通の弾へ戻る(弾にするなら分解の量に足して出す)
+                float salTotal = salAmmo + magBack;
+                string magText = magBack.ToString("0.#");
+                float a1 = Mathf.Min(rules.ammoMax, arms.Ammo + salTotal), h1 = Mathf.Min(player.MaxHP, player.HP + salHeal);
                 // 弾が上限・HP が満タンの選択肢は赤く(押しても分解しない。武装だけ消えないように)
                 string ammoOpt = ammoFull
                     ? "<color=" + PickRed + ">" + ammoBtn + " 弾は上限(" + rules.ammoMax.ToString("0") + ")</color>"
-                    : ammoBtn + " 弾にする +" + salAmmo + "(弾 " + Mathf.FloorToInt(arms.Ammo + 0.0001f) + "→" + Mathf.FloorToInt(a1 + 0.0001f) + "/" + rules.ammoMax.ToString("0") + ")";
+                    : ammoBtn + " 弾にする +" + salTotal.ToString("0.#") + "(弾 " + Mathf.FloorToInt(arms.Ammo + 0.0001f) + "→" + Mathf.FloorToInt(a1 + 0.0001f) + "/" + rules.ammoMax.ToString("0") + ")";
                 string healOpt = hpFull
                     ? "<color=" + PickRed + ">" + healBtn + " HP は満タン</color>"
-                    : healBtn + " 回復にする +" + salHeal + "(HP " + Mathf.CeilToInt(player.HP) + "→" + Mathf.CeilToInt(h1) + "/" + player.MaxHP.ToString("0") + ")";
+                    : healBtn + " 回復にする +" + salHeal + "(HP " + Mathf.CeilToInt(player.HP) + "→" + Mathf.CeilToInt(h1) + "/" + player.MaxHP.ToString("0") + ")"
+                      + (magBack > 0f && !ammoFull ? "・弾 +" + magText : "");
                 pickupLines[0] = name + " を分解する?   " + ammoOpt + "    " + healOpt + "    " + breakBtn + " やめる";
-                pickupLines[1] = "<color=" + PickGrey + ">分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)</color>";
+                pickupLines[1] = "<color=" + PickGrey + ">分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)"
+                                 + (magBack > 0f ? "  弾倉の残り(弾 " + magText + " の分)は、どちらを選んでも弾に戻る" : "") + "</color>";
                 pickupLineCount = 2;
             }
             else if (w.IsTwoHand)
@@ -436,7 +442,7 @@ namespace MeleeDuel
         ///     付けると重さの上限を超える所は赤で「重すぎる」(外れる武装の重さを引いて、所ごとに判定。DuelArms.WeightIfEquipped)。
         ///   操作:付ける(付け先を選ぶ表示へ。どの所でも重すぎるなら赤)・持つ(重さの変化)・分解(量)。
         /// </summary>
-        void BuildPickCard(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool ammoFull, bool hpFull)
+        void BuildPickCard(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool ammoFull, bool hpFull, float magBack)
         {
             float max = arms.CarryMax, total = arms.TotalWeight;
             string maxText = max.ToString("0"), totalText = total.ToString("0");
@@ -529,8 +535,10 @@ namespace MeleeDuel
                 ? keepBtn + " 持つ(重さ " + totalText + "→" + kept.ToString("0") + "/" + maxText + ")"
                 : "<color=" + PickRed + ">" + keepBtn + " 持つ:重すぎる(" + kept.ToString("0") + "/" + maxText + ")</color>");
             cardPack.Add(ammoFull && hpFull ? "<color=" + PickRed + ">" + breakBtn + " 分解(弾は上限・HP は満タン)</color>"
-                : breakBtn + " 分解(" + (ammoFull ? "<color=" + PickRed + ">弾は上限</color>" : "弾 +" + salAmmo) + " / "
-                  + (hpFull ? "<color=" + PickRed + ">HP は満タン</color>" : "回復 +" + salHeal) + ")");
+                // 弾倉の残りの分(magBack)は、弾にしても回復にしても共通の弾へ戻る:「弾 +37 / 回復 +13・弾 +12」
+                : breakBtn + " 分解(" + (ammoFull ? "<color=" + PickRed + ">弾は上限</color>" : "弾 +" + (salAmmo + magBack).ToString("0.#")) + " / "
+                  + (hpFull ? "<color=" + PickRed + ">HP は満タン</color>"
+                      : "回復 +" + salHeal + (magBack > 0f && !ammoFull ? "・弾 +" + magBack.ToString("0.#") : "")) + ")");
             inner = Mathf.Max(inner, PackLines(cardPack, "     ", CardMaxInner, richSmall, cardActions));
 
             cardInner = Mathf.Clamp(Mathf.Ceil(inner), CardMinInner, CardMaxInner);

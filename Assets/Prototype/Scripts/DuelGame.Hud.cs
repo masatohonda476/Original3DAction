@@ -207,10 +207,21 @@ namespace Prototype
                 }
                 // 見た目だけ、出す所へ CrossFollowTime 秒ほどで追いつかせる(狙いが急に変わっても跳ばずに滑る。弾の向きは変えない。作者「見た目だけでも間を補正とかできますか？」)
                 float now = Time.unscaledTime;
-                if (crossShownAt < 0f || now - crossShownAt > 0.2f) crossPos = new Vector2(sx, sy);   // しばらく出していなければ、その場に出す
-                else crossPos = Vector2.Lerp(crossPos, new Vector2(sx, sy), 1f - Mathf.Exp(-3f * (now - crossShownAt) / CrossFollowTime));
+                // 弾が敵の体に当たる所に十字があれば橙にする(DuelArms.ShotOnEnemy。体の端で 1 フレームだけ色が変わってちらつかないよう、CrossHitTime 秒で色を移す)
+                float onEnemy = arms.ShotOnEnemy ? 1f : 0f;
+                if (crossShownAt < 0f || now - crossShownAt > 0.2f)
+                {
+                    // しばらく出していなければ、その場に出す
+                    crossPos = new Vector2(sx, sy);
+                    crossHit = onEnemy;
+                }
+                else
+                {
+                    crossPos = Vector2.Lerp(crossPos, new Vector2(sx, sy), 1f - Mathf.Exp(-3f * (now - crossShownAt) / CrossFollowTime));
+                    crossHit = Mathf.MoveTowards(crossHit, onEnemy, (now - crossShownAt) / CrossHitTime);
+                }
                 crossShownAt = now;
-                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, CrossMinGap, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
+                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, CrossMinGap, SH * 0.3f), spreadHot ? 0.85f : 0.4f, crossHit);
             }
             var mc = FrameLocked;
             mc.a = 0.95f;
@@ -232,12 +243,17 @@ namespace Prototype
         const float CrossFollowTime = 0.08f;
         /// <summary>十字の真ん中の空きの最小(ぶれていないときの詰まり具合。作者「ぶれてないときのカーソルはもっと線が詰まった状態にしてください」で 3 → 1)。武装そのもののばらつきの分はこれより開く。</summary>
         const float CrossMinGap = 1f;
+        /// <summary>十字が敵に重なっている度合い(0 = 重なっていない / 1 = 重なっている。橙にする)。CrossHitTime 秒で移る。</summary>
+        float crossHit;
+        const float CrossHitTime = 0.06f;
+        /// <summary>敵に重なっている十字の濃さの下限(撃っていないときの薄い十字のままだと、敵の上で橙が見えにくいので濃くする)。</summary>
+        const float CrossHitAlpha = 0.9f;
 
-        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。</summary>
-        static void DrawCross(float cx, float cy, float g, float alpha)
+        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。hit(0〜1)は敵に重なっている度合いで、1 なら橙(FrameLocked。ロックオンの角の枠と同じ色)で濃く。</summary>
+        static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f)
         {
-            var sc = FrameIdle;
-            sc.a = alpha;
+            var sc = Color.Lerp(FrameIdle, FrameLocked, hit);
+            sc.a = Mathf.Lerp(alpha, Mathf.Max(alpha, CrossHitAlpha), hit);
             GUI.color = sc;
             const float len = 7f, th = 2f;
             var t = Texture2D.whiteTexture;

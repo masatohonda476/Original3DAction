@@ -34,10 +34,17 @@ namespace MeleeDuel
 
         /// <summary>
         /// 枠の右辺の距離の目盛りに印を出す敵(DuelGame.DrawLockGauge):距離のほかの付け始めの条件(体が照準枠に掛かる・遮られていない・生きている)を満たす敵のうち、
-        /// 付くなら選ばれる順(PickBest と同じ点数)で一番の敵。ロックオンがオンで狙う敵がいない間だけ(いれば付いているので null)。
-        /// 自動で選ばない間(銃の構え)は出さない(距離の内なのに付かない、という印にしない)。なので印が出ている敵は、いつもロックオン距離より遠い。
+        /// 一番近い敵(作者が選んだ「一番近い敵」:「枠に掛かって遮られていない敵のうち、一番近い敵の距離を示す。『印が刻みに届いたら必ず付く』がいつも成り立つ。」)。
+        /// 実際に付く敵は点数で選ぶので、この敵とは限らない(一番近い敵がロックオン距離に入れば、距離の内に付ける敵が必ずいるので、そのフレームにどれかに付く)。
+        /// ロックオンがオンで狙う敵がいない間だけ(いれば付いているので null)。自動で選ばない間(銃の構え)は出さない(距離の内なのに付かない、という印にしない)。
+        /// なので印が出ている敵は、いつもロックオン距離より遠い。目盛りの上端のさらに LockCandidateBeyond 倍より遠い敵は見ない。
         /// </summary>
         public DuelEnemy LockCandidate { get; private set; }
+        /// <summary>
+        /// 印に出す敵を探す距離の上限 = 目盛りの上端(ロックオン距離 × DuelGame.LockGaugeFarMul)× これ(80m × 2 × 1.5 = 240m)。
+        /// これより遠い敵には見通しのレイを飛ばさない(上端より遠い敵は上端に止めて薄く出すので、上端の少し先までは見る)。
+        /// </summary>
+        const float LockCandidateBeyond = 1.5f;
         /// <summary>LockCandidate までの距離(m。付け始めの判定と同じ測り方=足元どうしの直線距離)。</summary>
         public float LockCandidateDistance { get; private set; }
 
@@ -74,24 +81,28 @@ namespace MeleeDuel
             return (e.transform.position - transform.position).sqrMagnitude <= r * r && DuelSenses.ClearSight(LockPoint, e.LockPoint);
         }
 
-        /// <summary>ロックオンのオン・オフを切り替える(電脳斬禅の SetAutoLock)。オンにしたらその場で選び(照準枠に掛かっている、ロックオン距離の内の敵)、オフにしたら外す。</summary>
+        /// <summary>
+        /// ロックオンのオン・オフを切り替える(電脳斬禅の SetAutoLock)。オフにしたら外す。
+        /// オンにしたときの相手は、同じフレームの UpdateLock の続きで選ぶ(照準枠に掛かっている、ロックオン距離の内の敵。銃の構えの間でも選ぶ。選ぶのは1フレームに1回)。
+        /// </summary>
         void SetLockOn(bool on)
         {
             if (LockOn == on) return;
             LockOn = on;
             lockOnMemory = on;
             lockLostFor = 0f;
-            Target = on ? PickBest(out _, out _) : null;
+            Target = null;
         }
 
         void UpdateLock()
         {
             // ロックオンのボタン:オン・オフを切り替える。切り替えのボタンは、オフならオンに戻す(電脳斬禅の Cycle)
             // 落ちている武装の分解を選んでいる間と、抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
-            bool turnedOn = false;
+            bool wasOn = LockOn;
             bool toggle = Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle;
+            bool switchPressed = ProtoInput.SwitchTarget;
             if (toggle) SetLockOn(!LockOn);
-            else if (ProtoInput.SwitchTarget && !LockOn) { SetLockOn(true); turnedOn = true; }
+            else if (switchPressed && !LockOn) SetLockOn(true);
             if (!LockOn)
             {
                 Target = null;
@@ -101,6 +112,7 @@ namespace MeleeDuel
                 mouseFlick = 0f;
                 return;
             }
+            bool justOn = !wasOn;   // このフレームにオンにした(ロックオンのボタンでも、切り替えのボタンでも)
             // 狙っている敵が、壁・床ごし、またはロックオン距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。倒したらすぐ外す
             if (Target != null)
             {
@@ -112,15 +124,19 @@ namespace MeleeDuel
                 if (Target.Dead || lockLostFor >= lockLoseAfter) { Target = null; lockLostFor = 0f; }
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
-            // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。銃を構えている間は選ばない
+            // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。
+            // 銃を構えている間は自動では選ばない。オンにしたフレームと、切り替えのボタンを押したフレームは、構えの間でも選ぶ。選ぶのは1フレームに1回だけ(PickBest)。
+            // 狙う敵がいて切り替えのボタンを押したら、画面の中のほかの敵へ(枠は使わない。オンにしたフレーム・このフレームに付いた相手からは切り替えない)
             DuelEnemy candidate = null;
             float candidateDist = 0f;
-            if (Target == null && !Arms.Aiming) Target = PickBest(out candidate, out candidateDist);
-            // 切り替えのボタン:狙う敵がいなければ自動と同じ条件で選ぶ(銃の構えの間も選べる)、いれば画面の中のほかの敵へ(枠は使わない)
-            if (ProtoInput.SwitchTarget && !turnedOn) Target = Target == null ? PickBest(out _, out _) : NearestToView(Target);
-            // 距離の目盛りの印に出す敵:付かなかったときの、距離のほかの条件を満たす一番の敵(付いたら出さない)
-            LockCandidate = Target == null ? candidate : null;
-            LockCandidateDistance = candidateDist;
+            if (Target == null)
+            {
+                if (!Arms.Aiming || justOn || switchPressed) Target = PickBest(out candidate, out candidateDist);
+            }
+            else if (switchPressed && !justOn) Target = NearestToView(Target);
+            // 距離の目盛りの印に出す敵:付かなかったときの、距離のほかの条件を満たす一番近い敵(付いたら出さない。自動で選ばない構えの間も出さない)
+            LockCandidate = Target == null && !Arms.Aiming ? candidate : null;
+            LockCandidateDistance = LockCandidate != null ? candidateDist : 0f;
             // 上の自動で選ぶのは、銃の構えの間はしない(撃っている最中に、相手が替わってカメラが回り出さないように。構えが終わってから選ぶ)。
             // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
@@ -197,37 +213,53 @@ namespace MeleeDuel
         ///   カメラがないときは枠を見ない(前の「画面を見ない」と同じ扱い)。LockRange が 0 なら距離も見通しも見ない。
         /// 点数 = 画面の中央からのずれ(胸の少し上の点)× 10 + 距離 × lockPickDistanceWeight で、小さいほど先。いなければ null。
         /// 電脳斬禅の「こちらを狙っている敵を少し優先する」は入れない(作者「気づいたかどうかじゃなくて」)。
-        /// candidate は、距離だけを見ないで同じ条件・同じ点数で選んだ一番の敵(距離の目盛りの印に出す。candidateDist はその距離)。
-        ///   candidate がロックオン距離の内なら、返す敵と同じ(印が目盛りの刻みに届いたフレームに付く)。
-        /// 見通し(レイを飛ばす)は、点数が今の一番より良い敵だけ調べる。
+        /// nearest は、距離だけを見ないで同じ条件(体が枠に掛かる・遮られていない・生きている)を満たす一番近い敵(距離の目盛りの印に出す。LockCandidate。nearestDist はその距離)。
+        ///   nearest がロックオン距離の内なら、返す敵は必ずいる(印が目盛りの刻みに届いたフレームに、どれかの敵に付く。点数で選ぶので nearest とは限らない)。
+        ///   探すのは LockRange × DuelGame.LockGaugeFarMul × LockCandidateBeyond(240m)まで。それより遠い敵は見ない。
+        /// 見通し(レイを飛ばす)は、今の一番近い敵より近い敵か、ロックオン距離の内で点数が今の一番より良い敵だけ調べる。
+        ///   前のフレームの印の敵を最初に調べる(たいていそのまま一番近いので、それより遠い敵にはレイを飛ばさずに済む)。
+        ///   レイの本数の目安:印の敵がいる間は 1 +(それより近くて遮られている、枠の中の敵の数)。枠の中に見通せる敵がいない間は、枠に掛かる 240m 以内の敵の数。
         /// </summary>
-        DuelEnemy PickBest(out DuelEnemy candidate, out float candidateDist)
+        DuelEnemy PickBest(out DuelEnemy nearest, out float nearestDist)
         {
-            candidate = null;
-            candidateDist = 0f;
+            nearest = null;
+            nearestDist = 0f;
             var cam = Camera.main;
             bool framed = game.LockSightTan(cam, out float frameW, out float frameH);
             float range = LockRange;
+            float far = range > 0f ? range * DuelGame.LockGaugeFarMul * LockCandidateBeyond : float.MaxValue;
             DuelEnemy best = null;
-            float bestScore = float.MaxValue, candidateScore = float.MaxValue;
-            foreach (var e in game.Enemies)
+            float bestScore = float.MaxValue, nearD = float.MaxValue;
+            var list = game.Enemies;
+            var prev = LockCandidate;
+            for (int k = -1; k < list.Count; k++)   // -1 は前のフレームの印の敵(先に調べる。並びの中では飛ばす)
             {
-                if (e == null || e.Dead) continue;
-                if (framed && !Arms.BodyInCenterFrame(cam, e, frameW, frameH)) continue;
+                var e = k < 0 ? prev : list[k];
+                if (e == null || e.Dead || (k >= 0 && e == prev)) continue;
                 float d = Vector3.Distance(e.transform.position, transform.position);
+                if (d > far) continue;
                 bool inRange = range <= 0f || d <= range;
-                float centerOff = 0f;
-                if (cam != null)
+                bool nearer = d < nearD;
+                if (!nearer && !inRange) continue;
+                if (framed && !Arms.BodyInCenterFrame(cam, e, k, frameW, frameH)) continue;
+                float score = float.MaxValue;
+                if (inRange)
                 {
-                    Vector3 v = cam.WorldToViewportPoint(e.LockPoint);
-                    centerOff = Vector2.Distance(new Vector2(v.x, v.y), new Vector2(0.5f, 0.5f));   // 0(中央)〜0.7(角)
+                    float centerOff = 0f;
+                    if (cam != null)
+                    {
+                        Vector3 v = cam.WorldToViewportPoint(e.LockPoint);
+                        centerOff = Vector2.Distance(new Vector2(v.x, v.y), new Vector2(0.5f, 0.5f));   // 0(中央)〜0.7(角)
+                    }
+                    score = centerOff * 10f + d * lockPickDistanceWeight;
                 }
-                float score = centerOff * 10f + d * lockPickDistanceWeight;
-                if (score >= candidateScore && !(inRange && score < bestScore)) continue;
+                bool better = inRange && score < bestScore;
+                if (!nearer && !better) continue;
                 if (range > 0f && !DuelSenses.ClearSight(LockPoint, e.LockPoint)) continue;
-                if (score < candidateScore) { candidateScore = score; candidate = e; candidateDist = d; }
-                if (inRange && score < bestScore) { bestScore = score; best = e; }
+                if (nearer) { nearD = d; nearest = e; }
+                if (better) { bestScore = score; best = e; }
             }
+            if (nearest != null) nearestDist = nearD;
             return best;
         }
     }

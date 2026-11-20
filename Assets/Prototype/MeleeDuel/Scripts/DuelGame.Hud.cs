@@ -437,8 +437,10 @@ namespace MeleeDuel
             lockHalfH = dt <= 0f ? wantH : Mathf.MoveTowards(lockHalfH, wantH, 267f * dt);
             float baseW = rest.x;
             float hw = baseW + lockOffset, hh = lockHalfH + lockOffset * (lockHalfH / baseW);
-            // 右辺の距離の目盛り:待機中の枠(敵を囲みに縮む前の大きさ。オン・オフの出入りには付いていく)の右辺に出し、敵を囲みに縮む間は消す
-            DrawLockGauge(on, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
+            // 右辺の距離の目盛り:待機中の枠(敵を囲みに縮む前の大きさ。オン・オフの出入りには付いていく)の右辺に出す。
+            // 出すのは、オンで狙う敵がいない(付く相手を探している)間だけ。付いている間は、相手が遮られた・画面の外に出たときも出さない
+            // (枠を出し始めたフレーム=オンにした瞬間・メニューを閉じた直後に、もう付いていれば最初から出さない)。枠が敵から戻る途中は、戻るのに合わせて濃くなる
+            DrawLockGauge(on && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
             hw = Mathf.Lerp(hw, lockFollowHalf.x + lockOffset * 0.35f, e);
             hh = Mathf.Lerp(hh, lockFollowHalf.y + lockOffset * 0.35f, e);
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
@@ -463,29 +465,35 @@ namespace MeleeDuel
         //   枠に掛かった敵までの距離を小さな印で示す。印が目盛りの内に入ると付く。あとどれだけ近づけばよいかが続けて読める)。
         // 縦の目盛り:下が 0m(近い)・上が遠い(上端 = ロックオン距離 × LockGaugeFarMul)。ロックオン距離(DuelStage.lockOnRange)の所に目立つ刻み、
         //   その間はロックオン距離を LockGaugeDivs 等分した小さな刻み。刻みより下(付く距離)の軸は少し太く濃い。
-        // 印(◀。軸の外側から軸を指す):DuelPlayer.LockCandidate(体が枠に掛かり・遮られていない敵のうち、付くなら選ばれる一番の敵)までの距離。
-        //   測り方は付け始めの判定と同じ(LockCandidateDistance)。印が刻みに届いたフレームに付き、枠が敵を囲みに縮むのと一緒に目盛りごと消える。
-        //   上端より遠い敵は上端に止めて薄くする。該当する敵がいなければ印は出さず、目盛りだけ薄く残す。
-        // 出すのはロックオンがオンで枠が待機している間だけ(オフ・メニュー・撃破では出さない)。揺らさない・点滅させない:
+        // 印(◀。軸の外側から軸を指す):DuelPlayer.LockCandidate(体が枠に掛かり・遮られていない敵のうち、一番近い敵)までの距離。
+        //   印の敵は、係の質問「距離の目盛りの印は、どの敵の距離を示しますか?」に作者が選んだ「一番近い敵」
+        //   (「枠に掛かって遮られていない敵のうち、一番近い敵の距離を示す。『印が刻みに届いたら必ず付く』がいつも成り立つ。」)。
+        //   測り方は付け始めの判定と同じ(LockCandidateDistance)。印が刻みに届いたフレームにどれかの敵に付き(付く敵は点数で選ぶので、印の敵とは限らない)、
+        //   枠が敵を囲みに縮むのと一緒に目盛りごと消える。
+        //   上端より遠い敵は上端に止めて薄くする(上端の 1.5 倍より遠い敵は見ない。DuelPlayer.LockCandidateBeyond)。該当する敵がいなければ印は出さず、目盛りだけ薄く残す。
+        // 出すのはロックオンがオンで、狙う敵がいない(付く相手を探している)間だけ(付いている間・オフ・メニュー・撃破では出さない)。揺らさない・点滅させない:
         //   印は敵の距離のとおりに動き、印の相手が替わったときだけ、今の位置から新しい位置へなめらかに滑らせる(跳ばない)。出入りは濃さだけ。文字は出さない。
-        const float LockGaugeFarMul = 2f, LockGaugeAlpha = 0.9f, LockGaugeIdleAlpha = 0.55f, LockGaugeBeyondAlpha = 0.4f;
+        /// <summary>目盛りの上端の距離 = ロックオン距離 × これ(印に出す敵を探す距離の上限も、これから決める。DuelPlayer.PickBest)。</summary>
+        public const float LockGaugeFarMul = 2f;
+        const float LockGaugeAlpha = 0.9f, LockGaugeIdleAlpha = 0.55f, LockGaugeBeyondAlpha = 0.4f;
         const int LockGaugeDivs = 4;
         const float LockGaugeFadeTime = 0.2f, LockMarkFadeTime = 0.15f, LockMarkSettle = 10f;
-        /// <summary>目盛りの濃さ(0〜1。オンで出てオフで消える)・印の濃さ(0〜1)・印の位置(0 = 0m 〜 1 = 上端)・相手が替わったときに残る位置のずれ(0 へ戻る)。</summary>
+        /// <summary>目盛りの濃さ(0〜1。オンで狙う敵がいない間に出て、付く・オフで消える)・印の濃さ(0〜1)・印の位置(0 = 0m 〜 1 = 上端)・相手が替わったときに残る位置のずれ(0 へ戻る)。</summary>
         float lockGaugeShow, lockMarkShow, lockMarkPos, lockMarkSlip;
         DuelEnemy lockMarkEnemy;
 
         /// <summary>
         /// 待機中の照準枠(中心 c・横の半分 hw・縦の半分 hh。オン・オフの出入りの広がりを含む)の右辺に、ロックオン距離の目盛りと敵までの距離の印を描く。
+        /// seeking はロックオンがオンで狙う敵がいない(付く相手を探している)か。この間だけ出す。
         /// rest は枠が待機している度合い(1 = 待機、0 = 敵を囲んでいる)。dt は前に描いてからの秒数(0 なら濃さ・位置をその場で合わせる)。
         /// </summary>
-        void DrawLockGauge(bool on, Vector2 c, float hw, float hh, float rest, float dt)
+        void DrawLockGauge(bool seeking, Vector2 c, float hw, float hh, float rest, float dt)
         {
             float range = stage != null ? stage.lockOnRange : 0f;
-            lockGaugeShow = dt <= 0f ? (on ? 1f : 0f) : Mathf.MoveTowards(lockGaugeShow, on ? 1f : 0f, dt / LockGaugeFadeTime);
+            lockGaugeShow = dt <= 0f ? (seeking ? 1f : 0f) : Mathf.MoveTowards(lockGaugeShow, seeking ? 1f : 0f, dt / LockGaugeFadeTime);
             float show = lockGaugeShow * rest * rest;
             // 印:相手がいる間は距離のとおりの位置へ。相手が替わったら、今の位置からのずれを残して 0 へ戻す(なめらかに滑る)。いなくなったら、その場で薄くして消す
-            var cand = on ? player.LockCandidate : null;
+            var cand = seeking ? player.LockCandidate : null;
             bool has = range > 0f && cand != null && !cand.Dead;
             float beyond = 0f;
             if (has)

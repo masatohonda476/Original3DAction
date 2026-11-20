@@ -283,12 +283,14 @@ namespace MeleeDuel
         /// <summary>
         /// 敵 e の体が、画面の中央を中心にした枠(横 ±hw・縦 ±hh。tan)に掛かっているか。ロックオンの付け始めの判定(DuelPlayer.PickBest。枠は DuelGame.LockSightTan)。
         /// 銃の照準の枠と同じ体の見え方(PrepareViews・InFrame。体は BodyAxis の縦長のカプセル)を使い回す。照準の位置(cursorTan)には寄らず、いつも画面の中央。
+        /// index は e の DuelGame.Enemies での番号(見え方は同じ並びなので、まずその番号を見る。合えば探さない)。分からなければ -1(頭から探す)。
         /// このフレームの見え方を作ったあとに現れた敵は、次のフレームから入る。
         /// </summary>
-        public bool BodyInCenterFrame(Camera cam, DuelEnemy e, float hw, float hh)
+        public bool BodyInCenterFrame(Camera cam, DuelEnemy e, int index, float hw, float hh)
         {
             if (cam == null || e == null || player == null || game == null) return false;
             PrepareViews(cam);
+            if (index >= 0 && index < viewCount && views[index].e == e) return InFrame(index, 0f, 0f, hw, hh);
             for (int k = 0; k < viewCount; k++)
                 if (views[k].e == e) return InFrame(k, 0f, 0f, hw, hh);
             return false;

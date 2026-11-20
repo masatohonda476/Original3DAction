@@ -4,61 +4,27 @@ using UnityEngine;
 
 namespace MeleeDuel
 {
-    // DuelGame の装備の確認(開閉・操作・画面)(partial。本体は DuelGame.cs)
+    // DuelGame の装備の確認(メニューの「装備・所持品」のページ。操作・画面)(partial。本体は DuelGame.cs。メニューの開閉・ページの行き来は DuelGame.Menu.cs)
     public partial class DuelGame
     {
-        // ───────── 装備の確認(右のメニューボタン) ─────────
+        // ───────── 装備の確認(メニューの「装備・所持品」) ─────────
+        //
+        // 右のメニューボタン(OPTIONS・≡・+ / I)で開く項目のメニューから「装備・所持品」を選ぶと開く(開閉と時間・入力の止め方は DuelGame.Menu.cs の UpdateMenu)。
+        // ○・B / Backspace で項目のメニューへ戻り、右のメニューボタン / I で全部閉じる。
+        // 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所と所持品を選ぶ(5つの所の下に所持品が続く)。
+        //   付けている武装:△ / C で外して所持品へ。所持品:その所のボタン(R1/L1・R2/L2・背中は ×)で付ける(今の武装は所持品へ)。
+        //   どちらも □・X / X キーで処分の選択になり、もう一度 □ で足もとの床に捨てる、← で分解して弾、→ で分解して回復(○/Backspace・選び直すでやめる)。
+        //   撃墜中・ボスを倒した後・真下に床がない所は捨てられない(分解はできる。回復は撃墜中はできない)。
 
-        bool equipOpen;
-        /// <summary>装備の確認を開いている(時間が止まっている)。自機・敵・ステージの Update はこの間なにもしない。</summary>
-        public static bool Paused => I != null && I.equipOpen;
-
-        /// <summary>
-        /// 右のメニューボタン(OPTIONS・≡・+ / I)で装備の確認を開く・閉じる。○・B / Backspace でも閉じる(Esc はカメラのマウスの固定を外すので使わない)。
-        /// 開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
-        /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
-        /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所と所持品を選ぶ(5つの所の下に所持品が続く)。
-        ///   付けている武装:△ / C で外して所持品へ。所持品:その所のボタン(R1/L1・R2/L2・背中は ×)で付ける(今の武装は所持品へ)。
-        ///   どちらも □・X / X キーで処分の選択になり、もう一度 □ で足もとの床に捨てる、← で分解して弾、→ で分解して回復(○/Backspace・選び直すでやめる)。
-        ///   撃墜中・ボスを倒した後・真下に床がない所は捨てられない(分解はできる。回復は撃墜中はできない)。
-        /// </summary>
-        void UpdateEquipView()
+        /// <summary>装備の確認のページに入るときの用意(項目のメニューから入るたびに呼ぶ。SetMenuPage)。</summary>
+        void PrepareEquipPage()
         {
-            bool toggle = ProtoInput.EquipView;
-            bool up = ProtoInput.MenuUp, down = ProtoInput.MenuDown;   // スティックの倒し始めの判定のため、毎フレーム読む
-            if (equipOpen)
-            {
-                if (toggle || player == null) SetEquipOpen(false);
-                else if (ProtoInput.EquipViewBack)
-                {
-                    if (dropArmed) dropArmed = false;   // 捨てる確認の途中なら、確認だけ取り消す
-                    else SetEquipOpen(false);
-                }
-                else EquipViewInput(player.Arms, up, down);
-                return;
-            }
-            if (toggle && player != null) SetEquipOpen(true);
-        }
-
-        void SetEquipOpen(bool open)
-        {
-            if (open == equipOpen) return;
-            if (open)
-            {
-                player.Arms.CancelChoice();
-                // 先行入力(攻撃・回避・射撃)を捨てる(閉じた直後に出ないように)
-                player.ClearBufferedInput();
-                player.Arms.ClearBufferedInput();
-                // 捨てた武装を置く所の真下に床があるか(止まっている間は動かないので、開いたときに1回だけ測る)
-                for (int i = 0; i < ArmRows; i++) dropFloor[i] = player.Arms.HasFloorBelow((DuelSlot)i);   // 所持品は背中と同じ所に置く
-                // 武装が付いている最初の所を選ぶ
-                viewSel = 0;
-                for (int i = 0; i < ArmRows; i++)
-                    if (player.Arms.Get((DuelSlot)i) != null) { viewSel = i; break; }
-            }
-            dropArmed = false;
-            equipOpen = open;
-            ProtoInput.Paused = open;
+            // 捨てた武装を置く所の真下に床があるか(メニューの間は時間が止まっていて動かないので、入るときに1回だけ測る)
+            for (int i = 0; i < ArmRows; i++) dropFloor[i] = player.Arms.HasFloorBelow((DuelSlot)i);   // 所持品は背中と同じ所に置く
+            // 武装が付いている最初の所を選ぶ
+            viewSel = 0;
+            for (int i = 0; i < ArmRows; i++)
+                if (player.Arms.Get((DuelSlot)i) != null) { viewSel = i; break; }
             viewBuilt = false;
         }
 
@@ -73,7 +39,7 @@ namespace MeleeDuel
             ? (StashSel < arms.Stash.Count ? arms.Stash[StashSel].w : null)
             : arms.Get((DuelSlot)viewSel);
 
-        /// <summary>選んでいる所の武装を置く所の真下に床があるか(開いたときに測る)。</summary>
+        /// <summary>選んでいる所の武装を置く所の真下に床があるか(ページに入るときに測る)。</summary>
         readonly bool[] dropFloor = new bool[ArmRows];
 
         /// <summary>
@@ -151,7 +117,7 @@ namespace MeleeDuel
 
         // ───────── 装備の確認の画面 ─────────
 
-        // 文字列は開いたとき・中身(武装・機器)が変わったときだけ作る
+        // 文字列はページに入ったとき・中身(武装・機器)が変わったときだけ作る
         readonly string[] viewHead = new string[ArmRows], viewName = new string[ArmRows], viewStats = new string[ArmRows], viewUse = new string[ArmRows];
         readonly DuelWeapon[] viewKeyW = new DuelWeapon[ArmRows];
         ProtoInput.Device viewKeyDev;
@@ -553,8 +519,9 @@ namespace MeleeDuel
                 };
                 if (w.IsGun && w.magazine > 0) viewUse[i] += $"  {aim}+{btn} リロード";
             }
-            string close = kb ? "I / Backspace" : ProtoInput.L(ProtoInput.Btn.EquipView) + " / " + ProtoInput.L(ProtoInput.Btn.Back);
             string drop = ProtoInput.L(ProtoInput.Btn.Discard), back = kb ? "Backspace" : ProtoInput.L(ProtoInput.Btn.Back);
+            // ○ / Backspace は1つ前(項目のメニュー)へ戻り、右のメニューボタン / I は全部閉じる
+            string close = back + " 戻る  " + ProtoInput.L(ProtoInput.Btn.EquipView) + " 閉じる";
             viewDropHint = $"<color=#AAAAAA>{ProtoInput.L(ProtoInput.Btn.PickUp)} 外して持つ   {drop} 処分(捨てる・分解)</color>";
             string sel = kb ? "↑↓/W・S" : "↑↓";
             string note = block switch
@@ -565,7 +532,7 @@ namespace MeleeDuel
                 4 => "(攻撃・回避・怯みなどの途中は付け外し・処分できない)",
                 _ => "",
             };
-            viewFoot = $"一時停止中 ― {sel} 選ぶ(下に所持品)  {drop} 処分:もう一度 {drop} 捨てる・← 弾・→ 回復{note}  {close} 閉じる";
+            viewFoot = $"一時停止中 ― {sel} 選ぶ(下に所持品)  {drop} 処分:もう一度 {drop} 捨てる・← 弾・→ 回復{note}  {close}";
         }
 
         /// <summary>両手持ちの L1 の技の1行(近接は一振りの威力・届く範囲・幅・EN、射撃は撃ち方)。</summary>

@@ -12,7 +12,7 @@ namespace MeleeDuel
         const float CellW = 200f, CellH = 44f, CellGap = 8f, BackRowH = 24f, ArmsMargin = 20f, WeightRowH = 20f;
         /// <summary>右下の武装の欄の上端(重さの1行を含む。拾う案内をこれより上に出す)。</summary>
         float ArmsTop => SH - ArmsMargin - BackRowH - 6f - CellH * 2f - CellGap - WeightRowH;
-        /// <summary>右下の武装の欄の左端(操作説明をこれより左で折り返す)。</summary>
+        /// <summary>右下の武装の欄の左端(左下のメニューの案内は、これより左に収める)。</summary>
         float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap;
 
         /// <summary>セルの右上に出す状態。</summary>
@@ -285,7 +285,7 @@ namespace MeleeDuel
                     BuildPickCharts(arms.Choosing != null ? w : null, to, a, b, curTwo);
                 }
             }
-            // 右下の武装の欄と左下の HP・操作説明に重ならない高さ(行が多いときは上へずらす)
+            // 右下の武装の欄と左下の HP・メニューの案内に重ならない高さ(行が多いときは上へずらす)
             float limit = Mathf.Min(ArmsTop, leftTop) - 8f;
             if (card)
             {
@@ -546,7 +546,7 @@ namespace MeleeDuel
         }
 
         /// <summary>
-        /// カードを描く:画面の下の中央、右下の武装の欄・左下の HP と操作説明より上(limitY がカードの下端の上限)。
+        /// カードを描く:画面の下の中央、右下の武装の欄・左下の HP とメニューの案内より上(limitY がカードの下端の上限)。
         /// 文字列・幅・高さは BuildPickCard で作ってあるものを並べるだけ(毎フレーム作り直さない)。
         /// </summary>
         void DrawPickCard(float limitY)

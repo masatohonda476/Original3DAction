@@ -12,8 +12,10 @@ namespace MeleeDuel
     /// 回避が軸になっているか / ガードが便利すぎないか。
     /// F1(または SHARE+△)でやり直し。
     /// 平らな部屋に波で敵を出す「部屋のモード」(MeleeDuel.unity。stage なし・武装なし)はやめた(作者「MeleeDuel消して」2026-11-20)。stage は必ず要る。
-    /// ファイルは役割ごとに分けている:DuelGame.Hud.cs(画面のゲージ・照準・ロックオンの表示・操作説明)/
-    /// DuelGame.ArmsHud.cs(右下の武装の欄・拾う案内・付け先のグラフ)/ DuelGame.EquipView.cs(装備の確認)。
+    /// ファイルは役割ごとに分けている:DuelGame.Hud.cs(画面のゲージ・照準・ロックオンの表示・左下のメニューの案内)/
+    /// DuelGame.ArmsHud.cs(右下の武装の欄・拾う案内・付け先のグラフ)/
+    /// DuelGame.Menu.cs(OPTIONS / I で開く項目のメニュー・操作方法のページ。操作方法は画面に出し続けず、ここで見る)/
+    /// DuelGame.EquipView.cs(装備の確認。メニューの「装備・所持品」のページ)。
     /// </summary>
     public partial class DuelGame : MonoBehaviour
     {
@@ -84,9 +86,9 @@ namespace MeleeDuel
         void OnDestroy()
         {
             if (I != this) return;
-            // 装備の確認を開いたまま抜けた(やり直し・Play の停止):止めた時間と入力を戻す
-            if (equipOpen) Time.timeScale = 1f;
-            equipOpen = false;
+            // メニュー(項目・装備の確認・操作方法)を開いたまま抜けた(やり直し・Play の停止):止めた時間と入力を戻す
+            if (MenuOpen) Time.timeScale = 1f;
+            menuPage = MenuPage.Closed;
             ProtoInput.Paused = false;
         }
 
@@ -130,10 +132,10 @@ namespace MeleeDuel
                 Restart();
                 return;
             }
-            UpdateEquipView();
-            // 装備の確認を開いている間は時間を止める。ほかはヒットストップ:短い間だけ時間をほぼ止める
-            Time.timeScale = equipOpen ? 0f : Time.unscaledTime < warpUntil ? 0.05f : 1f;
-            if (equipOpen) return;
+            UpdateMenu();
+            // メニュー(項目・装備の確認・操作方法)を開いている間は時間を止める。ほかはヒットストップ:短い間だけ時間をほぼ止める
+            Time.timeScale = MenuOpen ? 0f : Time.unscaledTime < warpUntil ? 0.05f : 1f;
+            if (MenuOpen) return;
 
             Enemies.RemoveAll(e => e == null);
         }

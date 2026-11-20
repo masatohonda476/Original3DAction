@@ -231,7 +231,7 @@ namespace MeleeDuel
 
         void Update()
         {
-            if (DuelGame.Paused) return;   // 装備の確認を開いている間は止める
+            if (DuelGame.Paused) return;   // メニュー(装備の確認・操作方法)を開いている間は止める
             float dt = Time.deltaTime;
             float now = Time.time;
             stateT += dt;

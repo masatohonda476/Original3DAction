@@ -15,7 +15,7 @@ namespace HuntProto
     ///   ロックオン: Q・中クリック / 十字キー左(切り替え:Tab / R3。武装ハントはロックオン中に右スティックを左右に弾いても切り替わる。
     ///               近接の試作は Q・中クリック / 十字キー左でロックオンのオン・オフを切り替え、Tab / R3 で狙う敵を変える(オフならオンに戻す)。
     ///               ロックオン中は右スティックを左右に弾く・マウスを左右に大きく振っても変わる。ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない)
-    ///   装備の確認: SHARE・View を押して離す / I(近接の試作だけ。時間が止まる。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
+    ///   装備の確認: OPTIONS・≡ / I(近接の試作だけ。時間が止まる。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
     ///               □・X / X で処分(もう一度で床に捨てる・← で弾・→ で回復)。○・B / Backspace でも閉じる。Esc はカメラのマウスの固定を外すので使わない)
     ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(近接の試作だけ)
     ///   やり直し  : F1 / SHARE を押しながら△(電脳斬禅のデバッグメニューと同じ)
@@ -92,45 +92,14 @@ namespace HuntProto
                                  k.fKey.isPressed || k.gKey.isPressed);
         }
 
-        static bool selectCombo;
-        static int equipViewFrame = -1;
-        static bool equipView;
-
         /// <summary>
-        /// 近接の試作:装備の確認を開く/閉じる。パッド左のメニューボタン(SHARE・Create / View / −)を離した瞬間、または I キー。
-        /// 左のメニューボタンは押しながら△・□でやり直しなど(DebugMod)にも使うので、押している間に△・□を押したら数えない。
-        /// 1フレームに何度読んでも同じ値(毎フレーム読むこと。押した瞬間を見逃すと組み合わせの判定がずれる)。
+        /// 近接の試作:装備の確認を開く/閉じる。パッド右のメニューボタン(OPTIONS・≡ / +)を押した瞬間、または I キー。
+        /// 左のメニューボタン(SHARE・View)は、押しながら△・□のやり直しなど(DebugMod)だけに使う。
         /// </summary>
-        public static bool EquipView
-        {
-            get
-            {
-                if (equipViewFrame == Time.frameCount) return equipView;
-                equipViewFrame = Time.frameCount;
-                bool pad = false;
-                if (Pad != null)
-                {
-                    var s = Pad.selectButton;
-                    if (s.wasPressedThisFrame) selectCombo = false;
-                    if (s.isPressed && (Pad.buttonNorth.wasPressedThisFrame || Pad.buttonWest.wasPressedThisFrame)) selectCombo = true;
-                    pad = s.wasReleasedThisFrame && !selectCombo;
-                }
-                equipView = pad || K(k => k.iKey);
-                return equipView;
-            }
-        }
+        public static bool EquipView => K(k => k.iKey) || P(p => p.startButton);
 
         /// <summary>近接の試作:装備の確認を閉じる(○・B / Backspace)。Esc は DuelCamera がマウスの固定を外すのに使うので含めない。</summary>
         public static bool EquipViewBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
-
-        /// <summary>
-        /// 近接の試作:左のメニューボタンを今押していれば、組み合わせ(やり直しなど)に使ったことにする(離しても装備の確認を開かない)。
-        /// やり直した直後の新しいシーンの始め(DuelGame.Awake)で呼ぶ。
-        /// </summary>
-        public static void SelectHeldAsCombo()
-        {
-            if (Pad != null && Pad.selectButton.isPressed) selectCombo = true;
-        }
 
         public static Vector2 Move
         {
@@ -293,7 +262,7 @@ namespace HuntProto
                 Btn.PickUp => new[] { "C", "△", "Y" },
                 Btn.EquipNow => new[] { "V", "十字右", "十字右" },
                 Btn.Delete => new[] { "C長押し", "△長押し", "Y長押し" },
-                Btn.EquipView => new[] { "I", "SHARE", "View(−)" },
+                Btn.EquipView => new[] { "I", "OPTIONS", "≡" },
                 Btn.Stash => new[] { "G", "十字下", "十字下" },
                 Btn.Break => new[] { "F", "十字上", "十字上" },
                 Btn.MenuLeft => new[] { "←", "←", "←" },
@@ -328,17 +297,7 @@ namespace HuntProto
         public static bool Heal => !BtnBlocked && (K(k => k.hKey) || P(p => p.dpad.up));
         public static bool LockToggle => !BtnBlocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame) || P(p => p.dpad.left));
         public static bool SwitchTarget => !BtnBlocked && (K(k => k.tabKey) || P(p => p.rightStickButton));
-        public static bool Restart => K(k => k.f1Key) || Combo(DebugMod && P(p => p.buttonNorth));
-        public static bool ToggleMode => K(k => k.f2Key) || Combo(DebugMod && P(p => p.buttonWest));
-
-        /// <summary>
-        /// 左のメニューボタン+ボタンの組み合わせが成り立ったら、組み合わせ済みにする(左のメニューボタンを離しても装備の確認を開かない)。
-        /// やり直しのフレームは EquipView が読まれないことがあるので、ここで立てる。
-        /// </summary>
-        static bool Combo(bool done)
-        {
-            if (done) selectCombo = true;
-            return done;
-        }
+        public static bool Restart => K(k => k.f1Key) || (DebugMod && P(p => p.buttonNorth));
+        public static bool ToggleMode => K(k => k.f2Key) || (DebugMod && P(p => p.buttonWest));
     }
 }

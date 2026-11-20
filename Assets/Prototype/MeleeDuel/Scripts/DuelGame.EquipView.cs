@@ -7,14 +7,14 @@ namespace MeleeDuel
     // DuelGame の装備の確認(開閉・操作・画面)(partial。本体は DuelGame.cs)
     public partial class DuelGame
     {
-        // ───────── 装備の確認(左のメニューボタン) ─────────
+        // ───────── 装備の確認(右のメニューボタン) ─────────
 
         bool equipOpen;
         /// <summary>装備の確認を開いている(時間が止まっている)。自機・敵・ステージの Update はこの間なにもしない。</summary>
         public static bool Paused => I != null && I.equipOpen;
 
         /// <summary>
-        /// 左のメニューボタン(SHARE・View・− を離す / I)で装備の確認を開く・閉じる。○・B / Backspace でも閉じる(Esc はカメラのマウスの固定を外すので使わない)。
+        /// 右のメニューボタン(OPTIONS・≡・+ / I)で装備の確認を開く・閉じる。○・B / Backspace でも閉じる(Esc はカメラのマウスの固定を外すので使わない)。
         /// ステージ(武装がある)だけ。開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
         /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
         /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所と所持品を選ぶ(5つの所の下に所持品が続く)。
@@ -24,7 +24,7 @@ namespace MeleeDuel
         /// </summary>
         void UpdateEquipView()
         {
-            bool toggle = ProtoInput.EquipView;   // 組み合わせの判定のため、毎フレーム読む
+            bool toggle = ProtoInput.EquipView;
             bool up = ProtoInput.MenuUp, down = ProtoInput.MenuDown;   // スティックの倒し始めの判定のため、毎フレーム読む
             if (equipOpen)
             {

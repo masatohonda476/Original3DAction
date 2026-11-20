@@ -9,7 +9,9 @@ namespace MeleeDuel
     /// 近接の試作のステージ:墜落して地面に斜めに突き刺さった、横倒しの巨大な船の中を、下から上へ登る。区画の区切りはなく、ひと続きの地形。
     ///   地面の裂け目(入口・最下層。開けている)→ 横倒しの居住区(元の壁が床になった狭い部屋が3つ。ドアの穴が床・天井にある)→
     ///   大きな竪穴(張り出した足場・折れた梁をブースト飛行で上る。足場に敵)→ 分岐:外殻を伝う外の道(開けた斜面)/ 内部の配管の道(狭いダクト)→
-    ///   合流(機関区画。ボスの前に群れが待つ。拾った武装で暴れる所)→ 頭頂部の大ホール(天井が裂けている。ボス)。
+    ///   合流(機関区画。群れが待つ。拾った武装で暴れる所)→ 主通路(上り坂)→ 格納庫(広い。コンテナの山とキャットウォーク)→
+    ///   昇降機の竪穴(細く高い。足場と止まった昇降機の箱を上る)→ 船首の外板(開けた外の斜面)→ 艦橋の下(ボスの前の群れ)→
+    ///   頭頂部の大ホール(天井が裂けている。ボス)。
     /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
     /// セーブポイント(光る柱)に触れると再開地点が変わる。撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
@@ -65,11 +67,13 @@ namespace MeleeDuel
         [Tooltip("高さごとのレア度の重み(倒した所の高さで選ぶ。上ほど強い武装)")]
         public DuelDropBand[] dropBands =
         {
-            new(0f, 1f, 0f, 0f),        // 地面の裂け目・居住区の下:コモンだけ
-            new(30f, 0.65f, 0.35f, 0f), // 居住区の上・竪穴の下
-            new(85f, 0.3f, 0.55f, 0.15f),// 竪穴の上
-            new(120f, 0.15f, 0.5f, 0.35f),// 外殻・配管
-            new(155f, 0f, 0.35f, 0.65f), // 機関区画(ボスの前の群れ)
+            new(0f, 1f, 0f, 0f),            // 地面の裂け目・居住区の下:コモンだけ
+            new(30f, 0.8f, 0.2f, 0f),       // 居住区の上・竪穴
+            new(120f, 0.6f, 0.4f, 0f),      // 竪穴の上・外殻・配管・機関区画
+            new(175f, 0.3f, 0.55f, 0.15f),  // 主通路の上・格納庫・昇降機の竪穴の下
+            new(240f, 0.15f, 0.5f, 0.35f),  // 昇降機の竪穴の上
+            new(300f, 0.05f, 0.45f, 0.5f),  // 船首の外板
+            new(330f, 0f, 0.35f, 0.65f),    // 艦橋の下(ボスの前の群れ)
         };
         [Tooltip("照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)")]
         public DuelArmsRules armsRules = new();
@@ -96,7 +100,7 @@ namespace MeleeDuel
         /// <summary>壁の厚み。</summary>
         const float T = 3f;
         /// <summary>見えない天井の高さ。見えない壁はここまで伸びる(飛んで越えられない)。</summary>
-        const float CeilingY = 280f;
+        const float CeilingY = 450f;
 
         static readonly Color HullColor = new(0.36f, 0.38f, 0.42f), WallColor = new(0.45f, 0.46f, 0.48f),
             FloorColor = new(0.34f, 0.35f, 0.36f), DebrisColor = new(0.5f, 0.46f, 0.4f), FurnitureColor = new(0.55f, 0.5f, 0.42f),
@@ -178,7 +182,60 @@ namespace MeleeDuel
             if (built) return;
             built = true;
             Define();
+            SeparateCoplanarFaces();
             BuildGeometry();
+        }
+
+        /// <summary>重なった箱の、同じ向きで同じ位置にある面をずらす幅(m)。</summary>
+        const float FaceNudge = 0.03f;
+
+        /// <summary>
+        /// 壁のちらつき(Z ファイティング)を防ぐ。箱どうしが重なっていて、同じ向きの面が同じ位置にあると
+        /// (例:壁の外側の面と床の板の端、壁の上端と天井の板の上面)、どちらを描くかが画素ごとに揺れて縞模様にちらつく。
+        /// 回していない箱を置いた順に見て、先に置いた箱と同じ向き・同じ位置で重なる面があれば、後の箱のその面を FaceNudge だけ内側へずらす
+        /// (ずらした先がまた別の箱の面と重なれば、もう一度ずらす)。見えない壁・印(デカール)・坂(回した箱)は触らない。
+        /// </summary>
+        void SeparateCoplanarFaces()
+        {
+            static bool Plain(Block b) => !b.invisible && !b.decal && b.rot == Quaternion.identity;
+            for (int j = 0; j < blocks.Count; j++)
+            {
+                var bj = blocks[j];
+                if (!Plain(bj)) continue;
+                Vector3 min = bj.center - bj.size / 2f, max = bj.center + bj.size / 2f;
+                bool moved = false;
+                for (int axis = 0; axis < 3; axis++)
+                {
+                    int u = (axis + 1) % 3, v = (axis + 2) % 3;
+                    for (int side = 0; side < 2; side++)
+                    {
+                        for (int tries = 0; tries < 8; tries++)
+                        {
+                            float face = side == 0 ? min[axis] : max[axis];
+                            bool hit = false;
+                            for (int i = 0; i < j && !hit; i++)
+                            {
+                                var bi = blocks[i];
+                                if (!Plain(bi)) continue;
+                                Vector3 imin = bi.center - bi.size / 2f, imax = bi.center + bi.size / 2f;
+                                float other = side == 0 ? imin[axis] : imax[axis];
+                                if (Mathf.Abs(other - face) > 0.005f) continue;
+                                // 面どうしが広さを持って重なっているか(辺で接するだけなら見えない)
+                                if (Mathf.Min(max[u], imax[u]) - Mathf.Max(min[u], imin[u]) <= 0.01f) continue;
+                                if (Mathf.Min(max[v], imax[v]) - Mathf.Max(min[v], imin[v]) <= 0.01f) continue;
+                                hit = true;
+                            }
+                            if (!hit) break;
+                            if (side == 0) min[axis] += FaceNudge; else max[axis] -= FaceNudge;
+                            moved = true;
+                        }
+                    }
+                }
+                if (!moved) continue;
+                bj.center = (min + max) / 2f;
+                bj.size = max - min;
+                blocks[j] = bj;
+            }
         }
 
         /// <summary>敵を全部、持ち場に(まだ気づいていない状態で)置き、セーブポイントを立てて始める。</summary>

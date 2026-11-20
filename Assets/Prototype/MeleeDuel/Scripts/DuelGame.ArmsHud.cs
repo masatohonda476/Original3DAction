@@ -16,19 +16,24 @@ namespace MeleeDuel
         float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap;
 
         /// <summary>セルの右上に出す状態。</summary>
-        enum CellState { None, Ammo, Energy, Reload, Loading, Charging, Charged, TwoHand, Starved, NoEnergy }
+        enum CellState { None, Ammo, Energy, Cost, Reload, Loading, Charging, Charged, TwoHand, Starved, NoEnergy, Guard, Guarding, GuardBroken }
 
-        // セルの文字列(添字は DuelSlot)。名前・ボタンは武装か機器が、状態は武装・状態・残り(弾数か0.1秒単位)が変わったときだけ作り直す
+        // セルの文字列(添字は DuelSlot)。名前・ボタンは武装か機器が、状態は武装・状態・残り(弾数か0.1秒単位。盾はガードの残りと最大)が変わったときだけ作り直す
         readonly string[] cellBtn = new string[ArmRows], cellName = new string[ArmRows], cellStatus = new string[ArmRows];
         readonly (DuelWeapon w, ProtoInput.Device dev, bool set)[] cellKey = new (DuelWeapon, ProtoInput.Device, bool)[ArmRows];
-        readonly (DuelWeapon w, CellState st, int val, bool set)[] cellStatusKey = new (DuelWeapon, CellState, int, bool)[ArmRows];
+        readonly (DuelWeapon w, CellState st, int val, int max, bool set)[] cellStatusKey = new (DuelWeapon, CellState, int, int, bool)[ArmRows];
 
         static readonly Color GaugeOrange = new(1f, 0.6f, 0.15f, 0.35f), StatusOrange = new(1f, 0.75f, 0.4f);
+        // 盾のセルのガードのゲージ:ふだん・構えている間・崩れている間
+        static readonly Color GaugeGuard = new(0.4f, 0.6f, 0.85f, 0.35f), GaugeGuarding = new(0.5f, 0.8f, 1f, 0.5f), GaugeGuardBroken = new(1f, 0.4f, 0.2f, 0.4f);
 
         /// <summary>
         /// 右下:付けている武装を肩ボタンの並び(左=L・右=R、上の段=肩・下の段=手)の 2×2 のセルで、その下に背中の1行。
-        /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20」(残りが弾倉の1/4以下で赤っぽく)、エネルギー武器は「EN 20/秒」(ENが0以下で撃てない間は「EN切れ」)。
+        /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20 (1/発)」(弾倉の残りと、1発詰めるごとに使う共通の弾。残りが弾倉の1/4以下で赤っぽく)、
+        /// 砲・ミサイルと L1 の実弾の撃ち方は撃てる間「弾 6/回」(1回で使う共通の弾)、エネルギー武器は「EN 20/秒」(ENが0以下で撃てない間は「EN切れ」)。
         /// 銃のリロード中・砲とミサイルの装填中は、セル全体を左から満ちていくオレンジのゲージにし「リロード 1.2秒」「装填 0.8秒」。
+        /// 盾はガードのゲージを同じ形で出す(作者「左下は消して、右下の武装欄の盾のところの、リロードとかと同じ感じで」):セルを残りの分だけ左から青く満たし
+        /// 「ガード 80/100」。構えている盾は明るい青で「ガード中」、崩れている間は赤っぽく「ガード崩れ」。盾が2枚でもゲージは1本なので、どちらのセルにも同じ量。
         /// 両手持ちは右手と左手のセルを細い帯でつなぎ、右手のセルに武装名と主の撃ち方の状態、左手のセルに L1 の技名と
         /// L1 の撃ち方の状態(溜めている間は溜まり具合のゲージ、撃った後は次に撃てるまでのゲージ)。
         /// </summary>
@@ -114,12 +119,23 @@ namespace MeleeDuel
 
             // 状態とゲージ(gauge はセルを左から満たす割合。0なら出さない)
             var st = CellState.None;
-            int val = 0;
+            int val = 0, max = 0;
             float gauge = 0f;
             Color gaugeColor = GaugeOrange;
             if (w != null && !twoL)
             {
-                if (arms.Starved(slot)) st = CellState.Starved;   // 共通の弾が足りなくて撃てない
+                if (w.kind == DuelKind.Shield)
+                {
+                    // 盾:ガードのゲージ(残りの分だけセルを満たす。盾が2枚でもゲージは1本なので、どちらのセルにも同じ量)
+                    float guardMax = player.MaxGuard;
+                    bool held = player.Guarding && player.GuardHand == (slot == DuelSlot.RightHand ? 0 : 1);
+                    st = player.Current == DuelPlayer.State.GuardBroken ? CellState.GuardBroken : held ? CellState.Guarding : CellState.Guard;
+                    val = Mathf.CeilToInt(player.Guard);
+                    max = Mathf.RoundToInt(guardMax);
+                    gauge = guardMax > 0f ? player.Guard / guardMax : 0f;
+                    gaugeColor = st == CellState.GuardBroken ? GaugeGuardBroken : held ? GaugeGuarding : GaugeGuard;
+                }
+                else if (arms.Starved(slot)) st = CellState.Starved;   // 共通の弾が足りなくて撃てない
                 else if (arms.EnergyStarved(slot)) st = CellState.NoEnergy;   // ENが0以下で撃てない(エネルギー武器)
                 else if (w.IsGun)
                 {
@@ -144,6 +160,7 @@ namespace MeleeDuel
                     val = Mathf.CeilToInt(arms.CooldownLeft(slot) * 10f);
                     gauge = 1f - arms.Cooldown01(slot);
                 }
+                else if (w.PaysPerShot) st = CellState.Cost;   // 弾倉のない実弾(砲・ミサイル):撃てる間は1回で使う共通の弾
             }
             else if (twoL && arms.AltFire != null)
             {
@@ -163,25 +180,30 @@ namespace MeleeDuel
                     val = Mathf.CeilToInt(arms.AltCooldownLeft * 10f);
                     gauge = 1f - arms.AltCooldown01;
                 }
+                else if (arms.AltFire.PaysPerShot) st = CellState.Cost;   // L1 の実弾の撃ち方:撃てる間は1回で使う共通の弾
             }
             if (st == CellState.None && w is { IsTwoHand: true }) st = CellState.TwoHand;
             if (gauge > 0f) Chip(new Rect(r.x, r.y, r.width * Mathf.Clamp01(gauge), r.height), gaugeColor);
 
             if (st != CellState.None)
             {
-                if (cellStatusKey[i] != (w, st, val, true))
+                if (cellStatusKey[i] != (w, st, val, max, true))
                 {
-                    cellStatusKey[i] = (w, st, val, true);
+                    cellStatusKey[i] = (w, st, val, max, true);
                     cellStatus[i] = st switch
                     {
-                        CellState.Ammo => $"弾 {val}/{w.magazine}",
-                        CellState.Energy => w.UsesEnergy ? w.EnText : "弾数∞",
+                        CellState.Ammo => w.UsesAmmo ? $"弾 {val}/{w.magazine} ({w.AmmoCostText})" : $"弾 {val}/{w.magazine}",
+                        CellState.Energy => w.UsesEnergy ? w.EnText : w.UsesAmmo ? "弾 " + w.AmmoCostText : "弾数∞",
+                        CellState.Cost => "弾 " + (twoL ? arms.AltFire : w).AmmoCostText,
                         CellState.NoEnergy => "EN切れ",
                         CellState.Reload => $"リロード {val / 10f:0.0}秒",
                         CellState.Loading => $"装填 {val / 10f:0.0}秒",
                         CellState.Charging => "溜め中",
                         CellState.Charged => "溜まった・離して撃つ",
                         CellState.Starved => w.IsGun && w.magazine > 0 && !twoL ? "弾 0 ・弾切れ" : "弾切れ",
+                        CellState.Guard => $"ガード {val}/{max}",
+                        CellState.Guarding => $"ガード中 {val}/{max}",
+                        CellState.GuardBroken => "ガード崩れ",
                         _ => "両手持ち",
                     };
                 }
@@ -189,10 +211,13 @@ namespace MeleeDuel
                 {
                     CellState.Ammo => val <= w.magazine / 4 ? new Color(1f, 0.5f, 0.4f) : new Color(0.85f, 0.87f, 0.9f),
                     CellState.Energy => new Color(1f, 0.6f, 0.95f),
+                    CellState.Cost => new Color(0.85f, 0.87f, 0.9f),
                     CellState.Reload or CellState.Loading => StatusOrange,
                     CellState.Charging => new Color(1f, 0.85f, 0.5f),
                     CellState.Charged => Color.white,
-                    CellState.Starved or CellState.NoEnergy => new Color(1f, 0.45f, 0.35f),
+                    CellState.Starved or CellState.NoEnergy or CellState.GuardBroken => new Color(1f, 0.45f, 0.35f),
+                    CellState.Guard => new Color(0.7f, 0.85f, 1f),
+                    CellState.Guarding => new Color(0.8f, 0.95f, 1f),
                     _ => new Color(1f, 1f, 1f, 0.5f),
                 };
                 // 武装ハントは中央寄せ。キーボードのボタン名(「右クリック」など)と重ならないよう右に寄せる

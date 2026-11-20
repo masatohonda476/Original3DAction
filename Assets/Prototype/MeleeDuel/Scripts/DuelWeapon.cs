@@ -53,13 +53,13 @@ namespace MeleeDuel
         public float knockMul = 1f;
 
         [Header("盾(付けた手のボタンを押している間ガード)")]
-        [Tooltip("ガードのゲージの量(素のガードは100)")]
+        [Tooltip("ガードのゲージの量(やめた部屋のモードの、剣での素のガードは100だった)")]
         public float guardMax = 100f;
         [Tooltip("受けたときのゲージの削れ方(小さいほど削れにくい)")]
         public float guardCostMul = 1f;
-        [Tooltip("ガードで受けたダメージの何割をHPに受けるか(素のガードは0.1)")]
+        [Tooltip("ガードで受けたダメージの何割をHPに受けるか(素のガードは0.1だった)")]
         public float guardChip = 0.1f;
-        [Tooltip("構えたまま歩く速さ(走りの何割。素のガードは0.4)")]
+        [Tooltip("構えたまま歩く速さ(走りの何割。素のガードは0.4だった)")]
         public float guardMoveMul = 0.4f;
         [Tooltip("受けたときに押し戻され・固まる長さの倍率(小さいほどすぐ動ける)")]
         public float guardStunMul = 1f;
@@ -183,6 +183,8 @@ namespace MeleeDuel
         public bool PaysPerShot => ammoCost > 0f && !(IsGun && magazine > 0);
         /// <summary>共通の弾を使うか(エネルギー武器・振る武装などは使わない)。</summary>
         public bool UsesAmmo => ammoCost > 0f;
+        /// <summary>共通の弾の使う量の表示(弾倉のある銃は「3/発」、撃つたびに使う撃ち方は「6/回」)。使わなければ空。</summary>
+        public string AmmoCostText => !UsesAmmo ? "" : PaysPerShot ? $"{ammoCost:0.#}/回" : $"{ammoCost:0.#}/発";
 
         // ───────── 剣の技(表が空なら素の剣の表) ─────────
 
@@ -366,7 +368,7 @@ namespace MeleeDuel
                 return;
             }
             list.Add(("弾", w.ammoCost > 0f ? w.ammoCost : 0.01f,
-                w.ammoCost <= 0f ? "使わない" : w.IsGun && w.magazine > 0 ? $"{w.ammoCost:0.#}/発" : $"{w.ammoCost:0.#}/回", false));
+                w.UsesAmmo ? w.AmmoCostText : "使わない", false));
             if (w.UsesEnergy) list.Add(("EN", w.enCost, w.EnText.Substring(3), false));
         }
 

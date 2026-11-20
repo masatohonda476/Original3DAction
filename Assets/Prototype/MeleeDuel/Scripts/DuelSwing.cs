@@ -52,7 +52,7 @@ namespace MeleeDuel
         /// <summary>戻りの途中(S から E へ t の割合)。</summary>
         static float Mid(float t) => S + (E - S) * t;
 
-        /// <summary>素の剣の表(武装を持たない・部屋のモードと同じ)。書き換えないこと。</summary>
+        /// <summary>素の剣の表(最初から右手に持っている素の剣の技)。書き換えないこと。</summary>
         public static readonly DuelMoveSet Base = Standard();
 
         /// <summary>

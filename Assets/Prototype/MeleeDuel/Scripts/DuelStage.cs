@@ -492,8 +492,8 @@ namespace MeleeDuel
             ProtoFx.Blast(at, bossBlastRadius * 0.45f, new Color(1f, 0.95f, 0.75f), 0.4f);
             DuelSpark.Burst(at, Vector3.zero, new Color(1f, 0.7f, 0.3f), 80, 2.5f * size);
             game.HitStop(0.15f);
-            bool hadAmmo = player != null && player.Arms != null && player.Arms.Ammo > 0f;
-            int lost = player != null && player.Arms != null ? player.Arms.LoseAll() : 0;   // 所持品も消し飛び、共通の弾も0に戻る
+            bool hadAmmo = player != null && player.Arms.Ammo > 0f;
+            int lost = player != null ? player.Arms.LoseAll() : 0;   // 所持品も消し飛び、共通の弾も0に戻る
             if (lost > 0 || hadAmmo)
             {
                 ClearNote = "ボスの爆発に巻き込まれ、武装も所持品も弾も、すべて消し飛んだ";

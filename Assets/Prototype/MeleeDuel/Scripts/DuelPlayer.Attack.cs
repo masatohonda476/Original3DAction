@@ -24,10 +24,9 @@ namespace MeleeDuel
 
         // ───────── 攻撃 ─────────
 
-        /// <summary>その手(0=右 / 1=左)の剣(部屋のモードは右手が素の剣。剣でなければ null)。</summary>
+        /// <summary>その手(0=右 / 1=左)の剣(剣でなければ null)。</summary>
         DuelWeapon SwordIn(int hand)
         {
-            if (Arms == null) return hand == 0 ? DuelWeapon.BaseSword : null;
             var w = Arms.Hand(hand);
             return w != null && w.IsBlade ? w : null;   // 両手の近接は R1 でも L1 でも振る
         }
@@ -85,7 +84,7 @@ namespace MeleeDuel
         bool TryChord()
         {
             if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
-            if (Arms != null && Time.time - Arms.ReloadChordAt <= heavyChordWindow) return false;   // その△は銃のリロードに使った(△+撃つボタン)
+            if (Time.time - Arms.ReloadChordAt <= heavyChordWindow) return false;   // その△は銃のリロードに使った(△+撃つボタン)
             if (SwordIn(atkHand) == null) return false;   // 振っている手に剣がない(素の剣の強攻撃に化けないように)
             float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
             var h = Armed(HeavyOf(atkHand)[0], atkHand);

@@ -15,7 +15,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// 右のメニューボタン(OPTIONS・≡・+ / I)で装備の確認を開く・閉じる。○・B / Backspace でも閉じる(Esc はカメラのマウスの固定を外すので使わない)。
-        /// ステージ(武装がある)だけ。開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
+        /// 開いている間は時間を止め、入力を止める(ProtoInput.Paused)。付け先を選ぶ表示の途中なら取り消す。
         /// 閉じたあとは、その時に押していたボタンを離すまで効かない(ProtoInput 側)。
         /// 開いている間は ↑↓(十字・左スティック・↑↓・W/S)で所と所持品を選ぶ(5つの所の下に所持品が続く)。
         ///   付けている武装:△ / C で外して所持品へ。所持品:その所のボタン(R1/L1・R2/L2・背中は ×)で付ける(今の武装は所持品へ)。
@@ -28,7 +28,7 @@ namespace MeleeDuel
             bool up = ProtoInput.MenuUp, down = ProtoInput.MenuDown;   // スティックの倒し始めの判定のため、毎フレーム読む
             if (equipOpen)
             {
-                if (toggle || player == null || player.Arms == null) SetEquipOpen(false);
+                if (toggle || player == null) SetEquipOpen(false);
                 else if (ProtoInput.EquipViewBack)
                 {
                     if (dropArmed) dropArmed = false;   // 捨てる確認の途中なら、確認だけ取り消す
@@ -37,7 +37,7 @@ namespace MeleeDuel
                 else EquipViewInput(player.Arms, up, down);
                 return;
             }
-            if (toggle && stage != null && player != null && player.Arms != null) SetEquipOpen(true);
+            if (toggle && player != null) SetEquipOpen(true);
         }
 
         void SetEquipOpen(bool open)
@@ -80,7 +80,7 @@ namespace MeleeDuel
         /// 今は捨てられない理由(0 = 捨てられる / 1 = 撃墜中 / 2 = ボスを倒した後で拾えない / 3 = 真下に床がない(穴の上・空中。落ちて消えるので) /
         /// 4 = 攻撃・回避・怯みなどの途中(動ける・ガード中でない。DuelArms.CanRearrange))。1 と 4 は付け外し・分解もできない。
         /// </summary>
-        int DropBlock() => player == null || player.Dead ? 1 : player.Arms != null && !player.Arms.CanRearrange ? 4 : stage != null && stage.Cleared ? 2
+        int DropBlock() => player == null || player.Dead ? 1 : !player.Arms.CanRearrange ? 4 : stage.Cleared ? 2
             : !dropFloor[StashSelected ? (int)DuelSlot.Back : Mathf.Clamp(viewSel, 0, ArmRows - 1)] ? 3 : 0;
 
         /// <summary>付け外し・分解ができない(撃墜中か、動ける・ガード中でない)。</summary>

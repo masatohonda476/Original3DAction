@@ -84,8 +84,6 @@ namespace MeleeDuel
             I = this;
             Time.timeScale = 1f;
             ProtoInput.Paused = false;
-            // SHARE+△ でやり直した直後:押したままの SHARE を離しても、装備の確認を開かない
-            ProtoInput.SelectHeldAsCombo();
             DuelRadar.ClearCache();   // 前のシーンの武装の組をためこまない
         }
 

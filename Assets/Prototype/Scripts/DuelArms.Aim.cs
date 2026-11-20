@@ -27,6 +27,13 @@ namespace Prototype
         bool aimDirValid;
         Vector2 cursorTan;
         bool cursorOnEnemy;
+        /// <summary>照準の先がカメラの後ろにある(自機がカメラの方を向いている。枠を画面に置けないので、銃・砲は吸い付かない)。</summary>
+        bool cursorBehind;
+        /// <summary>
+        /// 照準の先が画面の中に映っているか(カメラの後ろ・画面の外なら false)。自機がカメラと違う方を向いて撃つと外れる(射撃では向き直らない)。
+        /// 外れている間、Cursor は画面の中央(カメラの後ろ)か端(画面の外)に張り付いた値なので、そこへ印を出さないために使う(ヒットマーカー)。
+        /// </summary>
+        public bool CursorInView { get; private set; } = true;
 
         /// <summary>照準の位置(画面の中央からのずれ。ビューポートの単位で、0.5 が画面の端。x は右、y は上が +)。</summary>
         public Vector2 Cursor => cursor;
@@ -105,12 +112,16 @@ namespace Prototype
 
             aimDirValid = false;
             cursorOnEnemy = false;
+            cursorBehind = false;
+            CursorInView = true;
             if (cam == null || game == null) return;
             if (r.aimByFacing && player != null && !r.cursorMovable)
             {
                 // 自機の向いている方へ撃つ(作者「自機の向いている方に弾が飛ぶようにしてください」):
                 // 左右は自機の向き、上下はロックオンの相手の胸へ(いなければカメラの上下の向き)。自機の胸から伸ばした先を照準の先にし、
-                // 照準の表示(cursor)と枠の中心(cursorTan)はその点を画面に映した所へ置く。弾の向き・吸い付きはカメラからその点への向きで求める
+                // 照準の表示(cursor)と枠の中心(cursorTan)はその点を画面に映した所へ置く。吸い付きはカメラからその点への向きで求め、
+                // 寄せる相手がいなければ弾はこの点へそのまま向ける(AssistedAimPoint)。
+                // 射撃では自機は向き直らないので(DuelPlayer)、ロックオンしていない間は自機がカメラと違う方を向いたまま撃つことがある
                 Vector3 chest = player.Chest;
                 Vector3 f = DuelFighter.Flat(player.transform.forward);
                 if (f.sqrMagnitude < 0.0001f) f = DuelFighter.Flat(cam.transform.forward);
@@ -131,8 +142,10 @@ namespace Prototype
                 aimDir = (CursorPoint - cam.transform.position).normalized;
                 aimDirValid = true;
                 Vector3 fl = cam.transform.InverseTransformDirection(aimDir);
+                cursorBehind = fl.z <= 0.01f;
                 cursorTan = fl.z > 0.01f ? new Vector2(fl.x / fl.z, fl.y / fl.z) : Vector2.zero;
                 Vector3 vp = cam.WorldToViewportPoint(CursorPoint);
+                CursorInView = vp.z > 0f && vp.x >= 0f && vp.x <= 1f && vp.y >= 0f && vp.y <= 1f;
                 cursor = vp.z > 0f ? new Vector2(Mathf.Clamp(vp.x - 0.5f, -0.49f, 0.49f), Mathf.Clamp(vp.y - 0.5f, -0.49f, 0.49f)) : Vector2.zero;
                 return;
             }
@@ -206,6 +219,11 @@ namespace Prototype
         /// 撃っている・撃ったばかり・溜めている武装を先に選ぶ。銃・砲を付けていなければ null。毎フレーム UpdateFrames で求める。
         /// </summary>
         public Vector3? ShotPoint { get; private set; }
+        /// <summary>
+        /// ShotPoint へ飛ぶ弾が敵の体に当たる(銃口から ShotPoint への線が、敵の体のカプセルを通る)。真ん中の十字が敵に重なっているときで、十字を橙にする
+        /// (作者「ロックオン中の弾道を示す十字は、敵と重なったらオレンジとかになるようにしてください」)。ばらつきは入れない。毎フレーム UpdateFrames で求める。
+        /// </summary>
+        public bool ShotOnEnemy { get; private set; }
         readonly List<DuelEnemy> missileBuf = new();
 
         /// <summary>両手の銃・砲の L1 の撃ち方なら、その両手の武装(枠の大きさを借りる)。</summary>
@@ -313,7 +331,8 @@ namespace Prototype
         DuelEnemy AimTarget(DuelWeapon w, DuelWeapon parent, Vector3 from)
         {
             var cam = Camera.main;
-            if (cam == null) return null;
+            // 照準の先がカメラの後ろ(自機がカメラの方を向いて撃つ)なら吸い付かない(枠が画面の中央に置かれ、背中側の敵へ狙いが寄ってしまうため)
+            if (cam == null || cursorBehind) return null;
             PrepareViews(cam);
             var rules = Rules;
             float hw = FrameTan(w, parent), hh = hw * rules.frameAspect;
@@ -387,6 +406,14 @@ namespace Prototype
         {
             var cam = Camera.main;
             if (cam == null) return t != null ? t.Chest : FreeAimPoint(from, range);
+            if ((t == null || t.Dead) && aimDirValid && Rules.FacingAim)
+            {
+                // 自機の向いている方へ撃つ形で、寄せる相手がいない:自機の胸から向きの先へ伸ばした所(CursorPoint。ロックオンの相手より奥には置いていない)を
+                // そのまま狙う。カメラから調べ直すと、自機がカメラと違う方を向いているとき(ロックオンしていない射撃)、
+                // カメラとその点の間にある柱・壁に狙いが乗って、弾が自機の向きから逸れる
+                Vector3 fd = CursorPoint - from;
+                return fd.magnitude > range ? from + fd.normalized * range : CursorPoint;
+            }
             Vector3 o = cam.transform.position;
             Vector3 dir = AssistDir(cam, t, maxDeg, out _);
             Vector3 p = AimPointAlong(o, dir, out _);
@@ -450,6 +477,7 @@ namespace Prototype
             Frames.Clear();
             Marks.Clear();
             ShotPoint = null;
+            ShotOnEnemy = false;
             bool shotHot = false;
             var cam = Camera.main;
             if (cam == null || Choosing != null) return;
@@ -492,7 +520,9 @@ namespace Prototype
                     // 弾が飛んでいく所(自機の速度を受け継いで流れる分も入れる):撃っている・撃ったばかり・溜めている武装を先に、なければ最初の銃・砲
                     if (ShotPoint == null || (hot && !shotHot))
                     {
-                        ShotPoint = PredictShot(w, i, at, t);
+                        Vector3 shot = PredictShot(w, i, at, t);
+                        ShotPoint = shot;
+                        ShotOnEnemy = PathOnEnemy(Muzzle(at), shot);
                         shotHot = hot;
                     }
                 }
@@ -571,6 +601,25 @@ namespace Prototype
                 hitEnemy = e;
             }
             return hitEnemy != null;
+        }
+
+        /// <summary>
+        /// from から p へ飛ぶ弾が、p のあたりまでに敵の体(縦長のカプセル)を通るか(十字の色。ShotOnEnemy)。
+        /// p は狙いの先と同じ奥行き(体の手前の面のあたり)に置かれるので、体の太さの分(半径の2倍)だけ先まで見る(p が体の面の少し手前で止まっても、そのまま当たる弾を拾う)。
+        /// </summary>
+        bool PathOnEnemy(Vector3 from, Vector3 p)
+        {
+            Vector3 d = p - from;
+            float len = d.magnitude;
+            if (len < 0.01f) return false;
+            d /= len;
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead) continue;
+                float r = BodyAxis(e, out Vector3 a, out Vector3 b);
+                if (SegSegDistance(from, from + d * (len + r * 2f), a, b, out _) <= r) return true;
+            }
+            return false;
         }
 
         /// <summary>敵 e の体(縦長のカプセル)の芯の、下と上の球の中心(a・b)。半径を返す。</summary>

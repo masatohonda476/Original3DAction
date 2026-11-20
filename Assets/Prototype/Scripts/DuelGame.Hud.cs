@@ -197,20 +197,30 @@ namespace Prototype
                 GUI.Label(new Rect(cx - hw, cy - hh - 16f, 200f, 16f), label, cellTiny);
             }
             // 真ん中の十字:弾が飛んでいく所(吸い付きを入れた狙いの先。DuelArms.ShotPoint)に出す。4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
-            if (spread >= 0f)
+            // 弾が飛んでいく所がカメラの後ろ(自機がカメラの方を向いている。射撃では向き直らない)なら、十字は出さない
+            // (作者「視界外に十字がいくと画面中央に十字が表示されるのをやめてください」。前は画面の中央に出ていた)。カメラの前で画面の外なら、画面の外に描かれて見えない
+            Vector3 shotSp = arms.ShotPoint is Vector3 shot ? cam.WorldToScreenPoint(shot) : Vector3.forward;
+            if (spread >= 0f && shotSp.z > 0f)
             {
                 float sx = cx, sy = cy;
-                if (arms.ShotPoint is Vector3 shot)
-                {
-                    Vector3 sp = cam.WorldToScreenPoint(shot);
-                    if (sp.z > 0f) { sx = sp.x / uiScale; sy = SH - sp.y / uiScale; }
-                }
+                if (arms.ShotPoint != null) { sx = shotSp.x / uiScale; sy = SH - shotSp.y / uiScale; }
                 // 見た目だけ、出す所へ CrossFollowTime 秒ほどで追いつかせる(狙いが急に変わっても跳ばずに滑る。弾の向きは変えない。作者「見た目だけでも間を補正とかできますか？」)
                 float now = Time.unscaledTime;
-                if (crossShownAt < 0f || now - crossShownAt > 0.2f) crossPos = new Vector2(sx, sy);   // しばらく出していなければ、その場に出す
-                else crossPos = Vector2.Lerp(crossPos, new Vector2(sx, sy), 1f - Mathf.Exp(-3f * (now - crossShownAt) / CrossFollowTime));
+                // 弾が敵の体に当たる所に十字があれば橙にする(DuelArms.ShotOnEnemy。体の端で 1 フレームだけ色が変わってちらつかないよう、CrossHitTime 秒で色を移す)
+                float onEnemy = arms.ShotOnEnemy ? 1f : 0f;
+                if (crossShownAt < 0f || now - crossShownAt > 0.2f)
+                {
+                    // しばらく出していなければ、その場に出す
+                    crossPos = new Vector2(sx, sy);
+                    crossHit = onEnemy;
+                }
+                else
+                {
+                    crossPos = Vector2.Lerp(crossPos, new Vector2(sx, sy), 1f - Mathf.Exp(-3f * (now - crossShownAt) / CrossFollowTime));
+                    crossHit = Mathf.MoveTowards(crossHit, onEnemy, (now - crossShownAt) / CrossHitTime);
+                }
                 crossShownAt = now;
-                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, CrossMinGap, SH * 0.3f), spreadHot ? 0.85f : 0.4f);
+                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, CrossMinGap, SH * 0.3f), spreadHot ? 0.85f : 0.4f, crossHit);
             }
             var mc = FrameLocked;
             mc.a = 0.95f;
@@ -232,12 +242,17 @@ namespace Prototype
         const float CrossFollowTime = 0.08f;
         /// <summary>十字の真ん中の空きの最小(ぶれていないときの詰まり具合。作者「ぶれてないときのカーソルはもっと線が詰まった状態にしてください」で 3 → 1)。武装そのもののばらつきの分はこれより開く。</summary>
         const float CrossMinGap = 1f;
+        /// <summary>十字が敵に重なっている度合い(0 = 重なっていない / 1 = 重なっている。橙にする)。CrossHitTime 秒で移る。</summary>
+        float crossHit;
+        const float CrossHitTime = 0.06f;
+        /// <summary>敵に重なっている十字の濃さの下限(撃っていないときの薄い十字のままだと、敵の上で橙が見えにくいので濃くする)。</summary>
+        const float CrossHitAlpha = 0.9f;
 
-        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。</summary>
-        static void DrawCross(float cx, float cy, float g, float alpha)
+        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。hit(0〜1)は敵に重なっている度合いで、1 なら橙(FrameLocked。ロックオンの角の枠と同じ色)で濃く。</summary>
+        static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f)
         {
-            var sc = FrameIdle;
-            sc.a = alpha;
+            var sc = Color.Lerp(FrameIdle, FrameLocked, hit);
+            sc.a = Mathf.Lerp(alpha, Mathf.Max(alpha, CrossHitAlpha), hit);
             GUI.color = sc;
             const float len = 7f, th = 2f;
             var t = Texture2D.whiteTexture;
@@ -281,10 +296,12 @@ namespace Prototype
         /// ヒットマーカー:射撃(銃・砲)が敵に当たったら、照準の位置に小さな斜めの十字を短く出す(実時間。ヒットストップ中も消えていく)。
         /// 色と大きさで、当たった(白)/ 崩せる(橙。怯みが射撃の上限まで溜まった)/ 崩れている敵(黄)/ 倒した(赤)を見分ける。
         /// 出た瞬間だけ少し大きく、すぐ縮む(画面は揺らさない)。
+        /// 照準の先が視界の外(カメラの後ろ・画面の外)の間は出さない(作者「消してください」。前は画面の中央か端に出ていた。視界の外の敵に当たっても合図は出ない)。
+        /// 視界の外へ撃った弾は、当たったときに照準の先が画面に戻っていても出さない(弾ごとに覚える。DuelArms.NoteHit の mark)。
         /// </summary>
         void DrawHitMark(DuelArms arms)
         {
-            if (Event.current.type != EventType.Repaint || player.Dead) return;
+            if (Event.current.type != EventType.Repaint || player.Dead || !arms.CursorInView) return;
             float life = Mathf.Max(0.02f, arms.Rules.hitMarkTime);
             float age = Time.unscaledTime - arms.HitMarkAt;
             if (age < 0f || age > life) return;

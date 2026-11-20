@@ -5,7 +5,7 @@ using UnityEngine;
 namespace MeleeDuel
 {
     /// <summary>
-    /// 自機の武装(ステージだけ。部屋のモードでは付かない)。付ける所は5つ:右手(R1)/ 左手(L1)/ 背中 / 右肩(R2)/ 左肩(L2)。どれも1つずつ。
+    /// 自機の武装(DuelPlayer.Init でいつも付く)。付ける所は5つ:右手(R1)/ 左手(L1)/ 背中 / 右肩(R2)/ 左肩(L2)。どれも1つずつ。
     ///   手:剣・盾・手の銃のどれでも(左右どちらにも)。剣ならそのボタンで攻撃(技は剣ごとの表)、盾なら押している間ガード、銃なら撃つ。
     ///       最初は右手に素の剣、左手は空(盾を拾うまでガードできない)。
     ///   背中:スラスター。走り・ブースト・回避の距離が伸び、回避・ブースト・飛行のENが減る。
@@ -563,7 +563,7 @@ namespace MeleeDuel
             // (敵が近くへ別の武装を落とした・別の武装へ近づいた、で表示が黙って閉じないように。作者の指示)。
             // 範囲を出る・壁の陰に入る・空中に出ると対象から外れ、今までどおり取り消しになる
             var keep = Choosing != null ? Choosing : Breaking;
-            Nearby = (game.stage != null && game.stage.Cleared) || player.Airborne ? null
+            Nearby = game.stage.Cleared || player.Airborne ? null
                 : keep != null && keep.CanPick(player) ? keep
                 : DuelLoot.Nearest(player);
             UpdateChoice();

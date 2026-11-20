@@ -10,8 +10,7 @@ namespace MeleeDuel
     /// ガードは押している間ダメージを大きく減らすが、受けるたびに押し戻されて少し固まり、ゲージが尽きると崩れる。
     /// 敵の叩きつけ・跳躍叩きつけの直撃はガードできない(DuelHit.guardable)。回避と攻撃はENを使う。ENが少しでもあれば出せ、足りない分はマイナスになり、
     /// 0を超えるまで回復を待つ(その間は回避も攻撃もできない)。
-    /// 部屋のモード:R1 で剣(素の剣の技)、L1 でガード(下の値)。
-    /// ステージ(武装あり、DuelArms):R1 / L1 はその手の武装を使う(剣なら攻撃、盾なら押している間ガード、手の銃なら撃つ)。
+    /// 武装(DuelArms。いつも付いている):R1 / L1 はその手の武装を使う(剣なら攻撃、盾なら押している間ガード、手の銃なら撃つ)。
     ///   技は剣ごとの表(DuelWeapon.moves → DuelMoveSet)。強攻撃(△+R1/L1)・回避斬りは押したボタンの手の剣で出す。
     ///   弾倉のある銃のボタンでは △+ボタンはリロード(DuelArms.TryManualReload。剣の手のボタンは横取りしない)。
     ///   ガードの値は構えている盾のもの。盾がなければガードできない。近接攻撃の間と回避の間は撃てない(CanShoot)。
@@ -26,7 +25,6 @@ namespace MeleeDuel
         [Header("移動")]
         public float runSpeed = 22f;
         public float lockedSpeed = 17f;
-        public float guardMoveMul = 0.4f;
         [Tooltip("ブーストがオンの間に移動したときの速さ")]
         public float dashSpeed = 35f;
         [Tooltip("ブーストで移動している間に1秒あたり使うEN(止まっている間は使わない)")]
@@ -56,10 +54,7 @@ namespace MeleeDuel
         [Tooltip("最後に回避・攻撃・射撃でENを使ってから、回復が始まるまでの秒数。ブースト移動・飛ぶのは待たず、やめた直後から回復する(ENを使い切ったときだけこの秒数を待つ)")]
         public float energyRegenDelay = 0.6f;
 
-        [Header("ガード(部屋のモードの値。ステージでは盾の値を使う)")]
-        public float maxGuard = 100f;
-        [Tooltip("ガードで受けたダメージの何割をHPに受けるか")]
-        public float guardChip = 0.1f;
+        [Header("ガード(どの盾でも同じ値。ゲージの量・通す傷・構え歩きの速さなどは盾ごと=DuelWeapon)")]
         public float guardStun = 0.28f;
         public float guardPush = 12f;
         public float guardBreakTime = 1.2f;
@@ -109,28 +104,30 @@ namespace MeleeDuel
         /// </summary>
         public bool LockOn { get; private set; }
         public bool Guarding => Current is State.Guard or State.GuardStun;
+        /// <summary>構えている盾の手(0=右 / 1=左)。右下の武装の欄で、構えている盾のセルを見分けるのに使う。</summary>
+        public int GuardHand => guardHand;
         /// <summary>ブーストがオン(○で切り替え。ENが0以下になると自動でオフ)。</summary>
         public bool BoostOn { get; private set; }
         /// <summary>このフレームはブーストで移動している(見た目用)。</summary>
         public bool Dashing { get; private set; }
         /// <summary>噴射炎:飛行中・ブースト移動中・回避中。</summary>
         public override bool Thrusting => flying || Dashing || Current == State.Dodge;
-        /// <summary>武装(ステージだけ。部屋のモードでは null)。強くなるのは武装だけで、素の性能(HP・EN・怯み)は変えない。</summary>
+        /// <summary>武装(Init で必ず付く。null にはならない)。強くなるのは武装だけで、素の性能(HP・EN・怯み)は変えない。</summary>
         public DuelArms Arms { get; private set; }
         /// <summary>手の銃・肩の武装を撃てる状態か(近接攻撃の振りかぶり〜戻り・回避・怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
         public bool CanShoot => Current is State.Free or State.Guard;
         /// <summary>
-        /// ガードのゲージの最大(部屋のモードは maxGuard、ステージは持っている盾のうち大きいほう。盾がなければ0)。
+        /// ガードのゲージの最大(持っている盾のうち大きいほう。盾がなければ0)。
         /// 盾が2枚でもゲージは1本(作者に未確認の仮)。削れ方・通す傷などは構えている盾(guardShield)の値。
         /// </summary>
-        public float MaxGuard => Arms != null ? Arms.GuardMax : maxGuard;
+        public float MaxGuard => Arms.GuardMax;
 
         // 背中の武装(スラスター)・盾・重さを掛けた値。素の値はインスペクターの値のまま
         // 重さ(DuelArms.Mobility)はENを使う移動(ブースト移動・回避の距離・飛ぶときの上昇)だけに掛かり、歩き・走り(RunMul)には掛からない
-        float RunMul => Arms != null ? Arms.RunMul : 1f;
-        float DashMul => Arms != null ? Arms.DashMul : 1f;
-        float EnCostMul => Arms != null ? Arms.EnCostMul : 1f;
-        float DodgeDistance => dodgeDistance * (Arms != null ? Arms.DodgeMul : 1f);
+        float RunMul => Arms.RunMul;
+        float DashMul => Arms.DashMul;
+        float EnCostMul => Arms.EnCostMul;
+        float DodgeDistance => dodgeDistance * Arms.DodgeMul;
         float DashSpeed => dashSpeed * DashMul;
 
         /// <summary>踏み込むのは振りかぶりのうち、この割合(前半)だけ。</summary>
@@ -142,7 +139,10 @@ namespace MeleeDuel
         int atkHand, pressHand;
         /// <summary>今の攻撃を左右反転して振るか(左手の片手の剣。両手の近接は反転しない)。</summary>
         bool atkMirror;
-        /// <summary>構えている盾(部屋のモードは null で、素のガードの値)と、その手(0=右 / 1=左)。</summary>
+        /// <summary>
+        /// 構えている盾と、その手(0=右 / 1=左)。ガード中(Guarding)は必ず入っている:ガードに入るのは WantGuard が盾を覚えたときだけで、
+        /// 盾を外したら OnShieldsChanged が引き直し、なければガードを解く。
+        /// </summary>
         DuelWeapon guardShield;
         int guardHand = 1;
         int phase;   // 攻撃:0=振りかぶり 1=振り抜き 2=戻り
@@ -163,18 +163,14 @@ namespace MeleeDuel
         {
             I = this;
             Setup(g, 100f);
-            Guard = maxGuard;
             Energy = maxEnergy;
             LockOn = lockOnMemory ?? lockOnAtStart;
             gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中の噴射炎
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
-            if (g.stage != null)
-            {
-                // ステージだけ:敵が落とす武装を拾って付けられる(最初は右手に素の剣、左手は空)
-                Arms = gameObject.AddComponent<DuelArms>();
-                Arms.Init(this, g, rig);
-                Guard = MaxGuard;
-            }
+            // 敵が落とす武装を拾って付けられる(最初は右手に素の剣、左手は空)
+            Arms = gameObject.AddComponent<DuelArms>();
+            Arms.Init(this, g, rig);
+            Guard = MaxGuard;
         }
 
         /// <summary>
@@ -185,7 +181,6 @@ namespace MeleeDuel
         public void OnShieldsChanged(bool refill)
         {
             Guard = refill ? MaxGuard : Mathf.Min(Guard, MaxGuard);
-            if (Arms == null) return;
             guardShield = null;
             if (Arms.Hand(guardHand) is { kind: DuelKind.Shield } same) guardShield = same;
             else if (Arms.Hand(1 - guardHand) is { kind: DuelKind.Shield } other)
@@ -265,12 +260,12 @@ namespace MeleeDuel
         float stepTravel;
 
         /// <summary>
-        /// 動いた距離から足音を出す(ステージだけ)。歩き・走りはスティックの倒し具合(速さ)で届く範囲が変わり、
+        /// 動いた距離から足音を出す(届く範囲などは DuelStage.senses)。歩き・走りはスティックの倒し具合(速さ)で届く範囲が変わり、
         /// ブースト移動・回避・飛行は遠くまで届く。飛行は止まって浮いていても鳴る。空中を流れているだけ・押されただけ・瞬間移動は数えない。
         /// </summary>
         void RecordFootsteps(Vector3 before, float dt, bool moveInput)
         {
-            var s = game.stage != null ? game.stage.senses : null;
+            var s = game.stage.senses;
             if (s == null || dt <= 0f) return;
             Vector3 d = transform.position - before;
             float flat = new Vector2(d.x, d.z).magnitude;
@@ -300,7 +295,7 @@ namespace MeleeDuel
             float now = Time.time;
             stateT += dt;
             UpdateTint(dt);
-            if (Arms != null) Arms.Tick();   // 武装(拾う・付け先を選ぶ・撃つ)。ボタンの横取りを自機が読むより先に決める
+            Arms.Tick();   // 武装(拾う・付け先を選ぶ・撃つ)。ボタンの横取りを自機が読むより先に決める
             if (Current == State.Dead) { flying = false; Move(Vector3.zero, dt); return; }
 
             UpdateLock();
@@ -308,7 +303,7 @@ namespace MeleeDuel
             if (ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
             // ✗:押したら自動でブーストオン。押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
             // 付け先を選ぶ表示の間と、それを終えた時に押していた ✗ を離すまでは飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
-            bool flyHeld = ProtoInput.FlyHeld && (Arms == null || !Arms.FlyBlocked);
+            bool flyHeld = ProtoInput.FlyHeld && !Arms.FlyBlocked;
             if (flyHeld && !flyHeldPrev && Energy > 0f) BoostOn = true;
             flyHeldPrev = flyHeld;
             flying = flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;
@@ -363,12 +358,12 @@ namespace MeleeDuel
                     }
                     // 射撃の構えの間は、照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(ロックオンの相手は覚えたまま。銃口と弾の向きがずれないように)
                     // ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。それ以外のブーストは進む向きを向く
-                    if (Arms != null && Arms.Aiming && DuelArmsRules.Current.aimByFacing && !DuelArmsRules.Current.cursorMovable)
+                    if (Arms.Aiming && DuelArmsRules.Current.aimByFacing && !DuelArmsRules.Current.cursorMovable)
                     {
                         // 弾は自機の向いている方へ飛ぶ:構えの間は、ロックオン中なら相手、していなければカメラの向きを向く(向いた方へ撃つ)
                         Face(Target != null ? Target.transform.position - transform.position : camFwd, 14f, dt);
                     }
-                    else if (Arms != null && Arms.Aiming)
+                    else if (Arms.Aiming)
                     {
                         Vector3 af = Arms.AimFacing;
                         Face(af != Vector3.zero ? af : camFwd, 14f, dt);
@@ -426,16 +421,9 @@ namespace MeleeDuel
 
         void ReadButtons(float now)
         {
-            // 攻撃:部屋のモードは R1(素の剣)。ステージは剣を持つ手のボタン(R1=右手 / L1=左手。付け先を選んでいる間は数えない)
-            if (Arms == null)
-            {
-                if (ProtoInput.Attack) PressSword(0, now);
-            }
-            else
-            {
-                if (Arms.IsSword(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
-                if (Arms.IsSword(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
-            }
+            // 攻撃:剣を持つ手のボタン(R1=右手 / L1=左手。付け先を選んでいる間は数えない)
+            if (Arms.IsSword(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
+            if (Arms.IsSword(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
             if (ProtoInput.Dodge) dodgePressedAt = now;
         }
 
@@ -457,26 +445,22 @@ namespace MeleeDuel
         // ───────── ガード ─────────
 
         /// <summary>
-        /// ガードしたいか:部屋のモードは L1(素のガード)。ステージは盾を持つ手のボタンを押している間(構えている盾を覚える)。
+        /// ガードしたいか:盾を持つ手のボタンを押している間(構えている盾を覚える)。盾がなければガードできない。
+        /// 剣(L1)での素のガードは、部屋のモードと一緒にやめた。
         /// </summary>
         bool WantGuard()
         {
-            if (Arms == null)
-            {
-                guardShield = null;
-                guardHand = 1;
-                return ProtoInput.LeftHandHeld;
-            }
             if (!Arms.GuardHeld(out var shield, out int hand)) return false;
             guardShield = shield;
             guardHand = hand;
             return true;
         }
 
-        float GuardChip => guardShield != null ? guardShield.guardChip : guardChip;
-        float GuardCostMul => guardShield != null ? guardShield.guardCostMul : 1f;
-        float GuardMoveMul => guardShield != null ? guardShield.guardMoveMul : guardMoveMul;
-        float GuardStunMul => guardShield != null ? guardShield.guardStunMul : 1f;
+        // 構えている盾の値。ガード中(Guarding)にしか読まないので、guardShield は必ず入っている
+        float GuardChip => guardShield.guardChip;
+        float GuardCostMul => guardShield.guardCostMul;
+        float GuardMoveMul => guardShield.guardMoveMul;
+        float GuardStunMul => guardShield.guardStunMul;
 
         /// <summary>最後に近接(剣・両手の近接・回避斬り)か回避を始めた時刻。射撃の構え(DuelArms.Aiming)はこれで終わる。</summary>
         public float MeleeOrDodgeAt { get; private set; } = -10f;
@@ -500,7 +484,7 @@ namespace MeleeDuel
             bool front = Vector3.Angle(transform.forward, -away) < 110f;
             if (Guarding && h.guardable && front && MaxGuard > 0f)
             {
-                // 受け方は構えている盾の値(部屋のモードは素のガードの値)
+                // 受け方は構えている盾の値
                 lastGuardHitAt = Time.time;
                 Guard -= h.guardCost * GuardCostMul;
                 HP -= h.damage * GuardChip;
@@ -630,8 +614,8 @@ namespace MeleeDuel
                     return;
                 case State.Guard:
                 case State.GuardStun:
-                    // 仮:振りかぶった途中の姿勢を、構えに見立てる(部屋のモードは右手の剣で。ステージは盾を持つ手を上げる)
-                    bool leftGuard = Arms != null && guardHand == 1 && rig != null && rig.Has(MechRig.AttackL);
+                    // 仮:振りかぶった途中の姿勢を、構えに見立てる(盾を持つ手を上げる)
+                    bool leftGuard = guardHand == 1 && rig != null && rig.Has(MechRig.AttackL);
                     Pose(leftGuard ? MechRig.AttackL : MechRig.Attack, MechRig.AttackRaised * 0.55f, 18f);
                     return;
                 case State.Dodge:
@@ -648,7 +632,7 @@ namespace MeleeDuel
             // 接地しているかも見る(Airborne)ことで、角に立っても空中の姿勢にしない
             if (Dashing || (Airborne && Altitude > 1.5f)) { Pose(MechRig.Dash, 0f, 12f); return; }
             // 右手の銃(両手の銃・砲も)を撃った直後・L1 を溜めている間に止まっていれば、右腕を前に出した射撃の構え(左手用の構えのクリップはないので右手だけ)
-            if (sp <= 0.5f && Arms != null && Arms.AimPose(0.4f) && rig != null && rig.Has(MechRig.Aim))
+            if (sp <= 0.5f && Arms.AimPose(0.4f) && rig != null && rig.Has(MechRig.Aim))
             {
                 Pose(MechRig.Aim, 0f, 20f);
                 return;

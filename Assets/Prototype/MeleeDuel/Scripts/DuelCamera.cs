@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 namespace MeleeDuel
 {
     /// <summary>
-    /// 近接の試作のカメラ。武装ハントのカメラ(電脳斬禅の人間サイズの値を機体の大きさへ拡大)を小さくしたもの。壁の処理は avoidWalls でオン(ステージだけ)。
+    /// 近接の試作のカメラ。武装ハントのカメラ(電脳斬禅の人間サイズの値を機体の大きさへ拡大)を小さくしたもの。壁の処理は avoidWalls でオン(ステージのシーンではオン)。
     /// 壁の処理(wallMode):既定は「透かす」。自機とカメラの間に入った壁・柱は半透明にし(DuelWallFader)、カメラは寄せない。
     ///   寄せるのは、床の下へ潜る・天井を抜けるときだけ(向きは変えず前後に動くだけ、戻るのは待ってからゆっくり)。
     ///   作者「まだカメラがたまに勝手に動きます」(壁・狭い所の近く)→ 透かす形の案に「Aで」。「寄せる」は前の形(比べる用)。
@@ -32,7 +32,7 @@ namespace MeleeDuel
 
         [Tooltip("人間サイズ(1.8m)の値に掛ける倍率。機体の高さから自動で決まる")]
         public float scale = 4.3f;
-        [Tooltip("壁の処理:自機とカメラの間の壁・柱・床・天井を扱う(ステージで使う。部屋ではオフ)。扱い方は wallMode")]
+        [Tooltip("壁の処理:自機とカメラの間の壁・柱・床・天井を扱う(ステージのシーンではオン)。扱い方は wallMode")]
         public bool avoidWalls;
         [Tooltip("透かす:壁・柱は半透明にしてカメラは寄せない(寄せるのは床・天井だけ。下の pullOnFloors / pullOnCeilings)。\n" +
                  "寄せる:前の形(壁の手前まで寄る)")]
@@ -152,7 +152,7 @@ namespace MeleeDuel
             Vector3 chest = p.LockPoint;   // 注視点の高さはロックオンの印と同じ(機体の高さの7割)
             var enemy = p.Target;
             // 照準を動かせるときの、銃のボタンを押している間(と撃ってから少しの間):右スティック・マウスは照準を動かす(DuelArms)。カメラは回さない
-            bool aiming = p.Arms != null && p.Arms.CursorActive;
+            bool aiming = p.Arms.CursorActive;
 
             Vector3 desired, look;
             float follow;

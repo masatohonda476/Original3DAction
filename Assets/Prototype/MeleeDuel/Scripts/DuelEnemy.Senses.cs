@@ -7,7 +7,7 @@ namespace MeleeDuel
     {
         // ───────── 発覚(ステージ) ─────────
 
-        /// <summary>発覚の数値(null なら発覚の仕組みを使わず、最初から戦う=部屋のモード)。</summary>
+        /// <summary>発覚の数値(UseSenses で入る。null のままなら発覚の仕組みを使わず、最初から戦う。今のステージの敵はみな入っている)。</summary>
         DuelSenses senses;
         /// <summary>自機に気づいて戦っている。</summary>
         public bool Engaged { get; private set; } = true;
@@ -95,7 +95,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// やり直し(セーブポイントから再開):HPを満タンにして持ち場へ戻し、発覚・警戒を切る。
-        /// 発覚の仕組みを使わない敵(部屋のモード)は、発覚したままにする。
+        /// 発覚の仕組みを使わない敵(senses が null。今のステージにはいない)は、発覚したままにする。
         /// </summary>
         public void ResetToHome()
         {

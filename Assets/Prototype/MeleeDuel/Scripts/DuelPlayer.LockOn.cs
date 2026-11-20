@@ -16,11 +16,11 @@ namespace MeleeDuel
         // この試作で残したもの:自動で選ぶ距離(DuelStage.autoLockRange)とボタンで付ける距離(lockRange)の2段、
         // 銃の構えの間は自動で選ばない、ロックオン中の右スティック・マウスの左右の弾きでの切り替え(SwitchSide。照準を動かしている間は除く)。
 
-        /// <summary>ロックオンできる距離(ステージだけ。0 なら制限なし)。</summary>
-        float LockRange => game.stage != null ? game.stage.lockRange : 0f;
-        float AutoLockRange => game.stage != null ? game.stage.autoLockRange : 0f;
+        /// <summary>ロックオンできる距離(DuelStage の値。0 なら制限なし)。</summary>
+        float LockRange => game.stage.lockRange;
+        float AutoLockRange => game.stage.autoLockRange;
 
-        /// <summary>やり直し(シーンの読み直し)・部屋とステージの行き来でも、最後に切り替えたオン・オフを覚えておく(電脳斬禅はセーブデータに持つ)。Play を始めるたびに忘れる。</summary>
+        /// <summary>やり直し(シーンの読み直し)でも、最後に切り替えたオン・オフを覚えておく(電脳斬禅はセーブデータに持つ)。Play を始めるたびに忘れる。</summary>
         static bool? lockOnMemory;
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetLockOnMemory() => lockOnMemory = null;
@@ -30,7 +30,7 @@ namespace MeleeDuel
 
         /// <summary>
         /// ロックオンしてよい敵か。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
-        /// 画面に映っていること(margin はビューポートの端から内側へ空ける割合)、ステージではロックオンできる距離の内側で、壁・床ごしでないこと。
+        /// 画面に映っていること(margin はビューポートの端から内側へ空ける割合)、ロックオンできる距離の内側で、壁・床ごしでないこと。
         /// 自動で選ぶ相手・オンにしたときの相手・切り替え先のどれもこの条件で選ぶ。
         /// </summary>
         bool Lockable(DuelEnemy e, float margin = 0f)
@@ -62,7 +62,7 @@ namespace MeleeDuel
             // ロックオンのボタン:オン・オフを切り替える。切り替えのボタンは、オフならオンに戻す(電脳斬禅の Cycle)
             // 落ちている武装の分解を選んでいる間と、抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
             bool turnedOn = false;
-            bool toggle = Arms != null && Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle;
+            bool toggle = Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle;
             if (toggle) SetLockOn(!LockOn);
             else if (ProtoInput.SwitchTarget && !LockOn) { SetLockOn(true); turnedOn = true; }
             if (!LockOn)
@@ -85,14 +85,14 @@ namespace MeleeDuel
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」:
             // 画面に映り・遮られず・autoLockRange の内。敵が気づいたかは見ない)。銃を構えている間は選ばない
-            if (Target == null && !(Arms != null && Arms.Aiming)) Target = PickBest(AutoLockRange);
+            if (Target == null && !Arms.Aiming) Target = PickBest(AutoLockRange);
             if (ProtoInput.SwitchTarget && !turnedOn) Target = Target == null ? PickBest(LockRange) : NearestToView(Target);
             // 上の自動で選ぶのは、銃の構えの間はしない(撃っている最中に、相手が替わってカメラが回り出さないように。構えが終わってから選ぶ)。
             // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 照準を動かしている間(DuelArms.CursorActive。DuelArmsRules.cursorMovable がオンの構えの間)は、右スティック・マウスが
             // 画面の上の照準を動かす(カメラは回さない)ので切り替えない。照準を動かせない既定では、構えの間も切り替えられる
-            if (Target == null || (Arms != null && Arms.CursorActive)) { stickArmed = false; mouseFlick = 0f; return; }
+            if (Target == null || Arms.CursorActive) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }

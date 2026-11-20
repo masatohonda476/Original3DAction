@@ -13,14 +13,14 @@ namespace HuntProto
     ///   ブースト  : ○・B で入/切 / 左Shift
     ///   飛行      : ×・A 長押しで上昇 / Space 長押し
     ///   ロックオン: Q・中クリック / 十字キー左(切り替え:Tab / R3。武装ハントはロックオン中に右スティックを左右に弾いても切り替わる。
-    ///               近接の試作は Q・中クリック / 十字キー左でロックオンのオン・オフを切り替え、Tab / R3 で狙う敵を変える(オフならオンに戻す)。
+    ///               プロトタイプは Q・中クリック / 十字キー左でロックオンのオン・オフを切り替え、Tab / R3 で狙う敵を変える(オフならオンに戻す)。
     ///               ロックオン中は右スティックを左右に弾く・マウスを左右に大きく振っても変わる。ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない)
-    ///   メニュー  : OPTIONS・≡ / I(近接の試作だけ。時間が止まる)。項目は「装備・所持品」「操作方法」「閉じる」。↑↓で選ぶ、×/Space・Enter 決定、
+    ///   メニュー  : OPTIONS・≡ / I(プロトタイプだけ。時間が止まる)。項目は「装備・所持品」「操作方法」「閉じる」。↑↓で選ぶ、×/Space・Enter 決定、
     ///               ○・B / Backspace で1つ前へ戻る(項目のメニューでは閉じる)。OPTIONS・≡ / I はどの段階からでも全部閉じる。
     ///               Esc はカメラのマウスの固定を外すので使わない
-    ///   装備の確認: メニューの「装備・所持品」(近接の試作だけ。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
+    ///   装備の確認: メニューの「装備・所持品」(プロトタイプだけ。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
     ///               □・X / X で処分(もう一度で床に捨てる・← で弾・→ で回復))
-    ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(近接の試作だけ)。
+    ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(プロトタイプだけ)。
     ///               分解を選んでいる間は 十字左 / ← で弾、十字右 / → で回復、十字上 / F でやめる(十字左はこの間ロックオンの切り替えにならない)
     ///   やり直し  : F1 / SHARE を押しながら△(電脳斬禅のデバッグメニューと同じ)
     ///   モード切替: F2 / SHARE を押しながら□
@@ -41,14 +41,14 @@ namespace HuntProto
         /// </summary>
         public static bool Blocked => Paused || (ProtoPlayer.I != null && ProtoPlayer.I.MenuBlocksInput);
 
-        // ───────── 近接の試作(MeleeDuel)のメニュー(項目のメニュー・装備の確認・操作方法。時間を止めるメニュー) ─────────
+        // ───────── プロトタイプのメニュー(項目のメニュー・装備の確認・操作方法。時間を止めるメニュー) ─────────
 
         static bool paused, waitRelease;
         static int waitFrame = -1;
         static bool waitNow;
 
         /// <summary>
-        /// 近接の試作で、メニュー(項目のメニュー・装備の確認・操作方法)を開いている間(DuelGame が立てる。武装ハントでは使わない)。戦闘の操作を全部止める。
+        /// プロトタイプで、メニュー(項目のメニュー・装備の確認・操作方法)を開いている間(DuelGame が立てる。武装ハントでは使わない)。戦闘の操作を全部止める。
         /// 閉じたあとは、その時に押していたボタン(攻撃・回避・飛行など)を全部離すまで、ボタンの操作だけ止める(閉じた瞬間に漏れないように)。
         /// </summary>
         public static bool Paused
@@ -97,7 +97,7 @@ namespace HuntProto
         }
 
         /// <summary>
-        /// 近接の試作:メニュー(項目は「装備・所持品」「操作方法」「閉じる」)を開く/どの段階からでも全部閉じる。
+        /// プロトタイプ:メニュー(項目は「装備・所持品」「操作方法」「閉じる」)を開く/どの段階からでも全部閉じる。
         /// パッド右のメニューボタン(OPTIONS・≡ / +)を押した瞬間、または I キー。
         /// (前は装備の確認を直接開くボタンだったので、名前は EquipView のまま。装備の確認はメニューの一番上の項目)
         /// 左のメニューボタン(SHARE・View)は、押しながら△・□のやり直しなど(DebugMod)だけに使う。
@@ -105,7 +105,7 @@ namespace HuntProto
         public static bool EquipView => K(k => k.iKey) || P(p => p.startButton);
 
         /// <summary>
-        /// 近接の試作:装備の確認から1つ前(項目のメニュー)へ戻る(○・B / Backspace。処分の確認の途中なら確認だけ取り消す)。
+        /// プロトタイプ:装備の確認から1つ前(項目のメニュー)へ戻る(○・B / Backspace。処分の確認の途中なら確認だけ取り消す)。
         /// Esc は DuelCamera がマウスの固定を外すのに使うので含めない。
         /// </summary>
         public static bool EquipViewBack => K(k => k.backspaceKey) || P(p => p.buttonEast);
@@ -151,9 +151,9 @@ namespace HuntProto
         public static bool LeftHandHeld => !BtnBlocked && ((Ms != null && MouseLocked && Ms.rightButton.isPressed) || (Pad != null && Pad.leftShoulder.isPressed));
         public static bool RightShoulderHeld => !BtnBlocked && ((Kb != null && Kb.rKey.isPressed) || (Pad != null && Pad.rightTrigger.isPressed));
         public static bool LeftShoulderHeld => !BtnBlocked && ((Kb != null && Kb.eKey.isPressed) || (Pad != null && Pad.leftTrigger.isPressed));
-        /// <summary>R2 / R を押した瞬間(近接の試作で、押すたびに撃つ肩の武装・付け先の選択に使う)。</summary>
+        /// <summary>R2 / R を押した瞬間(プロトタイプで、押すたびに撃つ肩の武装・付け先の選択に使う)。</summary>
         public static bool RightShoulderPressed => !BtnBlocked && (K(k => k.rKey) || P(p => p.rightTrigger));
-        /// <summary>L2 / E を押した瞬間(近接の試作で、押すたびに撃つ肩の武装・付け先の選択に使う)。</summary>
+        /// <summary>L2 / E を押した瞬間(プロトタイプで、押すたびに撃つ肩の武装・付け先の選択に使う)。</summary>
         public static bool LeftShoulderPressed => !BtnBlocked && (K(k => k.eKey) || P(p => p.leftTrigger));
         /// <summary>装備メニューを開く/閉じる(切り替え方式では開くときにラックを解放)。</summary>
         /// <summary>パッド右のメニューボタン(OPTIONS・≡)/ G。</summary>
@@ -182,17 +182,17 @@ namespace HuntProto
         /// <summary>メニュー内:選んでいる武装を捨てる(□ / X)。</summary>
         public static bool MenuDiscard => K(k => k.xKey) || (!DebugMod && P(p => p.buttonWest));
         /// <summary>
-        /// 近接の試作のメニュー内:←(十字左・← / A)。分解して弾にする。
+        /// プロトタイプのメニュー内:←(十字左・← / A)。分解して弾にする。
         /// 左スティックでは受けない(下の行へ移ろうとして斜めに倒し、誤って分解して武装が消えないように)。
         /// </summary>
         public static bool MenuLeft => K(k => k.leftArrowKey) || K(k => k.aKey) || P(p => p.dpad.left);
-        /// <summary>近接の試作のメニュー内:→(十字右・→ / D)。分解して回復にする。左スティックでは受けない。</summary>
+        /// <summary>プロトタイプのメニュー内:→(十字右・→ / D)。分解して回復にする。左スティックでは受けない。</summary>
         public static bool MenuRight => K(k => k.rightArrowKey) || K(k => k.dKey) || P(p => p.dpad.right);
-        /// <summary>近接の試作のメニュー内:付けている武装を外して所持品にする(△ / C)。</summary>
+        /// <summary>プロトタイプのメニュー内:付けている武装を外して所持品にする(△ / C)。</summary>
         public static bool MenuStore => K(k => k.cKey) || (!DebugMod && P(p => p.buttonNorth));
 
         /// <summary>
-        /// 近接の試作のメニュー内:所持品を付ける所のボタンを押した瞬間(0=R1・左クリック / 1=L1・右クリック / 2=R2・R / 3=L2・E / 4=×・Space(背中))。
+        /// プロトタイプのメニュー内:所持品を付ける所のボタンを押した瞬間(0=R1・左クリック / 1=L1・右クリック / 2=R2・R / 3=L2・E / 4=×・Space(背中))。
         /// メニューの間は戦闘のボタンが止まっている(Paused)ので、ここだけ止めずに読む。
         /// </summary>
         public static bool MenuSlotPressed(int b) => b switch
@@ -291,27 +291,27 @@ namespace HuntProto
 
         /// <summary>
         /// 足元の武装をその場で装備する(十字キー右 / V)。武装ハントではパラメータ制のとき(在庫を通さず装備)、
-        /// 近接の試作(MeleeDuel)のステージでは、落ちている武装を拾って付けるのに使う。
+        /// プロトタイプのステージでは、落ちている武装を拾って付けるのに使う。
         /// </summary>
         public static bool EquipNow => !BtnBlocked && (K(k => k.vKey) || P(p => p.dpad.right));
 
-        /// <summary>近接の試作:落ちている武装を所持品に入れる(十字キー下 / G)。</summary>
+        /// <summary>プロトタイプ:落ちている武装を所持品に入れる(十字キー下 / G)。</summary>
         public static bool StashNow => !BtnBlocked && (K(k => k.gKey) || P(p => p.dpad.down));
 
-        /// <summary>近接の試作:落ちている武装の分解を選ぶ表示にする(十字キー上 / F)。分解を選ぶ表示の間は「やめる」(入ったのと同じボタンで戻る)。</summary>
+        /// <summary>プロトタイプ:落ちている武装の分解を選ぶ表示にする(十字キー上 / F)。分解を選ぶ表示の間は「やめる」(入ったのと同じボタンで戻る)。</summary>
         public static bool BreakNow => !BtnBlocked && (K(k => k.fKey) || P(p => p.dpad.up));
 
         /// <summary>
-        /// 近接の試作:分解を選ぶ表示の間の「弾にする」(十字キー左 / ←)。装備の確認の「← 弾 / → 回復」と左右をそろえる。
+        /// プロトタイプ:分解を選ぶ表示の間の「弾にする」(十字キー左 / ←)。装備の確認の「← 弾 / → 回復」と左右をそろえる。
         /// 十字キー左はふだんロックオンの切り替え(LockToggle)なので、分解を選んでいる間は DuelPlayer が LockToggleNoDpad を読む。
         /// キーボードは ←(ロックオンの Q・中クリックとぶつからない)。
         /// </summary>
         public static bool BreakAmmoNow => !BtnBlocked && (K(k => k.leftArrowKey) || P(p => p.dpad.left));
 
-        /// <summary>近接の試作:分解を選ぶ表示の間の「回復にする」(十字キー右 / →)。</summary>
+        /// <summary>プロトタイプ:分解を選ぶ表示の間の「回復にする」(十字キー右 / →)。</summary>
         public static bool BreakHealNow => !BtnBlocked && (K(k => k.rightArrowKey) || P(p => p.dpad.right));
 
-        /// <summary>近接の試作:「弾にする」のボタン(十字キー左 / ←)を押している(止めずに読む。分解を抜けた後、離すまでロックオンの切り替えにしないため)。</summary>
+        /// <summary>プロトタイプ:「弾にする」のボタン(十字キー左 / ←)を押している(止めずに読む。分解を抜けた後、離すまでロックオンの切り替えにしないため)。</summary>
         public static bool BreakAmmoHeld => (Kb != null && Kb.leftArrowKey.isPressed) || (Pad != null && Pad.dpad.left.isPressed);
 
         /// <summary>メニュー内:選んでいる在庫を完全に削除する(△ / C 長押し)。</summary>
@@ -320,7 +320,7 @@ namespace HuntProto
         /// <summary>回復アイテムを使う(十字キー上 / H)。</summary>
         public static bool Heal => !BtnBlocked && (K(k => k.hKey) || P(p => p.dpad.up));
         public static bool LockToggle => !BtnBlocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame) || P(p => p.dpad.left));
-        /// <summary>近接の試作:十字キー左を除いたロックオンの切り替え(Q・中クリックだけ)。十字キー左を分解の「弾にする」に使っている間に読む。</summary>
+        /// <summary>プロトタイプ:十字キー左を除いたロックオンの切り替え(Q・中クリックだけ)。十字キー左を分解の「弾にする」に使っている間に読む。</summary>
         public static bool LockToggleNoDpad => !BtnBlocked && (K(k => k.qKey) || (Ms != null && Ms.middleButton.wasPressedThisFrame));
         public static bool SwitchTarget => !BtnBlocked && (K(k => k.tabKey) || P(p => p.rightStickButton));
         public static bool Restart => K(k => k.f1Key) || (DebugMod && P(p => p.buttonNorth));

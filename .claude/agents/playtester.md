@@ -7,7 +7,7 @@ description: テストプレイ担当。変更後に Unity でゲームを実際
 
 ## 環境
 - Unity 6000.3.28f1 / URP。
-- 試作のシーン: `Assets/Prototype/MeleeDuel/MeleeDuelStage.unity`(近接の斬り合い)、`Assets/Prototype/HuntRelease/HuntRelease.unity`(武装ハント)。どちらも `Editor/*SceneBuilder.cs` のメニュー(`Prototype > …`)で組み立て直せる。古い土台は `Assets/Scenes/SampleScene.unity`。
+- 試作のシーン: `Assets/Prototype/PrototypeStage.unity`(プロトタイプ。旧称 MeleeDuel)、`Assets/Prototype/HuntRelease/HuntRelease.unity`(武装ハント)。どちらも `Editor/*SceneBuilder.cs` のメニュー(`Prototype > ステージのシーンを組み立てる`・`Prototype > HuntRelease > …`)で組み立て直せる。古い土台は `Assets/Scenes/SampleScene.unity`。
 - Unity の操作は `unity` CLI を優先する(`unity --help` で使い方を確認)。使えない場合は unity-editor-mcp のツールを使う。
 - 入力の模擬は `runtime_simulate_key` などで行える。何ができるかは先にコード(`ProtoInput.cs`・`DuelPlayer.cs` など)を読んで、操作のキーを確かめる。
 

@@ -29,6 +29,11 @@ namespace MeleeDuel
         bool cursorOnEnemy;
         /// <summary>照準の先がカメラの後ろにある(自機がカメラの方を向いている。枠を画面に置けないので、銃・砲は吸い付かない)。</summary>
         bool cursorBehind;
+        /// <summary>
+        /// 照準の先が画面の中に映っているか(カメラの後ろ・画面の外なら false)。自機がカメラと違う方を向いて撃つと外れる(射撃では向き直らない)。
+        /// 外れている間、Cursor は画面の中央(カメラの後ろ)か端(画面の外)に張り付いた値なので、そこへ印を出さないために使う(ヒットマーカー)。
+        /// </summary>
+        public bool CursorInView { get; private set; } = true;
 
         /// <summary>照準の位置(画面の中央からのずれ。ビューポートの単位で、0.5 が画面の端。x は右、y は上が +)。</summary>
         public Vector2 Cursor => cursor;
@@ -108,6 +113,7 @@ namespace MeleeDuel
             aimDirValid = false;
             cursorOnEnemy = false;
             cursorBehind = false;
+            CursorInView = true;
             if (cam == null || game == null) return;
             if (r.aimByFacing && player != null && !r.cursorMovable)
             {
@@ -139,6 +145,7 @@ namespace MeleeDuel
                 cursorBehind = fl.z <= 0.01f;
                 cursorTan = fl.z > 0.01f ? new Vector2(fl.x / fl.z, fl.y / fl.z) : Vector2.zero;
                 Vector3 vp = cam.WorldToViewportPoint(CursorPoint);
+                CursorInView = vp.z > 0f && vp.x >= 0f && vp.x <= 1f && vp.y >= 0f && vp.y <= 1f;
                 cursor = vp.z > 0f ? new Vector2(Mathf.Clamp(vp.x - 0.5f, -0.49f, 0.49f), Mathf.Clamp(vp.y - 0.5f, -0.49f, 0.49f)) : Vector2.zero;
                 return;
             }

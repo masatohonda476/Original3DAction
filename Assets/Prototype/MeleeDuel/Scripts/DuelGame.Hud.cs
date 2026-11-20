@@ -281,10 +281,11 @@ namespace MeleeDuel
         /// ヒットマーカー:射撃(銃・砲)が敵に当たったら、照準の位置に小さな斜めの十字を短く出す(実時間。ヒットストップ中も消えていく)。
         /// 色と大きさで、当たった(白)/ 崩せる(橙。怯みが射撃の上限まで溜まった)/ 崩れている敵(黄)/ 倒した(赤)を見分ける。
         /// 出た瞬間だけ少し大きく、すぐ縮む(画面は揺らさない)。
+        /// 照準の先が視界の外(カメラの後ろ・画面の外)の間は出さない(作者「消してください」。前は画面の中央か端に出ていた。視界の外の敵に当たっても合図は出ない)。
         /// </summary>
         void DrawHitMark(DuelArms arms)
         {
-            if (Event.current.type != EventType.Repaint || player.Dead) return;
+            if (Event.current.type != EventType.Repaint || player.Dead || !arms.CursorInView) return;
             float life = Mathf.Max(0.02f, arms.Rules.hitMarkTime);
             float age = Time.unscaledTime - arms.HitMarkAt;
             if (age < 0f || age > life) return;

@@ -83,13 +83,13 @@ namespace MeleeDuel
         [Header("ロックオンのオン・オフ(電脳斬禅の PlayerTargeting と同じ作り。値は仮)")]
         [Tooltip("始めたときにロックオンをオンにするか(電脳斬禅は新しいデータではオフ)。やり直し(F1)・撃墜のあとは、最後に切り替えた状態のまま(Play を止めるまで覚えている)")]
         public bool lockOnAtStart = true;
-        [Tooltip("ロックオン中の敵が、壁・床ごし、またはロックオンできる距離(DuelStage.lockRange)の1.5倍より遠い状態がこの秒数続いたら外して、次の敵を探す(電脳斬禅は 1.5 秒)")]
+        [Tooltip("ロックオン中の敵が、壁・床ごし、またはロックオン距離(DuelStage.lockOnRange)の1.5倍より遠い状態がこの秒数続いたら外して、次の敵を探す(電脳斬禅は 1.5 秒)")]
         public float lockLoseAfter = 1.5f;
-        [Tooltip("自動で選ぶ敵の点数 = 画面の中央からのずれ(0=中央〜0.7=角)× 10 + 距離(m)× この値。小さいほど先に選ぶ。" +
-                 "電脳斬禅は人間の大きさで 0.5/m(機体は約4.3倍なので 0.12/m)。0 なら画面の中央に近い敵、大きくするほど近い敵を選ぶ")]
+        [Tooltip("付け始めに選ぶ敵の点数 = 画面の中央からのずれ(0=中央〜0.7=角)× 10 + 距離(m)× この値。小さいほど先に選ぶ。" +
+                 "電脳斬禅は人間の大きさで 0.5/m(機体は約4.3倍なので 0.12/m)。0 なら画面の中央に近い敵、大きくするほど近い敵を選ぶ。" +
+                 "選ぶのは、体が照準枠(ロックオンがオンの間、画面の縁寄りに出ている四つの角の内側)に掛かっている敵だけ(作者「サイトの枠内に入った場合のみロックオン開始する」。" +
+                 "枠の大きさは DuelGame.Hud.cs の LockCornerHalfW / LockCornerHalfH。前の「画面の端から内側へ空ける割合 lockPickScreenMargin」はやめた)。ロックオン中の切り替え先は画面の中ならよい")]
         public float lockPickDistanceWeight = 0.12f;
-        [Tooltip("自動で選ぶのは、画面の端からこの割合より内側に映っている敵だけ(電脳斬禅は 0.06)。切り替え先は画面の中ならよい")]
-        [Range(0f, 0.3f)] public float lockPickScreenMargin = 0.06f;
 
         public enum State { Free, Attack, Dodge, Guard, GuardStun, Hurt, GuardBroken, Dead }
         public State Current { get; private set; }

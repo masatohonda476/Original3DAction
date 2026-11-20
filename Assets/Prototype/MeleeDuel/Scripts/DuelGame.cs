@@ -74,6 +74,11 @@ namespace MeleeDuel
         float uiScale = 1f;
         float SW => Screen.width / uiScale;
         float SH => Screen.height / uiScale;
+        /// <summary>
+        /// 画面の表示の倍率(1280×720 の画面の単位 → 画素)を、今の画面の大きさから求め直す。
+        /// OnGUI の頭と、OnGUI の外で画面の単位を使う所(ロックオンの付け始めの判定。LockSightTan)で呼ぶ(OnGUI がまだ走っていない最初のフレームでも同じ値になる)。
+        /// </summary>
+        void RefreshUiScale() => uiScale = Mathf.Max(0.0001f, Mathf.Min(Screen.width / 1280f, Screen.height / 720f));
 
         void Awake()
         {

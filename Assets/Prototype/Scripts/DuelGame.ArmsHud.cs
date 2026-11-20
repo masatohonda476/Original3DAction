@@ -10,10 +10,12 @@ namespace Prototype
         // ───────── 右下の武装の欄(武装ハントの DrawWeapons / WeaponCell と同じ見せ方) ─────────
 
         const float CellW = 200f, CellH = 44f, CellGap = 8f, BackRowH = 24f, ArmsMargin = 20f, WeightRowH = 20f;
+        /// <summary>武装の欄の左どなりの、共通の弾のゲージの幅。</summary>
+        const float AmmoGaugeW = 24f;
         /// <summary>右下の武装の欄の上端(重さの1行を含む。拾う案内をこれより上に出す)。</summary>
         float ArmsTop => SH - ArmsMargin - BackRowH - 6f - CellH * 2f - CellGap - WeightRowH;
-        /// <summary>右下の武装の欄の左端(左下のメニューの案内は、これより左に収める)。</summary>
-        float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap;
+        /// <summary>右下の武装の欄の左端(左どなりの共通の弾のゲージを含む。左下のメニューの案内は、これより左に収める)。</summary>
+        float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap * 2f - AmmoGaugeW;
 
         /// <summary>セルの右上に出す状態。</summary>
         enum CellState { None, Ammo, Energy, Cost, Reload, Loading, Charging, Charged, TwoHand, Starved, NoEnergy, Guard, Guarding, GuardBroken }
@@ -28,7 +30,7 @@ namespace Prototype
         static readonly Color GaugeGuard = new(0.4f, 0.6f, 0.85f, 0.35f), GaugeGuarding = new(0.5f, 0.8f, 1f, 0.5f), GaugeGuardBroken = new(1f, 0.4f, 0.2f, 0.4f);
 
         /// <summary>
-        /// 右下:付けている武装を肩ボタンの並び(左=L・右=R、上の段=肩・下の段=手)の 2×2 のセルで、その下に背中の1行。
+        /// 右下:付けている武装を肩ボタンの並び(左=L・右=R、上の段=肩・下の段=手)の 2×2 のセルで、その下に背中の1行。左どなりに共通の弾の縦のゲージ。
         /// セルにはボタン名・レア度の色の四角・武装名。右上に状態:銃は「弾 12/20 (1/発)」(弾倉の残りと、1発詰めるごとに使う共通の弾。残りが弾倉の1/4以下で赤っぽく)、
         /// 砲・ミサイルと L1 の実弾の撃ち方は撃てる間「弾 6/回」(1回で使う共通の弾)、エネルギー武器は「EN 20/秒」(ENが0以下で撃てない間は「EN切れ」)。
         /// 銃のリロード中・砲とミサイルの装填中は、セル全体を左から満ちていくオレンジのゲージにし「リロード 1.2秒」「装填 0.8秒」。
@@ -69,7 +71,9 @@ namespace Prototype
             GUI.Label(new Rect(br.x + 24f, br.y + 2f, CellW - 30f, 20f), cellName[b], cellBack);
             GUI.color = Color.white;
 
-            // 一番下の右:共通の弾(足りなくて撃てなかった直後は赤く光る。残りが上限の2割以下で橙)
+            // 武装の欄の左どなり:共通の弾のゲージ(作者「グラフみたいなので総量を数字を読まず確認できるようにしたい」)。
+            // 欄と同じ高さの縦の帯を、残りの分だけ下から満たす(上限で満タン。1/4 ごとに目盛り)。数字は帯の上に小さく。
+            // 足りなくて撃てなかった直後は赤く光る。残りが上限の2割以下で橙
             var r = arms.Rules;
             int ammo = Mathf.FloorToInt(arms.Ammo + 0.0001f);
             if (ammoKey != (ammo, true))
@@ -77,12 +81,20 @@ namespace Prototype
                 ammoKey = (ammo, true);
                 ammoText = $"弾 {ammo}/{r.ammoMax:0}";
             }
-            var ar = new Rect(x1, yBack, CellW, BackRowH);
+            var ar = new Rect(x0 - CellGap - AmmoGaugeW, yRow2, AmmoGaugeW, yBack + BackRowH - yRow2);
             bool starve = Time.time - arms.NoAmmoAt < 1f;
+            bool low = ammo <= r.ammoMax * 0.2f;
             Chip(ar, starve ? new Color(0.6f, 0.1f, 0.08f, 0.6f) : new Color(0f, 0f, 0f, 0.5f));
-            Chip(new Rect(ar.x + 8f, ar.y + 9f, 10f, 6f), new Color(1f, 0.85f, 0.35f));
-            GUI.color = starve ? new Color(1f, 0.55f, 0.45f) : ammo <= r.ammoMax * 0.2f ? StatusOrange : Color.white;
-            GUI.Label(new Rect(ar.x + 24f, ar.y + 2f, CellW - 30f, 20f), ammoText, cellBack);
+            float fill = r.ammoMax > 0f ? Mathf.Clamp01(arms.Ammo / r.ammoMax) : 0f;
+            if (fill > 0f)
+            {
+                float fh = Mathf.Max(2f, ar.height * fill);   // 少しでも残っていれば、底に細く見える
+                Chip(new Rect(ar.x, ar.yMax - fh, ar.width, fh),
+                    starve ? new Color(1f, 0.45f, 0.35f, 0.9f) : low ? new Color(1f, 0.6f, 0.15f, 0.9f) : new Color(1f, 0.85f, 0.35f, 0.9f));
+            }
+            for (int k = 1; k < 4; k++) Chip(new Rect(ar.x, ar.yMax - ar.height * k * 0.25f, ar.width, 1f), new Color(0f, 0f, 0f, 0.55f));
+            GUI.color = starve ? new Color(1f, 0.55f, 0.45f) : low ? StatusOrange : Color.white;
+            GUI.Label(new Rect(ar.xMax - 100f, yRow2 - WeightRowH, 100f, 18f), ammoText, cellTinyRight);
 
             // 武装の欄の上:所持品の数と重さ・推力(重すぎて持てなかった直後は赤く光る。上限の9割を超えたら橙)
             float total = arms.TotalWeight, max = arms.CarryMax;

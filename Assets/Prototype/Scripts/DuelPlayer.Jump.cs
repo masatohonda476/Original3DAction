@@ -6,23 +6,33 @@ namespace Prototype
 {
     // DuelPlayer のジャンプと落下攻撃(partial。本体と全体の説明は DuelPlayer.cs。数値と技の区分は DuelJumpRules = DuelGame.jump)
     // 「敵の攻撃をジャンプで越えて、落下攻撃で大きく崩す」を試す版(作者「やってみてください」。形は仮)。
-    //   ジャンプ中:地上で ✗ を押して踏み切ってから、着地・被弾・飛行に移る(頂点を過ぎても ✗ を押している)までの間。
+    // 2 つ目の形(作者「当たる瞬間にジャンプがいいです　あと、ただのジャンプでは落下攻撃は出ないようにしてください　致命攻撃も必要ですね」。致命攻撃は DuelPlayer.Attack.cs)。
+    //   ジャンプ中:地上で ✗ を押して踏み切ってから、着地・被弾・飛行に移るまでの間。
+    //     飛行に移るのは、踏み切ってから ✗ を押し続けて jumpToFlyHold 秒たったとき(作者「ジャンプからブースト上昇開始までが長いです」)か、
+    //     一度離した ✗ を押し直していて頂点を過ぎたとき。
     //     敵の体の上に乗っただけでは終わらない(水平に押し出されて滑り落ち、地面に着いたら終わる)。
     //   踏み切れるとき:地上で ✗ を押していて、ふつう・ガード・回避の間か、近接を取り消せる間(回避と同じ決まり:振りかぶりの間と、振り抜いて少し後から。CanTakeOff)。
     //     怯み・ガードの硬直・EN 切れなどで踏み切れなかったときは、✗ を押したまま踏み切れるようになったフレームに踏み切る(地上からゆっくり浮くことはない)。
-    //   成功:ジャンプ中に、跳べる技(下段)が「水平の間合いは当たるのに、高さで外れた」(DuelEnemy.DoHit → OnJumpedOver)。そのジャンプが終わるまで有効。
-    //   落下攻撃:ジャンプ中に近接のボタン(踏み切った直後でも)。成功していなくても出せるが、怯みが大きくたまるのは、跳び越えた敵に当てたときだけ。
+    //   成功:敵の跳べる技(下段)の当たりが出る瞬間に、踏み切ってから justWindow 秒以内だった(当たる瞬間に跳んだ。DuelEnemy.DoHit → OnJumpedOver)。
+    //     水平の間合いは当たる範囲であること。そのジャンプが終わるまで有効。早く跳びすぎたときは、高さで越えていれば当たらないが、成功ではない。
+    //   落下攻撃:成功しているジャンプ中だけ、近接のボタンで出る(跳び越えた敵の怯みを大きくためる)。
+    //     成功していないジャンプ中の近接のボタンは、空中のふつうの振り(飛行中と同じ。△+・回避の直後も今までの技)。
     //     落下攻撃の間(降下・振り・着地の隙)は跳べず・飛べず、その間に押していた ✗ は一度離すまで効かない(DuelPlayer.Update の flyNeedRelease)。
     public partial class DuelPlayer
     {
         // ───────── ジャンプ ─────────
 
         bool jumping;
+        /// <summary>踏み切った時刻(Time.time)と、踏み切ってから ✗ を一度も離していないか(押し続けて jumpToFlyHold 秒で飛行に移る)。</summary>
+        float jumpStartedAt = -10f;
+        bool jumpHeldThrough;
         /// <summary>このジャンプで攻撃を跳び越えた敵(成功)。ジャンプが終わったら空にする。</summary>
         readonly List<DuelEnemy> jumpedOver = new();
 
-        /// <summary>ジャンプ中(地上で ✗ を押して踏み切ってから、着地・被弾・飛行に移るまで)。敵の跳べる技(下段)は、この間だけジャンプの高さで外れる。</summary>
+        /// <summary>ジャンプ中(地上で ✗ を押して踏み切ってから、着地・被弾・飛行に移るまで)。敵の跳べる技(下段)は、この間だけ、当たる瞬間に跳ぶか高さで越えれば外れる。</summary>
         public bool Jumping => jumping;
+        /// <summary>踏み切ってからの秒数(ゲームの時間。ジャンプ中でなければとても大きい値)。敵の技が当たる瞬間に、これが justWindow 以内なら成功(DuelEnemy.DoHit)。</summary>
+        public float JumpAge => jumping ? Time.time - jumpStartedAt : float.MaxValue;
         /// <summary>このジャンプで敵の攻撃を跳び越えた(成功)。着地・被弾・飛行に移るまで有効。</summary>
         public bool JumpSucceeded => jumping && jumpedOver.Count > 0;
         /// <summary>ロックオンのカメラの向きを固定しておく間(成功した瞬間から、そのジャンプが終わるまで。DuelCamera が見る)。</summary>
@@ -39,12 +49,12 @@ namespace Prototype
         /// <summary>
         /// ✗ で踏み切れる状態か(地上にいること・EN は呼ぶ側が見る)。ふつう・ガード・回避の間はいつでも。
         /// 近接の間は、回避(□)で取り消せるのと同じ間だけ(UpdateAttack の TryDodge と同じ判定):振りかぶりの間と、振り抜いて dodgeLockAfterSwing 秒たってから。
-        /// 当たり判定が出ている振り抜きの間・落下攻撃の間(降下・振り・着地の隙)・怯み・ガードの硬直・ガード崩れの間は踏み切れない。
+        /// 当たり判定が出ている振り抜きの間・落下攻撃の間(降下・振り・着地の隙)・致命攻撃の踏み込みと振り抜きの間・怯み・ガードの硬直・ガード崩れの間は踏み切れない。
         /// </summary>
         bool CanTakeOff => Current switch
         {
             State.Free or State.Guard or State.Dodge => true,
-            State.Attack => !dropping && (phase == 0 || (phase == 2 && stateT >= dodgeLockAfterSwing)),
+            State.Attack => !dropping && !FatalCommitted && (phase == 0 || (phase == 2 && stateT >= dodgeLockAfterSwing)),
             _ => false,
         };
 
@@ -53,8 +63,10 @@ namespace Prototype
         /// 地上で ✗ を押していて踏み切れる(CanTakeOff・EN が 0 より多い)なら踏み切る。押した瞬間でなくてもよい
         /// (怯み・ガードの硬直・EN 切れ・振り抜きの間に押して、押したまま踏み切れるようになったフレームにも踏み切る)。近接の途中なら、その振りを取り消す。
         /// 戻り値は「このフレームは ✗ で飛んでよいか」:
-        ///   地上では飛ばない(跳ぶだけ。jumpSpeed が 0 のときだけ今までの上昇)。上がっている間・✗ を離して落ちている間・落下攻撃の間・敵の体の上にいる間も飛ばない。
-        ///   頂点を過ぎても ✗ を押していれば、ジャンプを終えて今までの飛行に移る(成功もそこで消える)。空中で押した ✗ は今までどおり飛行。
+        ///   地上では飛ばない(跳ぶだけ。jumpSpeed が 0 のときだけ今までの上昇)。✗ を離して落ちている間・落下攻撃の間・敵の体の上にいる間も飛ばない。
+        ///   踏み切ってから ✗ を押し続けて jumpToFlyHold 秒たったら、頂点を待たずにジャンプを終えて今までの飛行に移る(成功もそこで消える)。
+        ///     上向きの速さはそのまま引き継ぎ、飛行の上昇の速さへ寄っていく(DuelFighter.Move。速さは跳ばない)。
+        ///   一度離して押し直した ✗ は、頂点を過ぎてから飛行に移る(前の形)。空中(ジャンプ中でない)で押した ✗ は今までどおり飛行。
         /// </summary>
         bool UpdateJump(float now, bool flyHeld)
         {
@@ -63,10 +75,18 @@ namespace Prototype
             if (dropping) return false;   // 落下攻撃の間(降下・振り・着地の隙):跳ばない・飛ばない。着地は落下攻撃の側で見る(UpdateDrop)
             if (jumping)
             {
+                if (!flyHeld) jumpHeldThrough = false;
                 if (VerticalSpeed > 0f)
                 {
                     // 上がっている途中:天井に頭が当たったら、そこで上昇をやめて落ちる(張り付かない)
                     if ((cc.collisionFlags & CollisionFlags.Above) != 0) StopRising();
+                    // 踏み切ってから押し続けている:jumpToFlyHold 秒で、頂点を待たずに飛行へ(ジャンプ中は終わる。成功も消える)
+                    if (jumpHeldThrough && j.jumpToFlyHold > 0f && now - jumpStartedAt >= j.jumpToFlyHold && Energy > 0f
+                        && Current is State.Free or State.Guard or State.Attack or State.Dodge)
+                    {
+                        EndJump();
+                        return true;
+                    }
                     return false;
                 }
                 var below = onEnemyFor < MaxOnEnemy && j.slideOffSpeed > 0f ? EnemyBelow() : null;
@@ -87,19 +107,13 @@ namespace Prototype
             {
                 if (Current == State.Attack)
                 {
-                    // 近接を取り消して跳ぶ(回避での取り消しと同じ。払った EN は戻らない)。
-                    // ただし攻撃のボタンとほぼ同時(振りかぶりの出だし heavyChordWindow 秒)なら、落下攻撃として出し直す:その振りの EN を戻し、押したことを覚え直す
-                    if (phase == 0 && stateT <= heavyChordWindow && j.dropSpeed > 0f && Arms.CanMelee(atkHand))
-                    {
-                        Energy += cur.cost;
-                        lightPressedAt = now;
-                        pressHand = atkHand;
-                        pressHeavy = false;
-                    }
+                    // 近接を取り消して跳ぶ(回避での取り消しと同じ。払った EN は戻らない)
                     combo = 0;
                     Enter(State.Free);
                 }
                 jumping = true;
+                jumpStartedAt = now;
+                jumpHeldThrough = true;
                 jumpedOver.Clear();
                 onEnemyFor = 0f;
                 Energy -= j.jumpCost * EnCostMul;   // 足りなければマイナスになり、その分だけ回復を待つ(回避と同じ)
@@ -155,8 +169,9 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 敵の跳べる技を、ジャンプの高さで外した(DuelEnemy.DoHit から。水平の間合いは当たる範囲だった)。
-        /// 合図は、足もとから上へ散る青白い火花・自機が一瞬光る・短いヒットストップ(画面は揺らさない。音はない)。同じ敵の続きの段では合図をくり返さない。
+        /// 敵の跳べる技が当たる瞬間に跳んでいた(DuelEnemy.DoHit から。踏み切ってから justWindow 秒以内で、水平の間合いは当たる範囲だった)。成功。
+        /// 合図は、足もとから上へ散る青白い火花・自機が一瞬光る・短いヒットストップ(画面は揺らさない。音はない)。同じ敵の成功は、1回のジャンプに1回だけ。
+        /// 成功した瞬間の自機はまだ低く、敵の剣が体を通り抜けて見えるので、ヒットストップで「かわした」間を作る(successHitStop)。
         /// </summary>
         public void OnJumpedOver(DuelEnemy e)
         {
@@ -168,8 +183,8 @@ namespace Prototype
             if (game.jump.successHitStop > 0f) game.HitStop(game.jump.successHitStop);
         }
 
-        /// <summary>このジャンプで攻撃を跳び越えた敵か(落下攻撃を当てたとき、怯みを大きくためる相手)。</summary>
-        bool JumpedOver(DuelEnemy e) => jumping && jumpedOver.Contains(e);
+        /// <summary>このジャンプで攻撃を跳び越えた敵か(落下攻撃を当てたとき、怯みを大きくためる相手。敵の側は、続きの段を高さで判定するのに見る)。</summary>
+        public bool JumpedOver(DuelEnemy e) => jumping && jumpedOver.Contains(e);
 
         /// <summary>跳び越えた敵のうち、生きている一番近い敵(落下攻撃が向かう先)。いなければ null。</summary>
         DuelEnemy NearestJumpedOver()
@@ -196,10 +211,10 @@ namespace Prototype
         /// <summary>落下攻撃で降りている途中(着地して振るまで)。横の速さは慣性を通さずそのまま使う。</summary>
         bool DropDiving => dropping && Current == State.Attack && phase == 0;
         /// <summary>
-        /// 近接のボタンが落下攻撃になるか(ジャンプ中。踏み切った直後でまだ地面のすぐ上でも:✗ と攻撃をほぼ同時に押しても落下攻撃になる)。
-        /// 飛行中(ジャンプ中でない空中)は今までどおりの振り。
+        /// 近接のボタンが落下攻撃になるか:成功しているジャンプ中だけ(作者「ただのジャンプでは落下攻撃は出ないようにしてください」)。
+        /// 成功していないジャンプ中・飛行中は、空中のふつうの振り(今までの技)。
         /// </summary>
-        bool CanDrop => jumping && game.jump.dropSpeed > 0f;
+        bool CanDrop => JumpSucceeded && game.jump.dropSpeed > 0f;
 
         /// <summary>
         /// 落下攻撃を、敵の体の上に乗ったまま振った(押し出しきれずに保険の時間切れで振ったときなど)。そのときは高さの差で外さない(Strike)。
@@ -216,8 +231,8 @@ namespace Prototype
         DuelSwing DropOf() => Unarmed ? DuelMoveSet.BareDrop : DuelMoveSet.Drop;
 
         /// <summary>
-        /// 落下攻撃を始める(atkHand の手で)。向かう先は、跳び越えた敵(成功していれば。ロックオンの相手より先)→ ロックオンの相手 → 正面の近い敵。
-        /// △ を押していても同じ技(ジャンプ中に強攻撃はない)。
+        /// 落下攻撃を始める(atkHand の手で。成功しているジャンプ中だけ呼ばれる)。向かう先は、跳び越えた敵(ロックオンの相手より先)
+        /// → (跳び越えた敵がもう倒れていれば)ロックオンの相手 → 正面の近い敵。△ を押していても同じ技。
         /// </summary>
         void StartDrop()
         {

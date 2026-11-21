@@ -53,6 +53,20 @@ namespace Prototype
                  "攻撃を跳び越えた敵への落下攻撃には掛からない(下の jump.dropSuccessStagger)")]
         public float meleeStaggerMul = 0.3f;
 
+        [Header("致命攻撃(試す版。崩れた敵の近くで、地上で近接のボタン。技の時間・姿勢は DuelMoveSet.Fatal。値は仮)")]
+        [Tooltip("崩れた敵とのすき間がこれ(m)以内なら、近接のボタンが致命攻撃になる(相手へ踏み込む)。0 で致命攻撃なし")]
+        public float fatalRange = 12f;
+        [Tooltip("致命攻撃のダメージの下限(兵卒の HP 28・剣士 47 を 1 発で倒す量)。武装の威力の倍率・崩れた敵への近接の倍率は掛からない")]
+        public float fatalMinDamage = 60f;
+        [Tooltip("致命攻撃のダメージ = 相手の最大 HP × これ(上の下限より大きいほう)。ボス(HP 480)なら 0.25 で 120")]
+        [Range(0f, 1f)] public float fatalHpPart = 0.25f;
+        [Tooltip("致命攻撃の踏み込みの速さの上限(m/s)")]
+        public float fatalLungeSpeed = 60f;
+        [Tooltip("致命攻撃を当てた瞬間のヒットストップ(秒)。0 で止めない")]
+        public float fatalHitStop = 0.2f;
+        [Tooltip("致命攻撃を受けて崩れが解けた敵が、次の技を出すまでの最短の秒数")]
+        public float fatalEnemyWait = 1f;
+
         [Header("ジャンプで越えて落下攻撃で崩す(試す版。数値・技の区分は仮)")]
         public DuelJumpRules jump = new();
 

@@ -112,7 +112,6 @@ namespace Prototype
             hitDone = false;
             chargeWall = false;
             flurryIndex = 0;
-            jumpedBeforeWindup = player != null && player.Jumping;
             Enter(State.Windup, WindupTime);
         }
 
@@ -249,12 +248,17 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 技の当たりを調べて、当たっていれば自機に当てる。水平の間合い(inRange)は技ごと。高さは:
+        /// 技の当たりを調べて、当たっていれば自機に当てる。1 つの技で当たりを何度か調べるもの(横薙ぎの 2 発目・三段斬りの各段)は、その 1 回ずつ呼ばれる。
+        /// 触れたら当たる技(突き・突進)は、初めて触れたフレームに 1 回だけ呼ばれる(それが「当たる瞬間」)。水平の間合い(inRange)は技ごと。
         ///   自機がジャンプ中(DuelPlayer.Jumping)のとき … 技の区分(DuelJumpRules.Jumpable)で決める。
-        ///     跳べる技(下段):自機の足もとが敵の足もとより clearHeight 以上高ければ外れる。そのとき水平の間合いが当たる範囲なら
-        ///       (=地上にいたら当たっていた)、自機の成功(DuelPlayer.OnJumpedOver)。遠くで空振りしただけなら成功にしない。
-        ///     跳べない技(上段):highReach の高さまで届く(ジャンプの高さでは外れない)。
+        ///     跳べる技(下段):
+        ///       当たる瞬間に跳んだ(踏み切ってから justWindow 秒以内。この敵にまだ成功していない)… 高さに関係なく当たらない。
+        ///         水平の間合いが当たる範囲(=地上にいたら当たっていた)なら、自機の成功(DuelPlayer.OnJumpedOver)。遠くの空振りは成功にしない。
+        ///       それより前から跳んでいた・この敵にはもう成功している(続きの段)… 自機の足もとが敵の足もとより clearHeight 以上高ければ外れる(成功ではない)。
+        ///         越えていなければ当たる。
+        ///     跳べない技(上段):highReach の高さまで届く(ジャンプでは外れない。成功にもならない)。
         ///   それ以外(地上・飛行中)… 今までどおり、高さの差が機体の高さを超えていれば届かない(TooFarVertically。対空は別)。
+        /// 作者「当たる瞬間にジャンプがいいです」、受付の幅は「当たる 0.2 秒前まで」、早く跳んだときは「当たらないが成功でもない」。
         /// </summary>
         void DoHit()
         {
@@ -320,11 +324,15 @@ namespace Prototype
             var jr = game.jump;
             float dy = player.transform.position.y - transform.position.y;
             bool low = jr.Jumpable(skill, flurryIndex);
-            if (player.Jumping && low && dy >= jr.clearHeight)
+            if (player.Jumping && low)
             {
-                // 跳べる技を、ジャンプの高さで外した。水平の間合いは当たる範囲だったら成功
-                if (inRange && !(jr.jumpAfterWindupOnly && jumpedBeforeWindup)) player.OnJumpedOver(this);
-                return;
+                if (player.JumpAge <= jr.justWindow && !player.JumpedOver(this))
+                {
+                    // 当たる瞬間に跳んだ:高さに関係なく当たらない。水平の間合いが当たる範囲だったら成功
+                    if (inRange) player.OnJumpedOver(this);
+                    return;
+                }
+                if (dy >= jr.clearHeight) return;   // 早く跳んでいた・続きの段:高さで越えていれば当たらない(成功ではない)
             }
             bool reachesJumper = player.Jumping && !low && dy >= 0f && dy <= jr.highReach;   // 跳べない技は、ジャンプの高さでも届く
             if (skill != Skill.AntiAir && !reachesJumper && TooFarVertically(player)) inRange = false;   // 自機が高く飛んでいれば届かない(対空は別)

@@ -5,9 +5,10 @@ namespace Prototype
 {
     /// <summary>
     /// 自機:移動・ロックオン・通常攻撃(2つの振りを交互にくり返す)・強攻撃(△+R1。右→左と左→右の薙ぎ払いを交互に)・
-    /// 回避・回避斬り・ブースト(○で切り替え)・ジャンプ(地上で ✗)・ブースト飛行(空中で ✗ 長押し。ジャンプの頂点を過ぎても押し続けると移る。押すと自動でブーストオン)・ガード。
-    /// ジャンプと落下攻撃(試す版):地上で ✗ を押すとすぐ跳ぶ。ジャンプ中に敵の跳べる技(下段)を高さで外したら成功で、成功している間の落下攻撃
-    ///   (ジャンプ中の空中で R1 / L1)は、跳び越えた敵の怯みを大きくためる。ふつうの殴りは怯みがたまりにくい(DuelGame.meleeStaggerMul)。DuelPlayer.Jump.cs
+    /// 回避・回避斬り・ブースト(○で切り替え)・ジャンプ(地上で ✗)・ブースト飛行(空中で ✗ 長押し。ジャンプから押し続けても jumpToFlyHold 秒で移る。押すと自動でブーストオン)・ガード。
+    /// ジャンプと落下攻撃(試す版):地上で ✗ を押すとすぐ跳ぶ。敵の跳べる技(下段)が当たる瞬間に跳ぶ(踏み切ってから justWindow 秒以内)と成功で、
+    ///   成功している間だけ、R1 / L1 が落下攻撃になる(跳び越えた敵の怯みを大きくためる)。ふつうの殴りは怯みがたまりにくい(DuelGame.meleeStaggerMul)。DuelPlayer.Jump.cs
+    /// 致命攻撃(試す版):崩れた敵の近くで、地上で R1 / L1 を押すと、ふつうの振りの代わりに出る大ダメージの一撃(DuelPlayer.Attack.cs)。
     /// 守りは回避が軸。回避は出だしが無敵で、避けた後もすぐ動ける(敵の隙に差し込める)。
     /// ガードは押している間ダメージを大きく減らすが、受けるたびに押し戻されて少し固まり、ゲージが尽きると崩れる。
     /// 敵の叩きつけ・跳躍叩きつけの直撃はガードできない(DuelHit.guardable)。回避と攻撃はENを使う。ENが少しでもあれば出せ、足りない分はマイナスになり、
@@ -392,12 +393,18 @@ namespace Prototype
                 {
                     float t = Mathf.Clamp01(stateT / dodgeDuration);
                     vel = dodgeDir * (3f * DodgeDistance / dodgeDuration) * (1f - t) * (1f - t);
+                    // 回避の後半に、崩れた敵の近く(地上)で攻撃を押したら、致命攻撃へ(回避斬りより先。EN が0以下でも出る)
+                    if (stateT >= dodgeDuration * dodgeSlashFrom && TryFatal(now))
+                    {
+                        dodgeEndAt = now;
+                        break;
+                    }
                     // 回避の後半に攻撃を押したら、回避斬りへ
                     if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !HeavyPressed && !Overheated && Arms.CanMelee(pressHand))
                     {
                         dodgeEndAt = now;
                         atkHand = pressHand;   // 押したボタンの手の剣で斬る(素手ならその手のパンチ)
-                        if (CanDrop) StartDrop();   // ジャンプ中なら落下攻撃
+                        if (CanDrop) StartDrop();   // 成功しているジャンプ中なら落下攻撃
                         else StartDodgeSlash();
                         break;
                     }
@@ -483,7 +490,7 @@ namespace Prototype
         void Enter(State s, float dur = 0f)
         {
             if (s is State.Attack or State.Dodge) MeleeOrDodgeAt = Time.time;
-            if (s != State.Attack) dropping = false;
+            if (s != State.Attack) dropping = fatal = false;
             Current = s;
             stateT = 0f;
             stateDur = dur;

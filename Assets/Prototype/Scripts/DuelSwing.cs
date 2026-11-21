@@ -111,17 +111,30 @@ namespace Prototype
         };
 
         /// <summary>
-        /// 落下攻撃(ジャンプ中の空中で近接のボタン。DuelPlayer.Jump.cs。試す版で、値は仮)。どの剣・両手の近接でも同じ技で、武装の倍率は掛かる。書き換えないこと。
+        /// 落下攻撃(成功しているジャンプ中に近接のボタン。DuelPlayer.Jump.cs。試す版で、値は仮)。どの剣・両手の近接でも同じ技で、武装の倍率は掛かる。書き換えないこと。
         /// 新しいモーションは作っていない(斬撃クリップの流用):降りる間に剣を掲げて前へ傾き(windup の秒数で掲げきる)、着地した瞬間に振り切りまで振り下ろして腰を落とす。
         /// windup は「出してから着地して斬るまでの最短の秒数」(低い所から出しても、これより早くは斬らない)。踏み込み(lunge)は使わない(降りる動きは DuelJumpRules)。
         /// recover(着地の隙)は DuelJumpRules の dropRecoverHit / dropRecoverMiss で上書きする。
-        /// stagger は成功していないとき・跳び越えていない敵への量(ふつうの殴りと同じく DuelGame.meleeStaggerMul が掛かる)。
+        /// stagger は、跳び越えていない敵(落下攻撃に巻き込んだほかの敵)への量(ふつうの殴りと同じく DuelGame.meleeStaggerMul が掛かる)。
         /// 跳び越えた敵へは DuelJumpRules.dropSuccessStagger。heavy は手応え(火花・ヒットストップ)を強攻撃なみにするため。
         /// </summary>
         public static readonly DuelSwing Drop = new()
         {
             windup = 0.18f, active = 0.14f, recover = 0.8f, damage = 16f, stagger = 10f, flinch = 1.2f, reach = 9.5f, arc = 100f, knock = 12f, cost = 15f, heavy = true,
             pose0 = R * 0.5f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist1 = -5f, twist2 = 5f, lean0 = 8f, lean1 = 20f, lean2 = 28f, drop = 1.2f,
+        };
+
+        /// <summary>
+        /// 致命攻撃(崩れた敵の近くで、地上で近接のボタン。DuelPlayer.Attack.cs。試す版で、値は仮)。どの剣・両手の近接・素手でも同じ技。書き換えないこと。
+        /// 新しいモーションは作っていない(斬撃クリップの流用。大剣の強攻撃の兜割りと同じ姿勢):のけぞって大きく掲げ、前へ倒れ込みながら振り切りまで叩きつけて腰を落とす。
+        /// windup の間に相手の手前へ踏み込み(速さの上限は DuelGame.fatalLungeSpeed)、振り抜いた瞬間に相手 1 体だけに当たる。reach は振り抜いたときに届くすき間。
+        /// ダメージは DuelGame の fatalMinDamage / fatalHpPart(damage・stagger は使わない)。EN は使わない(cost = 0)。
+        /// windup〜active の間は無敵で取り消せず、recover(戻り)はふつうの近接と同じく少し後から取り消せる。武装の振りの速さの倍率は掛かる。
+        /// </summary>
+        public static readonly DuelSwing Fatal = new()
+        {
+            windup = 0.3f, active = 0.16f, recover = 0.55f, reach = 6f, knock = 20f, cost = 0f,
+            pose0 = 0f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist1 = -5f, twist2 = 5f, lean0 = -14f, lean1 = -18f, lean2 = 26f, drop = 1.2f,
         };
 
         /// <summary>素手の落下攻撃(右手・左手が両方とも空のとき)。パンチと同じく、当てると自機の HP が 2 減る。値は仮(剣より短く・軽く)。書き換えないこと。</summary>

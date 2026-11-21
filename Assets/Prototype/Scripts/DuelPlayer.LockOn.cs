@@ -103,10 +103,15 @@ namespace Prototype
         void UpdateLock()
         {
             // ロックオンのボタン:オン・オフを切り替える。切り替えのボタンは、オフならオンに戻す(電脳斬禅の Cycle)
-            // 落ちている武装の分解を選んでいる間と、抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
+            // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ロックオンのボタン(オン・オフ:十字左・Q・中クリック / 切り替え:R3・Tab)を
+            // 読まない(DuelArms.ChoiceLocksInput。作者「ドロップした武装の操作中に移動とカメラ以外の操作ができないように」)。
+            // 自動で選ぶ・見失って外す・倒した敵から次へ移るのは、選ぶ表示の間も今までどおり動く。
+            // ロックオン中の右スティックの弾き・マウスの振りでの切り替え(下)は、ここでは止めていない(ボタンではなく、右スティック・マウスの操作なので残している)。
+            // 分解を選ぶ表示を抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
             bool wasOn = LockOn;
-            bool toggle = Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle;
-            bool switchPressed = ProtoInput.SwitchTarget;
+            bool choice = Arms.ChoiceLocksInput;
+            bool toggle = !choice && (Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle);
+            bool switchPressed = !choice && ProtoInput.SwitchTarget;
             if (toggle) SetLockOn(!LockOn);
             else if (switchPressed && !LockOn) SetLockOn(true);
             if (!LockOn)

@@ -21,7 +21,9 @@ namespace HuntProto
     ///   装備の確認: メニューの「装備・所持品」(プロトタイプだけ。↑↓で選び、△ / C で外して持つ、所持品は付ける所のボタンで付ける、
     ///               □・X / X で処分(もう一度で床に捨てる・← で弾・→ で回復))
     ///   拾う案内  : 十字右 / V 付ける、十字下 / G 持つ、十字上 / F 分解(プロトタイプだけ)。
-    ///               分解を選んでいる間は 十字左 / ← で弾、十字右 / → で回復、十字上 / F でやめる(十字左はこの間ロックオンの切り替えにならない)
+    ///               分解を選んでいる間は 十字左 / ← で弾、十字右 / → で回復、十字上 / F でやめる(十字左はこの間ロックオンの切り替えにならない)。
+    ///               付け先・分解を選んでいる間は ○・B / Backspace でもやめる(ChoiceCancel)。その間に効くのは移動・カメラ・選ぶ表示の操作だけ
+    ///               (攻撃・射撃・ガード・回避・ブーストの切り替え・飛行・ロックオンのボタンは効かない。止めるのは DuelArms / DuelPlayer の側)
     ///   やり直し  : F1 / SHARE を押しながら△(電脳斬禅のデバッグメニューと同じ)
     ///   モード切替: F2 / SHARE を押しながら□
     /// </summary>
@@ -310,6 +312,12 @@ namespace HuntProto
 
         /// <summary>プロトタイプ:分解を選ぶ表示の間の「回復にする」(十字キー右 / →)。</summary>
         public static bool BreakHealNow => !BtnBlocked && (K(k => k.rightArrowKey) || P(p => p.dpad.right));
+
+        /// <summary>
+        /// プロトタイプ:付け先を選ぶ表示・分解を選ぶ表示を取り消す(○・B / Backspace。メニューの「戻る」MenuBack と同じ組)。
+        /// ○・B はふだんブーストのオン・オフ(BoostToggle)なので、選ぶ表示の間と閉じたフレームは DuelPlayer がブーストに読まない(DuelArms.ChoiceLocksInput)。
+        /// </summary>
+        public static bool ChoiceCancel => !BtnBlocked && (K(k => k.backspaceKey) || P(p => p.buttonEast));
 
         /// <summary>プロトタイプ:「弾にする」のボタン(十字キー左 / ←)を押している(止めずに読む。分解を抜けた後、離すまでロックオンの切り替えにしないため)。</summary>
         public static bool BreakAmmoHeld => (Kb != null && Kb.leftArrowKey.isPressed) || (Pad != null && Pad.dpad.left.isPressed);

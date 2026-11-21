@@ -302,9 +302,11 @@ namespace Prototype
 
             UpdateLock();
             ReadButtons(now);
-            if (ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
+            // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ブーストを切り替えない(○ は選ぶ表示の取り消し。DuelArms.ChoiceLocksInput)。
+            // オンのまま選ぶ表示に入ったら、オンのまま(速い移動はそのまま効く)
+            if (!Arms.ChoiceLocksInput && ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
             // ✗:押したら自動でブーストオン。押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
-            // 付け先を選ぶ表示の間と、それを終えた時に押していた ✗ を離すまでは飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
+            // 選ぶ表示(付け先・分解)の間と、それを終えた時に押していた ✗ を離すまでは飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
             bool flyHeld = ProtoInput.FlyHeld && !Arms.FlyBlocked;
             if (flyHeld && !flyHeldPrev && Energy > 0f) BoostOn = true;
             flyHeldPrev = flyHeld;
@@ -422,10 +424,11 @@ namespace Prototype
 
         void ReadButtons(float now)
         {
-            // 攻撃:剣を持つ手のボタン(R1=右手 / L1=左手。付け先を選んでいる間は数えない)
+            // 攻撃:剣を持つ手のボタン(R1=右手 / L1=左手。落ちている武装の選ぶ表示(付け先・分解)の間と、終えた時に押していたボタンを離すまでは数えない)
             if (Arms.IsSword(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
             if (Arms.IsSword(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
-            if (ProtoInput.Dodge) dodgePressedAt = now;
+            // 回避:選ぶ表示の間と閉じたフレームは覚えない(閉じた直後に飛び出さないように。DuelArms.ChoiceLocksInput)
+            if (!Arms.ChoiceLocksInput && ProtoInput.Dodge) dodgePressedAt = now;
         }
 
         /// <summary>先行入力(押してからの受付時間内の攻撃・回避)を捨てる。メニューを開いたとき(閉じた直後に出ないように)。</summary>

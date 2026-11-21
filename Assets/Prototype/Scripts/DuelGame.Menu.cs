@@ -260,7 +260,11 @@ namespace Prototype
             if (aimMove) HelpRow(kb ? "マウス" : "右スティック", "撃つボタンを押している間:照準を動かす");
             HelpRow($"{B(ProtoInput.Btn.R2)}/{B(ProtoInput.Btn.L2)}", "右肩/左肩の武装");
             HelpRow(B(ProtoInput.Btn.Dodge), "回避");
-            HelpRow(B(ProtoInput.Btn.Fly) + " 長押し", "飛行");
+            // ジャンプ(地上で押した瞬間に跳ぶ)と落下攻撃(試す版。DuelPlayer.Jump.cs)。近接のない両手の銃・砲には落下攻撃の行を出さない
+            string fly = B(ProtoInput.Btn.Fly);
+            HelpRow(fly, "ジャンプ(地上で。敵の下段の攻撃を跳び越える)");
+            if (two == null || two.IsBlade) HelpRow($"ジャンプ中に {r1}/{l1}", "落下攻撃(跳び越えた敵を大きく崩す)");
+            HelpRow(fly + " 長押し", "飛行(空中で。ジャンプの頂点からも続く)");
             HelpRow(B(ProtoInput.Btn.Boost), "ブースト");
 
             // 右の列:ロックオン・落ちている武装・メニュー

@@ -112,6 +112,7 @@ namespace Prototype
             hitDone = false;
             chargeWall = false;
             flurryIndex = 0;
+            jumpedBeforeWindup = player != null && player.Jumping;
             Enter(State.Windup, WindupTime);
         }
 
@@ -247,6 +248,14 @@ namespace Prototype
             return vel;
         }
 
+        /// <summary>
+        /// 技の当たりを調べて、当たっていれば自機に当てる。水平の間合い(inRange)は技ごと。高さは:
+        ///   自機がジャンプ中(DuelPlayer.Jumping)のとき … 技の区分(DuelJumpRules.Jumpable)で決める。
+        ///     跳べる技(下段):自機の足もとが敵の足もとより clearHeight 以上高ければ外れる。そのとき水平の間合いが当たる範囲なら
+        ///       (=地上にいたら当たっていた)、自機の成功(DuelPlayer.OnJumpedOver)。遠くで空振りしただけなら成功にしない。
+        ///     跳べない技(上段):highReach の高さまで届く(ジャンプの高さでは外れない)。
+        ///   それ以外(地上・飛行中)… 今までどおり、高さの差が機体の高さを超えていれば届かない(TooFarVertically。対空は別)。
+        /// </summary>
         void DoHit()
         {
             hitDone = true;
@@ -308,7 +317,17 @@ namespace Prototype
             }
             h.damage *= Kind.damageMul;
             h.stagger *= Kind.playerStaggerMul;
-            if (skill != Skill.AntiAir && TooFarVertically(player)) inRange = false;   // 自機が高く飛んでいれば届かない(対空は別)
+            var jr = game.jump;
+            float dy = player.transform.position.y - transform.position.y;
+            bool low = jr.Jumpable(skill, flurryIndex);
+            if (player.Jumping && low && dy >= jr.clearHeight)
+            {
+                // 跳べる技を、ジャンプの高さで外した。水平の間合いは当たる範囲だったら成功
+                if (inRange && !(jr.jumpAfterWindupOnly && jumpedBeforeWindup)) player.OnJumpedOver(this);
+                return;
+            }
+            bool reachesJumper = player.Jumping && !low && dy >= 0f && dy <= jr.highReach;   // 跳べない技は、ジャンプの高さでも届く
+            if (skill != Skill.AntiAir && !reachesJumper && TooFarVertically(player)) inRange = false;   // 自機が高く飛んでいれば届かない(対空は別)
             if (inRange) player.ReceiveHit(h);
         }
 

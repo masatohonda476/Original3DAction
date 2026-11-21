@@ -20,6 +20,10 @@ namespace Prototype
     ///     ロックオンしていないときだけ、照準を可動範囲の端へ押し付けている間、その方向へゆっくり回す(edgeYawSpeed / edgePitchSpeed)。
     ///     ロックオン中は端でも回さない。撃っても(反動でも)カメラは動かない。
     /// 前の形(撃っている間ロックオンのカメラを止める「構え」・終わったら戻る回転・ロックオン中のずらし・距離と画面の端で速さを変える)は外した。
+    /// ジャンプで敵の攻撃を跳び越えた間(DuelPlayer.JumpCameraHold。成功した瞬間から着地・被弾・飛行に移るまで)は、ロックオンのカメラの向きを固定する
+    ///   (holdOnJumpSuccess。作者「成功したら専用のカメラ演出などを入れればカメラ問題も解決しそうです」の、一番軽い形。専用の画角は作っていない)。
+    ///   相手を追って回るのを止め(左右の角速度は上限つきで 0 へ落とす)、上下を決める値も止める。位置は今までどおり自機に付いていく。
+    ///   解けたら、いつもの上限つきの追従(lockTurnRate・lockMaxTurnSpeed・lockTurnAccel・lockLookSmooth・lockViewMaxSpeed)で相手へ戻る(止まった状態から回り始める)。
     /// </summary>
     public class DuelCamera : MonoBehaviour
     {
@@ -77,6 +81,9 @@ namespace Prototype
         public float lockLookSmooth = 4f;
         [Tooltip("見える向きが回る速さの上限(度/秒。左右・上下とも)。ロックオンの付け始め・自機の素早い動きでも、これより速くは回らない")]
         public float lockViewMaxSpeed = 120f;
+        [Tooltip("オンなら、ジャンプで敵の攻撃を跳び越えた瞬間から着地(被弾・飛行に移る)まで、ロックオンのカメラが相手を追って回るのを止めて向きを固定する。" +
+                 "解けたら上の上限つきの追従で相手へ戻る。オフなら、その間も今までどおり相手を追う")]
+        public bool holdOnJumpSuccess = true;
 
         [Header("ロックオンしていないカメラ")]
         [Tooltip("見上げられる角度(度。マイナスが上)。作者「もっとカメラは上を向けられるようにしてください」")]
@@ -243,6 +250,14 @@ namespace Prototype
                 lockYawVel = 0f;
                 lookDh = dh;
                 lookDy = dy;
+            }
+            if (holdOnJumpSuccess && p.JumpCameraHold)
+            {
+                // 攻撃を跳び越えた間は向きを固定:相手を追わない。回っている途中だったら、角速度を上限つきで 0 へ落として止める(急に止めない)。
+                // 上下を決める値(lookDh / lookDy)も今のまま。解けたら、下のいつもの追従が止まった状態から回り始める
+                lockYawVel = Mathf.MoveTowards(lockYawVel, 0f, Mathf.Max(1f, lockTurnAccel) * 2f * dt);
+                if (lockYawVel != 0f) fwd = (Quaternion.AngleAxis(lockYawVel * dt, Vector3.up) * fwd).normalized;
+                return;
             }
             float lk = 1f - Mathf.Exp(-Mathf.Max(0.1f, lockLookSmooth) * dt);
             lookDh = Mathf.Lerp(lookDh, dh, lk);

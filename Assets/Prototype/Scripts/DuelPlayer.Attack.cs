@@ -54,6 +54,7 @@ namespace Prototype
             if (Overheated) return false;   // ENが0以下の間は攻撃できない(押したことは少しの間覚えておく)
             if (!Arms.CanMelee(pressHand)) { lightPressedAt = -10f; return false; }   // 押した後に剣を持ち替えた(素手でもなくなった)
             atkHand = pressHand;
+            if (CanDrop) { StartDrop(); return true; }   // ジャンプ中の空中なら落下攻撃(△ を押していても。DuelPlayer.Jump.cs)
             if (HeavyPressed) { StartHeavy(0); return true; }   // △+攻撃は回避の直後でも強攻撃
             // 回避が終わってすぐなら回避斬り(素手は同じパンチ)
             if (now - dodgeEndAt <= dodgeSlashWindow) { StartDodgeSlash(); return true; }
@@ -131,6 +132,7 @@ namespace Prototype
         {
             // 左手の片手の剣・素手の左のパンチは左右反転して振る(両手の近接は L1 の技も右手のクリップのまま、両手で振る)
             atkMirror = atkHand == 1 && SwordIn(1) is not { IsTwoHand: true };
+            dropping = false;   // 落下攻撃なら、この後で StartDrop が立てる
             m = Armed(m, atkHand);
             Energy -= m.cost;   // 足りなければマイナスになり、その分だけ回復を待つ
             energyUsedAt = Time.time;
@@ -158,6 +160,7 @@ namespace Prototype
         /// <summary>攻撃中の1フレーム。振りかぶりの間は少し踏み込み、振り抜いた瞬間に当たりを調べる。</summary>
         Vector3 UpdateAttack(float dt, float now, Vector3 worldMove)
         {
+            if (dropping) return UpdateDrop(dt);   // 落下攻撃は別の流れ(降下 → 着地で斬る → 着地の隙)
             Vector3 vel = Vector3.zero;
             switch (phase)
             {
@@ -187,6 +190,8 @@ namespace Prototype
                         // 両手の近接は R1/L1 で同じ武装(強攻撃の段は、ボタンが替わっても続ける)
                         bool sameBlade = sameHand || (SwordIn(atkHand) is { IsTwoHand: true } tw && SwordIn(pressHand) == tw);
                         atkHand = pressHand;
+                        // 地上で振り始めてからジャンプした:空中での次の一振りは落下攻撃
+                        if (CanDrop) { StartDrop(); return Vector3.zero; }
                         // △+攻撃:強攻撃。同じ剣の強攻撃の後なら次の段、それ以外は1段目
                         if (HeavyPressed) { StartHeavy(cur.heavy && sameBlade ? heavyStep + 1 : 0); return Vector3.zero; }
                         // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後・手が替わったら、その剣の1段目から
@@ -203,8 +208,12 @@ namespace Prototype
             return vel;
         }
 
-        /// <summary>振り抜いた瞬間:扇の中の敵に当てる。</summary>
-        void Strike()
+        /// <summary>
+        /// 振り抜いた瞬間:扇の中の敵に当てる。当たった敵がいたかを返す。
+        /// 怯みゲージへの量には DuelGame.meleeStaggerMul が掛かる(ふつうの殴りではたまりにくい)。
+        /// 落下攻撃を、このジャンプで攻撃を跳び越えた敵に当てたときだけ、倍率を掛けずに DuelJumpRules.dropSuccessStagger をためる。
+        /// </summary>
+        bool Strike()
         {
             bool any = false, big = false;
             foreach (var e in game.Enemies)
@@ -216,20 +225,23 @@ namespace Prototype
                 if (GapTo(e) > cur.reach) continue;
                 if (to.magnitude > Radius + e.Radius + 0.5f && Vector3.Angle(transform.forward, to) > cur.arc) continue;
                 bool wasBroken = e.Flinching;   // 崩れた敵を斬る(大ダメージ)
-                e.TakeHit(cur.damage, cur.stagger, Flat(to) * cur.knock, cur.flinch);
+                bool jumped = dropping && JumpedOver(e);   // 攻撃を跳び越えた敵への落下攻撃(大きく崩す)
+                float stagger = jumped ? game.jump.dropSuccessStagger : cur.stagger * game.meleeStaggerMul;
+                e.TakeHit(cur.damage, stagger, Flat(to) * cur.knock, cur.flinch);
                 bool broke = !wasBroken && e.Flinching;   // この一太刀で崩した
-                // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく。崩した・崩れた敵を斬ったときはさらに多く大きく
+                // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく。崩した・崩れた敵を斬った・跳び越えた敵への落下攻撃はさらに多く大きく
                 Vector3 hitAt = e.Chest - Flat(to) * e.Radius;
-                float fx = wasBroken || broke ? 1.6f : 1f;
+                float fx = wasBroken || broke || jumped ? 1.6f : 1f;
                 DuelSpark.Burst(hitAt, -Flat(to), new Color(1f, 0.88f, 0.55f), Mathf.RoundToInt((cur.heavy ? 26 : 14) * fx), (cur.heavy ? 1.4f : 1f) * fx);
                 ProtoFx.Blast(hitAt, (cur.heavy ? 2f : 1.2f) * fx, Color.white, 0.08f);
                 any = true;
-                big |= wasBroken || broke;
+                big |= wasBroken || broke || jumped;
             }
             // ヒットストップ(画面は揺らさない)。崩した・崩れた敵を斬ったときは少し長く
             if (any) game.HitStop((cur.heavy ? 0.12f : 0.06f) + (big ? 0.04f : 0f));
             // 素手のパンチ:当てるたびに自機の HP が減る(1振りにつき1回)
             if (any && cur.selfDamage > 0f) TakeRecoil(cur.selfDamage);
+            return any;
         }
 
         /// <summary>

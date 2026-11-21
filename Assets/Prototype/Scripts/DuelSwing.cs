@@ -111,6 +111,27 @@ namespace Prototype
         };
 
         /// <summary>
+        /// 落下攻撃(ジャンプ中の空中で近接のボタン。DuelPlayer.Jump.cs。試す版で、値は仮)。どの剣・両手の近接でも同じ技で、武装の倍率は掛かる。書き換えないこと。
+        /// 新しいモーションは作っていない(斬撃クリップの流用):降りる間に剣を掲げて前へ傾き(windup の秒数で掲げきる)、着地した瞬間に振り切りまで振り下ろして腰を落とす。
+        /// windup は「出してから着地して斬るまでの最短の秒数」(低い所から出しても、これより早くは斬らない)。踏み込み(lunge)は使わない(降りる動きは DuelJumpRules)。
+        /// recover(着地の隙)は DuelJumpRules の dropRecoverHit / dropRecoverMiss で上書きする。
+        /// stagger は成功していないとき・跳び越えていない敵への量(ふつうの殴りと同じく DuelGame.meleeStaggerMul が掛かる)。
+        /// 跳び越えた敵へは DuelJumpRules.dropSuccessStagger。heavy は手応え(火花・ヒットストップ)を強攻撃なみにするため。
+        /// </summary>
+        public static readonly DuelSwing Drop = new()
+        {
+            windup = 0.18f, active = 0.14f, recover = 0.8f, damage = 16f, stagger = 10f, flinch = 1.2f, reach = 9.5f, arc = 100f, knock = 12f, cost = 15f, heavy = true,
+            pose0 = R * 0.5f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist1 = -5f, twist2 = 5f, lean0 = 8f, lean1 = 20f, lean2 = 28f, drop = 1.2f,
+        };
+
+        /// <summary>素手の落下攻撃(右手・左手が両方とも空のとき)。パンチと同じく、当てると自機の HP が 2 減る。値は仮(剣より短く・軽く)。書き換えないこと。</summary>
+        public static readonly DuelSwing BareDrop = new()
+        {
+            windup = 0.18f, active = 0.14f, recover = 0.8f, damage = 7f, stagger = 6f, flinch = 1.2f, reach = 5.5f, arc = 70f, knock = 5f, cost = 9f, heavy = true, selfDamage = 2f,
+            pose0 = R * 0.5f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist1 = -5f, twist2 = 5f, lean0 = 8f, lean1 = 20f, lean2 = 28f, drop = 0.8f,
+        };
+
+        /// <summary>
         /// 軽剣:振りかぶりが浅く、小さく速い3段の連撃(斬り下ろし → 切り上げ → 手首を返した横払い)。一振りは軽く、ENも少ない。
         /// 強攻撃は体ごと素早く回す横薙ぎ。回避斬りはとても出が速い。
         /// </summary>

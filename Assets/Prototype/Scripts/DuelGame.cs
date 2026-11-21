@@ -48,6 +48,13 @@ namespace Prototype
         public float rangedPushMul = 1f;
         [Tooltip("武装の knock がこれ以上の射撃だけ1発ごとに押し返す(連射の銃で、寄ってくる敵を引き止め続けないように)")]
         public float rangedPushMin = 8f;
+        [Tooltip("自機の近接(通常攻撃・強攻撃・回避斬り・素手・成功していない落下攻撃)が、敵の怯みゲージへためる量に掛ける倍率。" +
+                 "ふつうに殴るだけでは崩しにくくする(1 で前と同じ)。攻撃の後の隙に当てると 1.6 倍・射撃の上限・崩れた敵への近接 2 倍はそのまま。" +
+                 "攻撃を跳び越えた敵への落下攻撃には掛からない(下の jump.dropSuccessStagger)")]
+        public float meleeStaggerMul = 0.3f;
+
+        [Header("ジャンプで越えて落下攻撃で崩す(試す版。数値・技の区分は仮)")]
+        public DuelJumpRules jump = new();
 
         /// <summary>怯みのバーを白く点滅させ始める割合(8割か、射撃の上限の少し手前の低いほう)。射撃で止まった所が「斬りにいけ」の合図になる。</summary>
         public float StaggerBlinkFrom => Mathf.Min(0.8f, rangedStaggerCap - 0.02f);
@@ -83,6 +90,7 @@ namespace Prototype
         void Awake()
         {
             I = this;
+            jump ??= new DuelJumpRules();
             Time.timeScale = 1f;
             ProtoInput.Paused = false;
             DuelRadar.ClearCache();   // 前のシーンの武装の組をためこまない

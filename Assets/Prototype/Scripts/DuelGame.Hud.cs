@@ -84,7 +84,7 @@ namespace Prototype
 
             // ロックオンの印は四つの角の枠だけ(敵を囲む。DrawLockCorners)。胸の上の白い十字は、枠と二重になるのでやめた(作者「敵の上で印が重なる」→「A」)
             var e = player.Target;
-            if (e != null && !e.Dead && cam != null)
+            if (e != null && !e.Exploded && cam != null)   // 倒した相手も、爆発するまではロックオンが残る(DuelPlayer.UpdateLock)
             {
                 Vector3 sp = cam.WorldToScreenPoint(e.LockPoint);
                 // 画面の外(敵が背中側へ回り、カメラが上限の速さで向き直っている途中など):画面の端に、その方向を示す小さな印(見失わないように)
@@ -607,7 +607,7 @@ namespace Prototype
         bool LockTargetBox(Camera cam, DuelEnemy target, out Vector2 center, out Vector2 half)
         {
             center = half = Vector2.zero;
-            if (target == null || target.Dead || cam == null) return false;
+            if (target == null || target.Exploded || cam == null) return false;   // 倒した相手も、爆発するまでは囲む
             Vector3 vp = cam.WorldToViewportPoint(target.LockPoint);
             if (vp.z <= 0.1f || vp.x < 0f || vp.x > 1f || vp.y < 0f || vp.y > 1f) return false;
             if (!DuelSenses.ClearSight(player.LockPoint, target.LockPoint)) return false;

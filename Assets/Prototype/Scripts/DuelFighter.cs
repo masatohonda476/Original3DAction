@@ -30,6 +30,11 @@ namespace Prototype
         public float MaxHP { get; private set; }
         public float HP { get; protected set; }
         public bool Dead => HP <= 0f;
+        /// <summary>
+        /// 撃墜の演出で爆発し終えたか(倒してから約 0.6 秒後。DeathSequence)。倒してからここまでの間は、火花を散らしてまだ立っている。
+        /// ロックオンは爆発するまで残す(DuelPlayer.UpdateLock)。
+        /// </summary>
+        public bool Exploded { get; private set; }
         /// <summary>機体の大きさの倍率(見た目・当たりの大きさ・技の届く範囲に掛かる)。</summary>
         public float Size { get; private set; } = 1f;
         public float Radius => 2f * Size;
@@ -157,6 +162,7 @@ namespace Prototype
             StopAllCoroutines();   // 撃墜の演出を止める
             cc.enabled = true;     // 残骸として消した当たり判定を戻す
             wreckFalling = false;
+            Exploded = false;
             HP = MaxHP;
             flashT = 0f;
             holdTint = null;
@@ -248,6 +254,7 @@ namespace Prototype
                 Flash(new Color(1f, 0.6f, 0.3f), 0.05f);
             }
             // 爆発して黒焦げ
+            Exploded = true;   // ここでロックオンが外れる
             ProtoFx.Blast(Chest, 9f * Size, new Color(1f, 0.55f, 0.15f), 0.55f);
             ProtoFx.Blast(Chest, 4.5f * Size, new Color(1f, 0.95f, 0.7f), 0.25f);
             DuelSpark.Burst(Chest, Vector3.zero, new Color(1f, 0.7f, 0.3f), 45, 1.8f * Size);

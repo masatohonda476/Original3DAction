@@ -14,6 +14,8 @@ namespace Prototype
     ///   技は剣ごとの表(DuelWeapon.moves → DuelMoveSet)。強攻撃(△+R1/L1)・回避斬りは押したボタンの手の剣で出す。
     ///   弾倉のある銃のボタンでは △+ボタンはリロード(DuelArms.TryManualReload。剣の手のボタンは横取りしない)。
     ///   ガードの値は構えている盾のもの。盾がなければガードできない。近接攻撃の間と回避の間は撃てない(CanShoot)。
+    ///   素手(右手・左手が両方とも空。DuelArms.Unarmed):R1 で右手、L1 で左手のパンチ(続けて・交互に押すと続けて殴る)。1発の威力は 4(0.5 秒に1発)、当てるたびに自機の HP が 2 減る。
+    ///   △+R1/L1・回避の直後でも同じパンチ(強攻撃・回避斬りはない)。技は DuelMoveSet.Bare。パンチの間も撃てない・ガードはできない。
     ///   両手の近接:R1 で連撃、L1 で別の技(回避の後も R1 は回避斬り、L1 は別の技)、△+R1/L1 で強攻撃。右手のクリップで振り、左右反転しない。
     ///   両手の銃・砲は DuelArms が撃つ(R1 が主の撃ち方、L1 が別の撃ち方)。両手持ちには盾がないのでガードできない。
     /// ファイルは役割ごとに分けている:DuelPlayer.LockOn.cs(ロックオン)/ DuelPlayer.Attack.cs(回避・攻撃)。
@@ -196,7 +198,8 @@ namespace Prototype
         /// <summary>
         /// その手(0=右 / 1=左)の剣を捨てた(DuelArms.Drop。装備の確認の画面から)。その手で振っている途中なら振りをやめ
         /// (剣のない手の振りで当たらないように)、その手で押して覚えている攻撃も忘れる。
-        /// 剣のない手では、通常攻撃・強攻撃・回避斬り・△との同時押しは出ない(TryAttack・TryChord などが SwordIn で止める)。
+        /// 剣のない手では、通常攻撃・強攻撃・回避斬り・△との同時押しは出ない(TryAttack・TryChord などが DuelArms.CanMelee・SwordIn で止める)。
+        /// ただし右手・左手が両方とも空になったら素手で、R1 / L1 でパンチが出る(DuelArms.Unarmed)。
         /// </summary>
         public void OnSwordDropped(int hand)
         {
@@ -377,10 +380,10 @@ namespace Prototype
                     float t = Mathf.Clamp01(stateT / dodgeDuration);
                     vel = dodgeDir * (3f * DodgeDistance / dodgeDuration) * (1f - t) * (1f - t);
                     // 回避の後半に攻撃を押したら、回避斬りへ
-                    if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !pressHeavy && !Overheated && SwordIn(pressHand) != null)
+                    if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !HeavyPressed && !Overheated && Arms.CanMelee(pressHand))
                     {
                         dodgeEndAt = now;
-                        atkHand = pressHand;   // 押したボタンの手の剣で斬る
+                        atkHand = pressHand;   // 押したボタンの手の剣で斬る(素手ならその手のパンチ)
                         StartDodgeSlash();
                         break;
                     }
@@ -416,9 +419,10 @@ namespace Prototype
 
         void ReadButtons(float now)
         {
-            // 攻撃:剣を持つ手のボタン(R1=右手 / L1=左手。落ちている武装の選ぶ表示(付け先・分解)の間と、終えた時に押していたボタンを離すまでは数えない)
-            if (Arms.IsSword(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
-            if (Arms.IsSword(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
+            // 攻撃:剣を持つ手のボタン(R1=右手 / L1=左手。落ちている武装の選ぶ表示(付け先・分解)の間と、終えた時に押していたボタンを離すまでは数えない)。
+            // 素手(両手とも空)なら R1 / L1 で右手・左手のパンチ
+            if (Arms.CanMelee(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
+            if (Arms.CanMelee(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
             // 回避:選ぶ表示の間と閉じたフレームは覚えない(閉じた直後に飛び出さないように。DuelArms.ChoiceLocksInput)
             if (!Arms.ChoiceLocksInput && ProtoInput.Dodge) dodgePressedAt = now;
         }

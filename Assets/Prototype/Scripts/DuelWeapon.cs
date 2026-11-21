@@ -279,7 +279,7 @@ namespace Prototype
                     foreach (var m in L)
                     {
                         dmg += m.damage;
-                        cyc += m.windup + m.active + DuelSwing.ChainAfter;
+                        cyc += m.windup + m.active + m.ChainAt;
                         arc += m.arc;
                     }
                     dmg = dmg / L.Length * w.damageMul;

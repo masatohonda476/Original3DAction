@@ -27,6 +27,12 @@ namespace Prototype
 
         /// <summary>戻りに入ってからこの秒数たてば、次の段へつなげられる。</summary>
         public const float ChainAfter = 0.08f;
+        /// <summary>この技だけ、次の段へつなげられるまでの秒数を変える(0 なら ChainAfter)。素手のパンチが使う。</summary>
+        public float chainDelay;
+        /// <summary>戻りに入ってから次の段へつなげられるまでの秒数。</summary>
+        public readonly float ChainAt => chainDelay > 0f ? chainDelay : ChainAfter;
+        /// <summary>当てたときに自機の HP が減る量(1振りにつき1回。何体に当てても同じ。0 なら減らない)。素手のパンチが使う。</summary>
+        public float selfDamage;
     }
 
     /// <summary>
@@ -77,6 +83,31 @@ namespace Prototype
             },
             dodgeSlash = new() { windup = 0.14f, active = 0.14f, recover = 0.5f, damage = 12f, stagger = 9f, flinch = 0.5f, reach = 9.5f, arc = 100f, lunge = 6f, knock = 6f, cost = 10f,
                                  pose0 = R * 0.7f, pose1 = R, pose2 = S, pose3 = Mid(0.6f) },
+        };
+
+        /// <summary>素手の表(右手・左手が両方とも空のとき。DuelArms.Unarmed)。書き換えないこと。</summary>
+        public static readonly DuelMoveSet Bare = Unarmed();
+
+        /// <summary>
+        /// 素手のパンチ(両手持ちの素手。R1 = 右手 / L1 = 左手で、左は左右反転)。武装ではないので、武装の倍率は掛からない。
+        /// 強攻撃(△+R1/L1)・回避斬りに当たる入力でも、この表のパンチが出る(DuelPlayer.Attack.cs。使うのは light だけ)。
+        /// 作者「武装を付けていないときは左右の手でパンチが出るようにして、ヒットでHPが2づつ減るようにしてください」「HPが減るのは自機の話です」
+        /// → パンチが敵に当たるたびに、自機の HP が 2 減る(selfDamage。DuelPlayer.TakeRecoil)。外したパンチでは減らない。
+        /// 作者「DPSと怯ませDPSはそのままにモーション速度を半分にしてください」→ 最初の版(敵へ1発 2・怯み 2・約4発/秒。値は係の仮置き)から、
+        /// 振りかぶり・振り抜き・戻り・次へつなげるまでの秒数を全部 2 倍にし、1発の威力・怯み・EN を 2 倍(2 → 4、2 → 4、3 → 6)にした。
+        /// 続けて殴ると 0.5 秒に1発(2発/秒)で、敵への毎秒の威力 8・怯み 8・EN 12 は最初の版と同じ。
+        /// 届く範囲・扇の広さ・踏み込み・吹き飛ばしは仮置き(剣より短く・軽く)。
+        /// 姿勢(仮。新しいモーションは作っていない):斬撃クリップの、腕が前へ伸びきる所(19.5フレーム)の前後だけを使う。
+        ///   振りかぶりで拳を頭の横まで引き(19 → 17.5フレーム)、振り抜きで前へ突き出す(→ 19.5フレーム)。戻りは腕を伸ばしたあたりで止める(→ 19フレーム)。
+        ///   機体のひねり(引くときに振る手の側へ、突くときに逆へ)と前傾を重ねて、突き出す動きに寄せる。
+        /// </summary>
+        public static DuelMoveSet Unarmed() => new()
+        {
+            light = new DuelSwing[]
+            {
+                new() { windup = 0.2f, active = 0.14f, recover = 0.52f, chainDelay = DuelSwing.ChainAfter * 2f, selfDamage = 2f, damage = 4f, stagger = 4f, flinch = 0.3f, reach = 5f, arc = 50f, lunge = 2f, knock = 1.5f, cost = 6f,
+                        pose0 = 19f / 30f, pose1 = 17.5f / 30f, pose2 = 19.5f / 30f, pose3 = 19f / 30f, twist0 = 4f, twist1 = 12f, twist2 = -15f, lean0 = -1f, lean1 = -3f, lean2 = 8f },
+            },
         };
 
         /// <summary>

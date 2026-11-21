@@ -135,6 +135,11 @@ namespace Prototype
         // ───────── 照準の枠(射撃だけ) ─────────
 
         static readonly Color FrameIdle = new(0.85f, 0.92f, 1f), FrameLocked = new(1f, 0.72f, 0.3f);
+        /// <summary>
+        /// 弾が当たるときの濃い橙(真ん中の十字と、ロックオンの相手を囲む角)。FrameLocked(ほかの敵の印の薄い橙)より濃い
+        /// (作者「弾が当たるタイミングで今より濃いオレンジにしてほしいです」「十字の視認性が少し悪いので、当たるタイミングではもっと濃くしてください」)。
+        /// </summary>
+        static readonly Color FrameHit = new(1f, 0.45f, 0.05f);
         // 枠に添えるボタン名(ボタンの組と機器が変わったときだけ作る)
         readonly Dictionary<(int, ProtoInput.Device), string> frameLabels = new();
 
@@ -206,7 +211,7 @@ namespace Prototype
                 if (arms.ShotPoint != null) { sx = shotSp.x / uiScale; sy = SH - shotSp.y / uiScale; }
                 // 見た目だけ、出す所へ CrossFollowTime 秒ほどで追いつかせる(狙いが急に変わっても跳ばずに滑る。弾の向きは変えない。作者「見た目だけでも間を補正とかできますか？」)
                 float now = Time.unscaledTime;
-                // 弾が敵の体に当たる所に十字があれば橙にする(DuelArms.ShotOnEnemy。体の端で 1 フレームだけ色が変わってちらつかないよう、CrossHitTime 秒で色を移す)
+                // 弾が敵の体に当たる所に十字があれば濃い橙にする(DuelArms.ShotOnEnemy。体の端で 1 フレームだけ色が変わってちらつかないよう、CrossHitTime 秒で色を移す)
                 float onEnemy = arms.ShotOnEnemy ? 1f : 0f;
                 if (crossShownAt < 0f || now - crossShownAt > 0.2f)
                 {
@@ -227,7 +232,7 @@ namespace Prototype
             foreach (var e in arms.Marks)
             {
                 if (e == null || e.Dead) continue;
-                if (e == player.Target && lockFollow > 0f) continue;   // ロックオンの角が囲んでいる相手は、角の色で示す(DrawLockCorners。印を重ねない)
+                if (e == player.Target && lockFollow > 0f) continue;   // ロックオンの角が囲んでいる相手には、印を重ねない(弾が当たるときは角が濃い橙になる。DrawLockCorners)
                 Vector3 sp = cam.WorldToScreenPoint(e.Chest);
                 if (sp.z <= 0f) continue;
                 float x = sp.x / uiScale, y = SH - sp.y / uiScale;
@@ -242,16 +247,16 @@ namespace Prototype
         const float CrossFollowTime = 0.08f;
         /// <summary>十字の真ん中の空きの最小(ぶれていないときの詰まり具合。作者「ぶれてないときのカーソルはもっと線が詰まった状態にしてください」で 3 → 1)。武装そのもののばらつきの分はこれより開く。</summary>
         const float CrossMinGap = 1f;
-        /// <summary>十字が敵に重なっている度合い(0 = 重なっていない / 1 = 重なっている。橙にする)。CrossHitTime 秒で移る。</summary>
+        /// <summary>十字が敵に重なっている度合い(0 = 重なっていない / 1 = 重なっている。濃い橙にする)。CrossHitTime 秒で移る。</summary>
         float crossHit;
         const float CrossHitTime = 0.06f;
-        /// <summary>敵に重なっている十字の濃さの下限(撃っていないときの薄い十字のままだと、敵の上で橙が見えにくいので濃くする)。</summary>
-        const float CrossHitAlpha = 0.9f;
+        /// <summary>敵に重なっている十字の濃さ(透けさせない。作者「十字の視認性が少し悪いので、当たるタイミングではもっと濃くしてください」で 0.9 → 1、色も濃い橙に)。</summary>
+        const float CrossHitAlpha = 1f;
 
-        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。hit(0〜1)は敵に重なっている度合いで、1 なら橙(FrameLocked。ロックオンの角の枠と同じ色)で濃く。</summary>
+        /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。hit(0〜1)は敵に重なっている度合いで、1 なら濃い橙(FrameHit。弾が当たるときのロックオンの角と同じ色)で透けさせない。</summary>
         static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f)
         {
-            var sc = Color.Lerp(FrameIdle, FrameLocked, hit);
+            var sc = Color.Lerp(FrameIdle, FrameHit, hit);
             sc.a = Mathf.Lerp(alpha, Mathf.Max(alpha, CrossHitAlpha), hit);
             GUI.color = sc;
             const float len = 7f, th = 2f;
@@ -369,9 +374,12 @@ namespace Prototype
         float lockOnAt = -1f, lockOffAt = -1f, lockFromOffset = LockCornerTravel, lockOffset, lockHalfH = LockCornerHalfH;
         Color lockFromInk = Color.white, lockInk = LockInk;
         float lockFollow, lockFollowSeenAt = -10f, lockHudAt = -1f;
-        /// <summary>角が囲んでいる相手に弾が吸い付く度合い(0〜1。なめらかに変える)。1 で角を照準の橙に、濃くする。</summary>
-        float lockAssist;
-        const float LockAssistTime = 0.1f, LockAssistAlpha = 0.9f;
+        /// <summary>
+        /// 角が囲んでいる相手に弾が当たる度合い(0〜1。なめらかに変える)。0 なら角は枠と同じ水色のまま、1 で濃い橙(FrameHit)にして透けさせない
+        /// (作者「敵の囲みは枠と同じ青のままで、弾が当たるタイミングで今より濃いオレンジにしてほしいです」。前は弾が吸い付く相手なら薄い橙にしていた)。
+        /// </summary>
+        float lockHit;
+        const float LockHitTime = 0.1f, LockHitAlpha = 1f;
         Vector2 lockFollowCenter, lockFollowHalf;
 
         void DrawLockCorners(Camera cam)
@@ -394,7 +402,7 @@ namespace Prototype
             {
                 lockOnAt = lockOffAt = -1f;
                 lockCornersShown = false;
-                lockFollow = lockAssist = 0f;
+                lockFollow = lockHit = 0f;
                 lockHudAt = -1f;
                 lockGaugeShow = lockMarkShow = 0f;
                 return;
@@ -415,7 +423,7 @@ namespace Prototype
                 {
                     lockOffAt = -1f;
                     lockCornersShown = false;
-                    lockFollow = lockAssist = 0f;
+                    lockFollow = lockHit = 0f;
                     lockHudAt = -1f;
                     lockGaugeShow = lockMarkShow = 0f;
                     return;
@@ -444,9 +452,11 @@ namespace Prototype
             bool hold = on && !onEnemy && lockFollow > 0f && now - lockFollowSeenAt < LockFollowHold;
             if (!hold) lockFollow = Mathf.MoveTowards(lockFollow, onEnemy ? 1f : 0f, dt / LockFollowTime);
             float e = Mathf.SmoothStep(0f, 1f, lockFollow);
-            // 弾が吸い付く(撃てば体に寄って当たる)相手なら、角を照準の橙にして濃くする(前は胸に小さな角の印を重ねていた)
-            bool assist = onEnemy && player.Arms.Marks.Contains(target);
-            lockAssist = Mathf.MoveTowards(lockAssist, assist ? 1f : 0f, dt / LockAssistTime);
+            // 角は枠と同じ水色のまま。弾が囲んでいる相手に当たるとき(真ん中の十字が相手に重なって橙になるのと同じ条件。DuelArms.ShotEnemy)だけ、濃い橙にする。
+            // 銃・砲を付けていない(十字を出す弾がない)ときは、ミサイルが狙う相手なら橙(当てる相手の印を角に重ねないので、角の色で示す)
+            var arms = player.Arms;
+            bool hit = onEnemy && (arms.ShotPoint != null ? arms.ShotEnemy == target : arms.Marks.Contains(target));
+            lockHit = Mathf.MoveTowards(lockHit, hit ? 1f : 0f, dt / LockHitTime);
 
             // 画面の縁寄りの枠(待機中に止まっている大きさは LockRestHalf。付け始めの判定と同じ値):縦が変わるときはなめらかに
             Vector2 rest = LockRestHalf();
@@ -463,11 +473,11 @@ namespace Prototype
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
             var col = lockInk;
             if (e > 0f) col.a = Mathf.Min(1f, col.a * Mathf.Lerp(1f, LockFollowAlpha / LockRestAlpha, e));   // 敵に重なる間は薄く
-            float a = lockAssist * e;
+            float a = lockHit * e;
             if (a > 0f)
             {
-                float alpha = Mathf.Lerp(col.a, Mathf.Max(col.a, LockAssistAlpha * lockInk.a / LockRestAlpha), a);   // 付け外しの途中の薄さは保つ
-                col = Color.Lerp(col, FrameLocked, a);
+                float alpha = Mathf.Lerp(col.a, Mathf.Max(col.a, LockHitAlpha * lockInk.a / LockRestAlpha), a);   // 付け外しの途中の薄さは保つ
+                col = Color.Lerp(col, FrameHit, a);
                 col.a = Mathf.Min(1f, alpha);
             }
             float thin = Mathf.Lerp(1f, 0.7f, e);

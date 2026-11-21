@@ -55,26 +55,16 @@ namespace Prototype
         /// </summary>
         [System.NonSerialized] public List<DuelWeapon> arsenal = DuelWeapon.Defaults();
         [Header("武装の落とし物(弧ひとつ分の試作)")]
-        [Tooltip("倒した敵が武装を落とす確率:兵卒 / 剣士")]
-        [Range(0f, 1f)] public float gruntDropChance = 0.45f;
-        [Range(0f, 1f)] public float duelistDropChance = 1f;
-        [Tooltip("この数だけ続けて落ちなかったら、次に倒した敵は必ず落とす")]
-        public int pityKills = 2;
+        [Tooltip("倒した敵が武装を落とす確率(兵卒も剣士も同じ。続けて落ちなかったときの救済はなし。ボスは落とさない)")]
+        [Range(0f, 1f)] public float dropChance = 0.3f;
         [Tooltip("空いている所(最初は左手・背中・両肩)に付けられる武装の出やすさ(倍)。最初は左手が空なので、盾・手の銃・剣が出やすい")]
         public float emptySlotWeight = 2f;
         [Tooltip("今付けているのと同じ武装の出やすさ(倍)")]
         public float sameWeaponWeight = 0.3f;
-        [Tooltip("高さごとのレア度の重み(倒した所の高さで選ぶ。上ほど強い武装)")]
-        public DuelDropBand[] dropBands =
-        {
-            new(0f, 1f, 0f, 0f),            // 地面の裂け目・居住区の下:コモンだけ
-            new(30f, 0.8f, 0.2f, 0f),       // 居住区の上・竪穴
-            new(120f, 0.6f, 0.4f, 0f),      // 竪穴の上・外殻・配管・機関区画
-            new(175f, 0.3f, 0.55f, 0.15f),  // 主通路の上・格納庫・昇降機の竪穴の下
-            new(240f, 0.15f, 0.5f, 0.35f),  // 昇降機の竪穴の上
-            new(300f, 0.05f, 0.45f, 0.5f),  // 船首の外板
-            new(330f, 0f, 0.35f, 0.65f),    // 艦橋の下(ボスの前の群れ)
-        };
+        [Tooltip("兵卒が落とす武装のレア度の重み(コモン / レア / エピック。倒した所の高さは見ない)")]
+        public DuelRarityWeights gruntRarity = new(0.5f, 0.4f, 0.1f);
+        [Tooltip("剣士が落とす武装のレア度の重み(コモン / レア / エピック)")]
+        public DuelRarityWeights duelistRarity = new(0.1f, 0.45f, 0.45f);
         [Tooltip("照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)")]
         public DuelArmsRules armsRules = new();
         [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装(所持品も)が全部消し飛び、共通の弾も0になる(画面は揺らさない)")]
@@ -503,35 +493,21 @@ namespace Prototype
 
         // ───────── 武装の落とし物 ─────────
 
-        int dryKills;
-
-        /// <summary>倒した敵が武装を落とすか決め、落とすなら倒した所の高さのレア度の重みで1つ選んで落とす。</summary>
+        /// <summary>
+        /// 倒した敵が武装を落とすか決め(どの敵も dropChance。救済なし)、落とすなら敵の種類のレア度の重みで1つ選んで落とす。
+        /// </summary>
         void TryDrop(DuelEnemy e)
         {
             if (arsenal == null || arsenal.Count == 0 || e == null || Cleared) return;   // ボスを倒した後は落とさない
+            if (Random.value >= dropChance) return;
             var kind = Kind.Grunt;
             foreach (var s in spawns) if (s.enemy == e) { kind = s.kind; break; }
-            float chance = kind == Kind.Duelist ? duelistDropChance : gruntDropChance;
-            if (Random.value >= chance && dryKills < pityKills)
-            {
-                dryKills++;
-                return;
-            }
-            dryKills = 0;
-            var w = PickWeapon(BandAt(e.transform.position.y).RollRarity());
+            var rarity = (kind == Kind.Duelist ? duelistRarity : gruntRarity) ?? new DuelRarityWeights();
+            var w = PickWeapon(rarity.RollRarity());
             if (w == null) return;
             Vector2 k = Random.insideUnitCircle * 5f;
             DuelLoot.Drop(w, e.Chest, new Vector3(k.x, 0f, k.y));
             if (w.rarity >= 1) game.Log($"{w.RarityName}の武装が落ちた:{w.name}");
-        }
-
-        DuelDropBand BandAt(float y)
-        {
-            DuelDropBand best = null;
-            if (dropBands != null)
-                foreach (var b in dropBands)
-                    if (b != null && y >= b.fromY && (best == null || b.fromY >= best.fromY)) best = b;
-            return best ?? new DuelDropBand();
         }
 
         /// <summary>

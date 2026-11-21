@@ -228,6 +228,21 @@ namespace Prototype
             }
             // ヒットストップ(画面は揺らさない)。崩した・崩れた敵を斬ったときは少し長く
             if (any) game.HitStop((cur.heavy ? 0.12f : 0.06f) + (big ? 0.04f : 0f));
+            // 素手のパンチ:当てるたびに自機の HP が減る(1振りにつき1回)
+            if (any && cur.selfDamage > 0f) TakeRecoil(cur.selfDamage);
+        }
+
+        /// <summary>
+        /// 自分の攻撃を当てた反動で自機の HP が減る(素手のパンチ。作者「ヒットでHPが2づつ減る」「HPが減るのは自機の話です」)。
+        /// 被弾ではないので、怯み・押し返し・赤い光・ヒットストップはなく、回避の無敵やガードも関係ない。数字だけ自機の胸に出す。
+        /// HP が 0 になれば、ふつうに撃墜される。
+        /// </summary>
+        void TakeRecoil(float dmg)
+        {
+            if (Dead) return;
+            HP -= dmg;
+            ProtoDamageText.Show(Chest, dmg);
+            if (HP <= 0f) Die();
         }
     }
 }

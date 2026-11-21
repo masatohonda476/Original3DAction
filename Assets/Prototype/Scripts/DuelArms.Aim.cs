@@ -223,7 +223,12 @@ namespace Prototype
         /// ShotPoint へ飛ぶ弾が敵の体に当たる(銃口から ShotPoint への線が、敵の体のカプセルを通る)。真ん中の十字が敵に重なっているときで、十字を橙にする
         /// (作者「ロックオン中の弾道を示す十字は、敵と重なったらオレンジとかになるようにしてください」)。ばらつきは入れない。毎フレーム UpdateFrames で求める。
         /// </summary>
-        public bool ShotOnEnemy { get; private set; }
+        public bool ShotOnEnemy => ShotEnemy != null;
+        /// <summary>
+        /// ShotPoint へ飛ぶ弾が当たる敵(線が体を通る敵のうち、いちばん手前。いなければ null)。ロックオンの相手なら、相手を囲む角を濃い橙にする
+        /// (作者「敵の囲みは枠と同じ青のままで、弾が当たるタイミングで今より濃いオレンジにしてほしいです」。DuelGame.DrawLockCorners)。
+        /// </summary>
+        public DuelEnemy ShotEnemy { get; private set; }
         readonly List<DuelEnemy> missileBuf = new();
 
         /// <summary>両手の銃・砲の L1 の撃ち方なら、その両手の武装(枠の大きさを借りる)。</summary>
@@ -477,7 +482,7 @@ namespace Prototype
             Frames.Clear();
             Marks.Clear();
             ShotPoint = null;
-            ShotOnEnemy = false;
+            ShotEnemy = null;
             bool shotHot = false;
             var cam = Camera.main;
             if (cam == null || Choosing != null) return;
@@ -522,7 +527,7 @@ namespace Prototype
                     {
                         Vector3 shot = PredictShot(w, i, at, t);
                         ShotPoint = shot;
-                        ShotOnEnemy = PathOnEnemy(Muzzle(at), shot);
+                        ShotEnemy = PathEnemy(Muzzle(at), shot);
                         shotHot = hot;
                     }
                 }
@@ -604,22 +609,28 @@ namespace Prototype
         }
 
         /// <summary>
-        /// from から p へ飛ぶ弾が、p のあたりまでに敵の体(縦長のカプセル)を通るか(十字の色。ShotOnEnemy)。
+        /// from から p へ飛ぶ弾が、p のあたりまでに体(縦長のカプセル)を通る敵のうち、いちばん手前の敵(十字と、ロックオンの角の色。ShotEnemy)。いなければ null。
         /// p は狙いの先と同じ奥行き(体の手前の面のあたり)に置かれるので、体の太さの分(半径の2倍)だけ先まで見る(p が体の面の少し手前で止まっても、そのまま当たる弾を拾う)。
         /// </summary>
-        bool PathOnEnemy(Vector3 from, Vector3 p)
+        DuelEnemy PathEnemy(Vector3 from, Vector3 p)
         {
             Vector3 d = p - from;
             float len = d.magnitude;
-            if (len < 0.01f) return false;
+            if (len < 0.01f) return null;
             d /= len;
+            DuelEnemy hit = null;
+            float best = float.MaxValue;
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
-                if (SegSegDistance(from, from + d * (len + r * 2f), a, b, out _) <= r) return true;
+                float reach = len + r * 2f;
+                if (SegSegDistance(from, from + d * reach, a, b, out float s) > r) continue;
+                if (s * reach >= best) continue;
+                best = s * reach;
+                hit = e;
             }
-            return false;
+            return hit;
         }
 
         /// <summary>敵 e の体(縦長のカプセル)の芯の、下と上の球の中心(a・b)。半径を返す。</summary>

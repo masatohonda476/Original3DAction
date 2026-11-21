@@ -102,6 +102,7 @@ namespace Prototype
         protected void Move(Vector3 planar, float dt)
         {
             push = Vector3.MoveTowards(push, Vector3.zero, 70f * dt);
+            if (!cc.enabled) { FallAsWreck(dt); return; }
             if (flying)
             {
                 // 上昇:高さの上限はなし(ENが続く限り上がれる)
@@ -117,6 +118,30 @@ namespace Prototype
             UpdateGround();
         }
 
+        /// <summary>当たり判定を消した残骸が、空中から落ちている途中か。</summary>
+        bool wreckFalling;
+
+        /// <summary>
+        /// 当たり判定を消す(爆発した後の残骸)。ほかの機体がぶつからずに通り抜けられる。
+        /// 地面にいればその場に残り、空中なら真下の地面まで落ちる(押されない・横へは動かない)。
+        /// </summary>
+        void DropCollision()
+        {
+            wreckFalling = !cc.isGrounded && Altitude > 0f;
+            cc.enabled = false;
+        }
+
+        /// <summary>当たり判定を消した残骸を、真下の地面(最後に測った高さ)まで落とす。</summary>
+        void FallAsWreck(float dt)
+        {
+            if (!wreckFalling) return;
+            vy = Mathf.Min(vy, 0f) - Gravity * dt;
+            Vector3 p = transform.position;
+            p.y += vy * dt;
+            if (p.y <= groundY) { p.y = groundY; wreckFalling = false; }
+            transform.position = p;
+        }
+
         /// <summary>その場所へ瞬間移動する(やり直しの出し直しなど)。</summary>
         public void Teleport(Vector3 pos, Quaternion rot)
         {
@@ -130,6 +155,8 @@ namespace Prototype
         protected void Revive()
         {
             StopAllCoroutines();   // 撃墜の演出を止める
+            cc.enabled = true;     // 残骸として消した当たり判定を戻す
+            wreckFalling = false;
             HP = MaxHP;
             flashT = 0f;
             holdTint = null;
@@ -202,10 +229,11 @@ namespace Prototype
 
         /// <summary>
         /// 撃墜:火花が飛び散り、体のあちこちから火花がはじけ続けたあと、爆発して黒焦げになる。
+        /// dropCollision なら、爆発したところで当たり判定を消す(黒焦げの残骸にぶつからない)。
         /// </summary>
-        protected void PlayDeath() => StartCoroutine(DeathSequence());
+        protected void PlayDeath(bool dropCollision = false) => StartCoroutine(DeathSequence(dropCollision));
 
-        IEnumerator DeathSequence()
+        IEnumerator DeathSequence(bool dropCollision)
         {
             var sparkColor = new Color(1f, 0.85f, 0.45f);
             DuelSpark.Burst(Chest, Vector3.zero, sparkColor, 30, 1.3f * Size);
@@ -225,6 +253,7 @@ namespace Prototype
             DuelSpark.Burst(Chest, Vector3.zero, new Color(1f, 0.7f, 0.3f), 45, 1.8f * Size);
             game.HitStop(0.08f);
             SetHoldTint(Charred);
+            if (dropCollision) DropCollision();
         }
 
         // ───────── 機体全体の姿勢(モーションの上に重ねる) ─────────

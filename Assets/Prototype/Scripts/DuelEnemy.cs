@@ -422,7 +422,7 @@ namespace Prototype
             HP = 0f;
             StopRising();   // 跳び上がり斬りの途中で倒されたら、そのまま落ちる
             Enter(State.Dead);
-            PlayDeath();   // 火花 → 爆発 → 黒焦げ
+            PlayDeath(true);   // 火花 → 爆発 → 黒焦げ(爆発したら当たり判定を消し、残骸にぶつからないようにする)
             game.OnEnemyDied(this);
             Destroy(gameObject, 3f);   // 黒焦げの残骸を少し見せてから消す
         }

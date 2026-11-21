@@ -193,8 +193,8 @@ namespace Prototype
 
         // ───────── 操作方法のページ ─────────
 
-        // 操作方法の行(ボタン・内容)は、中身(機器・両手持ちの武装・リロードの有無・照準を動かせる設定)が変わったときだけ作り直す
-        (ProtoInput.Device dev, DuelWeapon two, bool reload, bool aimMove) helpKey;
+        // 操作方法の行(ボタン・内容)は、中身(機器・両手持ちの武装・リロードの有無・照準を動かせる設定・素手か)が変わったときだけ作り直す
+        (ProtoInput.Device dev, DuelWeapon two, bool reload, bool aimMove, bool bare) helpKey;
         bool helpBuilt;
         readonly List<string> helpBtn = new(), helpWhat = new();
         /// <summary>右の列が始まる行(左の列は動かす・戦う、右の列はロックオン・拾う・メニュー)。</summary>
@@ -211,7 +211,7 @@ namespace Prototype
 
         /// <summary>
         /// 操作方法の行を作る。ボタン名は使っているコントローラー(キーボード / PlayStation / Xbox)に合わせ、
-        /// 両手持ち・リロードできる銃・照準を動かせる設定で出し分ける(前に左下へ出し続けていた操作説明と同じ出し分け)。
+        /// 両手持ち・素手・リロードできる銃・照準を動かせる設定で出し分ける(前に左下へ出し続けていた操作説明と同じ出し分け)。
         /// メニューの中の操作(↑↓・決定・戻る・装備の確認の △/□ など)は、各画面の下の案内に任せて、ここには入れない。
         /// OnGUI の中から呼ぶ(幅を測るのにスタイルが要る)。
         /// </summary>
@@ -221,7 +221,8 @@ namespace Prototype
             var two = arms.TwoHanded ? arms.Get(DuelSlot.RightHand) : null;
             bool reload = arms.AnyReloadable;   // 弾倉のある銃を付けているときだけ「△+撃つボタン リロード」を出す
             bool aimMove = DuelArmsRules.Current.cursorMovable;
-            var key = (dev, two, reload, aimMove);
+            bool bare = arms.Unarmed;   // 素手(右手・左手が両方とも空)
+            var key = (dev, two, reload, aimMove, bare);
             if (helpBuilt && helpKey == key) return;
             helpBuilt = true;
             helpKey = key;
@@ -242,11 +243,17 @@ namespace Prototype
                 HelpRow(l1, two.altMove + (two.alt is { charge: > 0f } ? "(溜めて離す)" : ""));
                 if (two.IsBlade) HelpRow($"{aim}+{r1}/{l1}", "強攻撃");
             }
+            else if (bare)
+            {
+                // 素手(両手とも空):R1 / L1 で右手・左手のパンチ。強攻撃はない(△+R1/L1 でも同じパンチ)
+                HelpRow($"{r1}/{l1}", "素手のパンチ(右手/左手)");
+            }
             else
             {
                 // 手のボタンはその手の武装(剣=攻撃 / 盾=ガード / 銃=射撃)
                 HelpRow($"{r1}/{l1}", "右手/左手の武装");
                 HelpRow($"{aim}+{r1}/{l1}", "強攻撃");
+                HelpRow($"{r1}/{l1}", "両手とも空のとき:素手のパンチ");
             }
             if (reload) HelpRow($"{aim}+撃つボタン", "リロード");
             // 銃・砲のボタンを押している間(と撃ってから少しの間)は、右スティック・マウスで画面の上の照準を動かす(カメラは回さない)

@@ -34,19 +34,28 @@ namespace Prototype
         /// <summary>
         /// その手(ボタン)の剣の技の表(剣がなければ素の剣の表)。両手の近接は、R1 が連撃、L1 が別の技(回避の後の L1 も別の技)。
         /// 強攻撃(△+R1/L1)はどちらのボタンでも同じ表。
+        /// 素手(Unarmed)のときは、どれも素手の表のパンチ(素の剣の技に化けないように。回避の後もふつうのパンチ)。
         /// </summary>
-        DuelSwing[] LightOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).LightFor(hand);
-        DuelSwing[] HeavyOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).HeavyMoves;
-        DuelSwing DodgeOf(int hand) => (SwordIn(hand) ?? DuelWeapon.BaseSword).DodgeFor(hand);
+        DuelSwing[] LightOf(int hand) => Unarmed ? DuelMoveSet.Bare.light : (SwordIn(hand) ?? DuelWeapon.BaseSword).LightFor(hand);
+        DuelSwing[] HeavyOf(int hand) => Unarmed ? DuelMoveSet.Bare.light : (SwordIn(hand) ?? DuelWeapon.BaseSword).HeavyMoves;
+        DuelSwing DodgeOf(int hand) => Unarmed ? DuelMoveSet.Bare.light[0] : (SwordIn(hand) ?? DuelWeapon.BaseSword).DodgeFor(hand);
+
+        /// <summary>
+        /// 素手(両手持ちの素手):右手・左手が両方とも空(DuelArms.Unarmed)。R1 で右手、L1 で左手(左右反転)のパンチ。
+        /// 武装ではないので倍率は掛からず(Armed は剣がなければそのまま返す)、強い別の技もない(△+R1/L1・回避の直後でも同じパンチ)。
+        /// </summary>
+        bool Unarmed => Arms.Unarmed;
+        /// <summary>△+攻撃で強攻撃を出すか。素手に強攻撃はないので、△を押していてもふつうのパンチ。</summary>
+        bool HeavyPressed => pressHeavy && !Unarmed;
 
         bool TryAttack(float now)
         {
             if (now - lightPressedAt > attackBuffer) return false;
             if (Overheated) return false;   // ENが0以下の間は攻撃できない(押したことは少しの間覚えておく)
-            if (SwordIn(pressHand) == null) { lightPressedAt = -10f; return false; }   // 押した後に剣を持ち替えた
+            if (!Arms.CanMelee(pressHand)) { lightPressedAt = -10f; return false; }   // 押した後に剣を持ち替えた(素手でもなくなった)
             atkHand = pressHand;
-            if (pressHeavy) { StartHeavy(0); return true; }   // △+攻撃は回避の直後でも強攻撃
-            // 回避が終わってすぐなら回避斬り
+            if (HeavyPressed) { StartHeavy(0); return true; }   // △+攻撃は回避の直後でも強攻撃
+            // 回避が終わってすぐなら回避斬り(素手は同じパンチ)
             if (now - dodgeEndAt <= dodgeSlashWindow) { StartDodgeSlash(); return true; }
             combo = 1;
             StartLight(LightOf(atkHand)[0]);
@@ -85,7 +94,7 @@ namespace Prototype
         {
             if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
             if (Time.time - Arms.ReloadChordAt <= heavyChordWindow) return false;   // その△は銃のリロードに使った(△+撃つボタン)
-            if (SwordIn(atkHand) == null) return false;   // 振っている手に剣がない(素の剣の強攻撃に化けないように)
+            if (SwordIn(atkHand) == null) return false;   // 振っている手に剣がない(素手のパンチも。素の剣の強攻撃に化けないように)
             float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
             var h = Armed(HeavyOf(atkHand)[0], atkHand);
             Energy -= h.cost - cur.cost;
@@ -120,7 +129,7 @@ namespace Prototype
 
         void StartAttack(DuelSwing m)
         {
-            // 左手の片手の剣だけ左右反転して振る(両手の近接は L1 の技も右手のクリップのまま、両手で振る)
+            // 左手の片手の剣・素手の左のパンチは左右反転して振る(両手の近接は L1 の技も右手のクリップのまま、両手で振る)
             atkMirror = atkHand == 1 && SwordIn(1) is not { IsTwoHand: true };
             m = Armed(m, atkHand);
             Energy -= m.cost;   // 足りなければマイナスになり、その分だけ回復を待つ
@@ -171,15 +180,15 @@ namespace Prototype
                 case 2:
                     // 戻り:振り抜いてから dodgeLockAfterSwing 秒たったら回避で取り消せる。少し戻ったら次の段・強攻撃へつなげる
                     if (stateT >= dodgeLockAfterSwing && TryDodge(now, worldMove)) return Vector3.zero;
-                    if (stateT >= DuelSwing.ChainAfter && !Overheated && now - lightPressedAt <= attackBuffer && SwordIn(pressHand) != null)
+                    if (stateT >= DuelSwing.ChainAfter && !Overheated && now - lightPressedAt <= attackBuffer && Arms.CanMelee(pressHand))
                     {
-                        // 押した手で次を振る(両手に剣なら、R1/L1 を交互に押すと左右の剣で交互に振る)
+                        // 押した手で次を振る(両手に剣なら、R1/L1 を交互に押すと左右の剣で交互に振る。素手も R1/L1 で左右のパンチ)
                         bool sameHand = pressHand == atkHand;
                         // 両手の近接は R1/L1 で同じ武装(強攻撃の段は、ボタンが替わっても続ける)
                         bool sameBlade = sameHand || (SwordIn(atkHand) is { IsTwoHand: true } tw && SwordIn(pressHand) == tw);
                         atkHand = pressHand;
                         // △+攻撃:強攻撃。同じ剣の強攻撃の後なら次の段、それ以外は1段目
-                        if (pressHeavy) { StartHeavy(cur.heavy && sameBlade ? heavyStep + 1 : 0); return Vector3.zero; }
+                        if (HeavyPressed) { StartHeavy(cur.heavy && sameBlade ? heavyStep + 1 : 0); return Vector3.zero; }
                         // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後・手が替わったら、その剣の1段目から
                         // (両手の近接は R1 の連撃と L1 の技が別の表なので、ボタンが替われば替えた側の1段目から)
                         var light = LightOf(atkHand);

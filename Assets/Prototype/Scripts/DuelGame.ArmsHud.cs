@@ -38,6 +38,8 @@ namespace Prototype
         /// 「ガード 80/100」。構えている盾は明るい青で「ガード中」、崩れている間は赤っぽく「ガード崩れ」。盾が2枚でもゲージは1本なので、どちらのセルにも同じ量。
         /// 両手持ちは右手と左手のセルを細い帯でつなぎ、右手のセルに武装名と主の撃ち方の状態、左手のセルに L1 の技名と
         /// L1 の撃ち方の状態(溜めている間は溜まり具合のゲージ、撃った後は次に撃てるまでのゲージ)。
+        /// 素手(右手・左手が両方とも空)も両手持ちに寄せる:右手と左手のセルを薄い白の帯でつなぎ、どちらのセルにも「素手」と右上に「両手持ち」。
+        /// 片手だけ空いているときは、今までどおり空きのセル(「―」)。
         /// </summary>
         void DrawArms(DuelArms arms)
         {
@@ -55,6 +57,8 @@ namespace Prototype
                 c.a = 0.6f;
                 Chip(new Rect(x0 + CellW, yRow1 + CellH * 0.5f - 3f, CellGap, 6f), c);
             }
+            // 素手(右手・左手が両方とも空):両手持ちと同じように、左手と右手のセルを帯でつなぐ(武装ではないので色は薄い白)
+            else if (arms.Unarmed) Chip(new Rect(x0 + CellW, yRow1 + CellH * 0.5f - 3f, CellGap, 6f), new Color(1f, 1f, 1f, 0.3f));
 
             // 一番下:背中(左の列に1行)
             const int b = (int)DuelSlot.Back;
@@ -114,12 +118,18 @@ namespace Prototype
         string ammoText, weightText;
         (int, int, int, int) weightKey;
 
+        /// <summary>素手のときに、右手・左手のセルに出す名前。</summary>
+        const string BareName = "素手";
+
         void ArmCell(DuelArms arms, Rect r, DuelSlot slot)
         {
             int i = (int)slot;
             var w = arms.Get(slot);
             // 両手持ちの左手のセル:右手のセルと同じ武装の続き(L1 の技名と、L1 の撃ち方の状態を出す。弾倉は右手のセル)
             bool twoL = slot == DuelSlot.LeftHand && w is { IsTwoHand: true };
+            // 素手(右手・左手が両方とも空。DuelArms.Unarmed)の手のセル:名前を「素手」、右上を「両手持ち」にして、空きのセルより濃く出す
+            // (名前は決まった文字なので、武装が変わったときだけ作り直す cellName には入れない。もう片方の手が変わっても古い名前が残らないように)
+            bool bare = (slot is DuelSlot.RightHand or DuelSlot.LeftHand) && arms.Unarmed;
             var dev = ProtoInput.Current;
             if (cellKey[i] != (w, dev, true))
             {
@@ -127,7 +137,7 @@ namespace Prototype
                 cellBtn[i] = SlotButton(slot);
                 cellName[i] = w == null ? "―" : twoL ? "└ " + w.altMove : w.name;
             }
-            Chip(r, new Color(0f, 0f, 0f, w == null ? 0.25f : 0.5f));
+            Chip(r, new Color(0f, 0f, 0f, w == null && !bare ? 0.25f : 0.5f));
 
             // 状態とゲージ(gauge はセルを左から満たす割合。0なら出さない)
             var st = CellState.None;
@@ -194,7 +204,7 @@ namespace Prototype
                 }
                 else if (arms.AltFire.PaysPerShot) st = CellState.Cost;   // L1 の実弾の撃ち方:撃てる間は1回で使う共通の弾
             }
-            if (st == CellState.None && w is { IsTwoHand: true }) st = CellState.TwoHand;
+            if (st == CellState.None && (w is { IsTwoHand: true } || bare)) st = CellState.TwoHand;
             if (gauge > 0f) Chip(new Rect(r.x, r.y, r.width * Mathf.Clamp01(gauge), r.height), gaugeColor);
 
             if (st != CellState.None)
@@ -238,10 +248,10 @@ namespace Prototype
             GUI.color = new Color(1f, 1f, 1f, 0.75f);
             GUI.Label(new Rect(r.x + 8f, r.y + 3f, 90f, 16f), cellBtn[i], cellTiny);
             if (w != null) Chip(new Rect(r.x + 8f, r.y + 23f, 10f, 10f), w.Color);
-            GUI.color = w == null ? new Color(1f, 1f, 1f, 0.4f) : twoL ? new Color(1f, 1f, 1f, 0.85f) : Color.white;
+            GUI.color = bare ? new Color(1f, 1f, 1f, 0.85f) : w == null ? new Color(1f, 1f, 1f, 0.4f) : twoL ? new Color(1f, 1f, 1f, 0.85f) : Color.white;
             // 両手持ちの L1 の技名は長いことがあるので、少し小さい字で
             if (twoL) GUI.Label(new Rect(r.x + 24f, r.y + 19f, r.width - 30f, 22f), cellName[i], cellNameSmall);
-            else GUI.Label(new Rect(r.x + 24f, r.y + 16f, r.width - 30f, 24f), cellName[i], cellNameStyle);
+            else GUI.Label(new Rect(r.x + 24f, r.y + 16f, r.width - 30f, 24f), bare ? BareName : cellName[i], cellNameStyle);
             GUI.color = Color.white;
         }
 

@@ -79,6 +79,26 @@ namespace Prototype
                                  pose0 = R * 0.7f, pose1 = R, pose2 = S, pose3 = Mid(0.6f) },
         };
 
+        /// <summary>素手の表(右手・左手が両方とも空のとき。DuelArms.Unarmed)。書き換えないこと。</summary>
+        public static readonly DuelMoveSet Bare = Unarmed();
+
+        /// <summary>
+        /// 素手のパンチ(両手持ちの素手。R1 = 右手 / L1 = 左手で、左は左右反転)。武装ではないので、武装の倍率は掛からない。
+        /// 強攻撃(△+R1/L1)・回避斬りに当たる入力でも、この表のパンチが出る(DuelPlayer.Attack.cs。使うのは light だけ)。
+        /// 作者が決めたのは威力 2 だけで、ほかの値(速さ・届く範囲・怯み・EN・踏み込み)は仮置き(軽剣より速く・短く・軽く)。
+        /// 姿勢(仮。新しいモーションは作っていない):斬撃クリップの、腕が前へ伸びきる所(19.5フレーム)の前後だけを使う。
+        ///   振りかぶりで拳を頭の横まで引き(19 → 17.5フレーム)、振り抜きで前へ突き出す(→ 19.5フレーム)。戻りは腕を伸ばしたあたりで止める(→ 19フレーム)。
+        ///   機体のひねり(引くときに振る手の側へ、突くときに逆へ)と前傾を重ねて、突き出す動きに寄せる。
+        /// </summary>
+        public static DuelMoveSet Unarmed() => new()
+        {
+            light = new DuelSwing[]
+            {
+                new() { windup = 0.1f, active = 0.07f, recover = 0.26f, damage = 2f, stagger = 2f, flinch = 0.3f, reach = 5f, arc = 50f, lunge = 2f, knock = 1.5f, cost = 3f,
+                        pose0 = 19f / 30f, pose1 = 17.5f / 30f, pose2 = 19.5f / 30f, pose3 = 19f / 30f, twist0 = 4f, twist1 = 12f, twist2 = -15f, lean0 = -1f, lean1 = -3f, lean2 = 8f },
+            },
+        };
+
         /// <summary>
         /// 軽剣:振りかぶりが浅く、小さく速い3段の連撃(斬り下ろし → 切り上げ → 手首を返した横払い)。一振りは軽く、ENも少ない。
         /// 強攻撃は体ごと素早く回す横薙ぎ。回避斬りはとても出が速い。

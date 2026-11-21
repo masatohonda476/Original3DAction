@@ -8,6 +8,7 @@ namespace Prototype
     /// 自機の武装(DuelPlayer.Init でいつも付く)。付ける所は5つ:右手(R1)/ 左手(L1)/ 背中 / 右肩(R2)/ 左肩(L2)。どれも1つずつ。
     ///   手:剣・盾・手の銃のどれでも(左右どちらにも)。剣ならそのボタンで攻撃(技は剣ごとの表)、盾なら押している間ガード、銃なら撃つ。
     ///       最初は右手に素の剣、左手は空(盾を拾うまでガードできない)。
+    ///       右手・左手が両方とも空なら素手(Unarmed):R1 / L1 で右手・左手のパンチ(作者「両手になにも持っていないときに、両手持ちの素手になる」)。
     ///   背中:スラスター。走り・ブースト・回避の距離が伸び、回避・ブースト・飛行のENが減る。
     ///   肩:銃・砲・ミサイルのどれでも(左右どちらにも)。R2 で右肩、L2 で左肩を撃つ。撃ち方(押している間 / 押すたび)は武装ごと。
     /// 近接攻撃の間(振りかぶり〜戻り)と回避の間は撃てない(DuelPlayer.CanShoot)。
@@ -257,6 +258,14 @@ namespace Prototype
         public DuelWeapon Hand(int hand) => slots[hand == 0 ? R : L];
         /// <summary>その手で振れる(片手の剣、または両手の近接。両手の近接は R1 も L1 も振る)。</summary>
         public bool IsSword(int hand) => Hand(hand) is { IsBlade: true };
+        /// <summary>
+        /// 素手(両手持ちの素手):右手・左手の所が両方とも空。肩・背中の武装は関係ない。片手だけ空いているときは素手ではない(空いた手のボタンでは何も出ない)。
+        /// 素手は武装ではない(所には何も入れない)ので、落とせず・分解できず・重さも 0 で、落とし物や一覧にも出ない。
+        /// R1 / L1 で右手・左手のパンチ(技は DuelMoveSet.Bare。DuelPlayer.Attack.cs)。
+        /// </summary>
+        public bool Unarmed => slots[R] == null && slots[L] == null;
+        /// <summary>その手(0=右 / 1=左)のボタンで近接を出せる(その手で振れる剣がある、または素手)。</summary>
+        public bool CanMelee(int hand) => IsSword(hand) || Unarmed;
         /// <summary>両手持ちを付けている(右手と左手に同じ武装)。</summary>
         public bool TwoHanded => slots[R] is { IsTwoHand: true };
         /// <summary>付けている両手の銃・砲(なければ null)。</summary>

@@ -18,6 +18,8 @@ namespace Prototype
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// ボス戦(作者「ボス戦に入ったら入口を閉じ、死亡したら入る前の弾薬の状態で復活するようにしてください」):自機が大ホールに入りきったら入口の扉が閉じ、
     /// そのときの共通の弾と武装ごとの弾倉の残りを控える(DuelArms.KeepAmmo)。ボスを倒すか、やられて再開すると扉は開く(入り直すとまた閉じる)。
+    /// ボスは扉が閉じている間だけダメージを受ける(作者「ボス部屋の外からの攻撃は0ダメージにしてください」)。
+    /// ボス以外の敵は大ホールへ入れず、入口の手前で止まる(作者「敵はボス部屋に入れないようにしてください」。DuelFighter.maxZ)。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
     /// 「重厚→無双」の弧ひとつ分:倒した敵がときどき武装を落とし(上ほどレア度の高い武装)、十字右で付け替えながら強くなる(DuelArms)。
     /// 撃墜されても武装・所持品・共通の弾は残る。ただしボス戦の間にやられて再開したときは、共通の弾と弾倉の残りだけを扉が閉じたときに戻し、
@@ -102,6 +104,8 @@ namespace Prototype
         const float CeilingY = 450f;
         /// <summary>ボス戦の入口の扉の厚み(壁の厚み T より薄く、壁の中ほどに置く。壁の面と同じ位置に面が来ない)と、開口の縁から壁・床へ埋める幅。</summary>
         const float GateThick = 2f, GateInset = 0.2f;
+        /// <summary>機体を扉の面から離しておく余白(m。機体の半径に足す。当たり判定の皮 0.2m より少し広く)。</summary>
+        const float GateSkin = 0.3f;
 
         static readonly Color HullColor = new(0.36f, 0.38f, 0.42f), WallColor = new(0.45f, 0.46f, 0.48f),
             FloorColor = new(0.34f, 0.35f, 0.36f), DebrisColor = new(0.5f, 0.46f, 0.4f), FurnitureColor = new(0.55f, 0.5f, 0.42f),
@@ -173,10 +177,11 @@ namespace Prototype
         /// </summary>
         bool bossFight;
         /// <summary>
-        /// 扉の見える板(ふつうの壁と同じ層・当たり判定つき。開いている間は上の壁の中へ引っ込めて消す)と、
+        /// 扉の見える板(ふつうの壁と同じ層。開いている間は上の壁の中へ引っ込めて消す)と、その当たり判定(閉じきっている間だけ効かせる)、
         /// 機体だけを止める見えない壁(閉じている間だけ出す)。
         /// </summary>
         Transform gateDoor;
+        Collider gateDoorCollider;
         GameObject gateBarrier;
         /// <summary>扉の下り具合(0 = 開ききった、1 = 閉じきった)。</summary>
         float gateShut;
@@ -332,8 +337,10 @@ namespace Prototype
 
         /// <summary>
         /// ボス戦の入口の扉を作る(開いた状態で始める)。Define の箱(blocks)には入れない:開け閉めするので参照が要り、面をずらす処理にも掛けない。
-        ///   見える板:ふつうの壁と同じ箱(既定の層・当たり判定つき)。閉じている間は、機体・弾・見通し・カメラの壁よけ・透かしがふつうの壁と同じに効く。
+        ///   見える板:ふつうの壁と同じ箱(既定の層・当たり判定つき)。閉じきっている間は、機体・弾・見通し・カメラの壁よけ・透かしがふつうの壁と同じに効く。
         ///     閉じるときは開口の上の壁の中から下り、開くときは上の壁の中へ引っ込む(壁より薄いので、壁の中にある間は見えない)。
+        ///     動いている間(下りる・上がる途中)は当たり判定を切り、見た目だけにする(PlaceGate):動く板の底面をカメラの天井よけ
+        ///     (DuelCamera.FloorCeilingLimit)が拾って、カメラが急に前へ寄らないように(作者は 3D 酔いする)。その間の弾・見通しは板を素通りする。
         ///   見えない壁:閉じた位置に固定の、機体だけが当たる壁(Barrier と同じ層)。板が下りきるのを待たず、閉じた瞬間から機体を通さない
         ///     (下りてくる板の下をくぐる・板に挟まれることがない)。
         /// </summary>
@@ -347,6 +354,7 @@ namespace Prototype
             r.sharedMaterial = ProtoFx.Lit(DoorColor);
             if (!terrainShadows) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             gateDoor = door.transform;
+            gateDoorCollider = door.GetComponent<Collider>();
             gateBarrier = new GameObject("BossGateBarrier") { layer = DuelFighter.FighterLayer };
             gateBarrier.transform.SetParent(root, false);
             gateBarrier.transform.position = bossGate.center;
@@ -356,11 +364,15 @@ namespace Prototype
             PlaceGate();
         }
 
-        /// <summary>扉の見える板を、下り具合(gateShut)の位置に置く。開ききったら消す(上の壁の中に当たり判定を残さない)。</summary>
+        /// <summary>
+        /// 扉の見える板を、下り具合(gateShut)の位置に置く。開ききったら消す。板の当たり判定は、閉じきっていて、ボス戦の間だけ効かせる
+        /// (動いている間は見た目だけ。開け始めたら、板が動き出す前でもすぐ切る)。
+        /// </summary>
         void PlaceGate()
         {
             gateDoor.position = bossGate.center + Vector3.up * (bossGate.size.y * (1f - gateShut));
             gateDoor.gameObject.SetActive(gateShut > 0f);
+            gateDoorCollider.enabled = bossFight && gateShut >= 1f;
         }
 
         /// <summary>扉の見える板を、閉じる・開くほうへ動かす(gateTime 秒で端から端まで。画面は揺らさない)。</summary>
@@ -375,31 +387,47 @@ namespace Prototype
         /// <summary>
         /// ボス戦を始める:入口の扉を閉じ、そのときの共通の弾と弾倉の残りを控える(やられて再開するときに戻す)。
         /// 呼ぶのは、自機が扉の内側の面から「機体の半径 + gateClearance」より奥にいるときだけ(Update)なので、自機は扉に掛からず、必ず内側にいる。
-        /// 扉の所に立っているほかの機体(追ってきた敵・入口に寄ってきたボス)は、今いる側へ押し出す(閉じた扉に埋まらないように)。
+        /// ここからボスにダメージが入る(SetBossInvulnerable)。
+        /// 扉に重なっている機体は押し出す(閉じた扉に埋まらないように):入口に寄ってきたボスは今いる側(奥)へ。ボス以外の敵は入口の手前で止まるので
+        /// (DuelFighter.maxZ)重ならないはずだが、重なっていたら必ず手前(通路)側へ出す(奥へ出すと、中の自機に重なる)。
         /// </summary>
         void BeginBossFight()
         {
             bossFight = true;
             gateBarrier.SetActive(true);
+            SetBossInvulnerable(false);
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
                 Vector3 q = e.transform.position;
-                float r = e.Radius + 0.3f;   // 当たり判定の皮(0.2m)より少し広く
+                float r = e.Radius + GateSkin;
                 if (q.x <= bossGate.min.x - r || q.x >= bossGate.max.x + r || q.z <= bossGate.min.z - r || q.z >= bossGate.max.z + r) continue;
                 if (q.y >= bossGate.max.y || q.y + game.mechHeight * e.Size <= bossGate.min.y) continue;
-                q.z = q.z < bossGate.center.z ? bossGate.min.z - r : bossGate.max.z + r;
+                q.z = e.IsBoss && q.z >= bossGate.center.z ? bossGate.max.z + r : bossGate.min.z - r;
                 e.Teleport(q, e.transform.rotation);
             }
             player.Arms.KeepAmmo();
-            game.Log("入口の扉が閉じた");
         }
 
-        /// <summary>ボス戦を終える(ボスを倒した・やられて再開した):入口の扉を開ける。</summary>
+        /// <summary>
+        /// ボス戦を終える(ボスを倒した・やられて再開した):入口の扉を開ける(板の当たり判定はすぐ切る)。
+        /// ボスは、次に扉が閉じるまでまたダメージを受けなくなる。
+        /// </summary>
         void EndBossFight()
         {
             bossFight = false;
             gateBarrier.SetActive(false);
+            gateDoorCollider.enabled = false;
+            SetBossInvulnerable(true);
+        }
+
+        /// <summary>
+        /// ボスがダメージを受けないかを切り替える(作者「ボス部屋の外からの攻撃は0ダメージにしてください」):
+        /// 入口の扉が閉じている間(ボス戦の間)だけダメージが入り、それ以外(入る前・入口に立って撃つ・やられて再開してから入り直すまで)は 0。
+        /// </summary>
+        void SetBossInvulnerable(bool on)
+        {
+            if (bossSpawn != null && bossSpawn.enemy != null) bossSpawn.enemy.invulnerable = on;
         }
 
         /// <summary>セーブポイントの目印:細く光る柱(当たり判定なし)と、まわりを照らす小さな明かり。</summary>
@@ -463,7 +491,13 @@ namespace Prototype
             e.homeRotation = rot;
             e.leashRadius = s.kind == Kind.Boss ? bossLeash : s.leash;
             e.ignoreLeashRange = s.kind == Kind.Boss;   // ボスは持ち場から離れすぎで発覚を切らない(見失いだけで切る)
-            if (s.kind == Kind.Boss) e.rangedTakenMul = bossRangedTaken;
+            if (s.kind == Kind.Boss)
+            {
+                e.rangedTakenMul = bossRangedTaken;
+                e.invulnerable = true;   // 入口の扉が閉じる(ボス戦が始まる)まではダメージを受けない(SetBossInvulnerable)
+            }
+            // ボス以外の敵は、大ホールの入口(扉の手前の面)より奥へ入れない(作者「敵はボス部屋に入れないようにしてください」。扉が開いていても)
+            else e.maxZ = bossGate.min.z - e.Radius - GateSkin;
             e.UseSenses(senses);
             s.enemy = e;
             game.Enemies.Add(e);
@@ -558,7 +592,7 @@ namespace Prototype
             if (bossFight)
             {
                 EndBossFight();
-                if (player.Arms.RestoreKeptAmmo()) game.Log("弾と弾倉を、入口の扉が閉じたときの残りに戻し、付けている銃をリロードした");
+                player.Arms.RestoreKeptAmmo();
             }
             foreach (var other in saves) other.inside = other == sp;   // 再開した所で、もう一度触れたことにしない
             var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;

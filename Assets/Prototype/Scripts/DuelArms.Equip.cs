@@ -455,7 +455,7 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 控えた弾へ戻す(ボス戦の間にやられて・落ちて再開するとき。DuelStage.Respawn)。控えがなければ何もせず false。控えそのものは変えない
+        /// 控えた弾へ戻す(ボス戦の間にやられて・落ちて再開するとき。DuelStage.Respawn)。控えがなければ何もしない。知らせは出さない。控えそのものは変えない
         /// (続けてやられても、毎回同じ結果になる)。
         ///   1. 進行中の L1 の溜め・リロードを片付ける(溜めはやめ、リロードは詰め終える。取り置いた弾は返さない:共通の弾は次で控えた値にする)。
         ///   2. 共通の弾を控えた値にする(上限 ammoMax まで)。
@@ -466,9 +466,9 @@ namespace Prototype
         ///      入るだけ入れる決まりは、ふつうのリロードと同じ(StartReload)。弾を取り合うときは付ける所の番号順
         ///      (右手 → 左手 → 右肩 → 左肩。両手の銃は右手の所)。所持品・床の銃はリロードしない。
         /// </summary>
-        public bool RestoreKeptAmmo()
+        public void RestoreKeptAmmo()
         {
-            if (!ammoKept) return false;
+            if (!ammoKept) return;
             chargeAmmo = 0f;
             charge = 0f;
             for (int i = 0; i < StateCount; i++)
@@ -493,9 +493,8 @@ namespace Prototype
             {
                 var w = slots[i];
                 if (!HasMagazine(w) || (i == L && TwoHanded)) continue;
-                if (StartReload(i, w, true)) EndReload(i, w);
+                if (StartReload(i, w, true)) EndReload(i, w);   // quiet:弾が1発分もなくても「弾が足りない」の知らせは出さない
             }
-            return true;
         }
 
         /// <summary>控えた弾を捨てる(ボスを倒した。この後の再開で古い弾が戻らないように)。</summary>

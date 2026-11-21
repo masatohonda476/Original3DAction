@@ -10,7 +10,7 @@ namespace Prototype
         // 作者「ロックオンのオンオフをを電脳斬禅と同じ作りで作ってください」:電脳斬禅の PlayerTargeting と同じ作り。
         //   ロックオンのボタン(Q・中クリック / 十字左)はオン・オフを切り替える(敵に付ける・外すのではなく、自動で狙うかどうかの切り替え)。
         //   オンの間:狙う敵がいなければ、照準枠に体が掛かり・遮られず・距離の内の敵を自動で選ぶ(画面の中央に近く、近い敵ほど先)。
-        //     狙っている敵を倒したらすぐ次へ。遮られる・遠ざかるが lockLoseAfter 秒続いたら外して選び直す。
+        //     狙っている敵を倒したら、爆発するまでは付けたままにし、爆発したら次へ(下の「倒した敵」)。遮られる・遠ざかるが lockLoseAfter 秒続いたら外して選び直す。
         //   オフの間:敵を狙わない(自動でも付かない)。切り替えのボタン(Tab / R3)を押すとオンに戻る。
         //   オン・オフの合図は DuelGame の照準枠(画面の縁寄りの四つの角。オンで外から締まり、オフで広がって消える)。
         // この試作で残したもの:銃の構えの間は自動で選ばない、ロックオン中の右スティック・マウスの左右の弾きでの切り替え(SwitchSide。照準を動かしている間は除く)。
@@ -28,6 +28,12 @@ namespace Prototype
         //   前の 自動 40m(autoLockRange)/ オンにした瞬間・切り替え 130m(lockRange)の2段をやめ、DuelStage.lockOnRange(80m = 40m の2倍)だけにした。
         //   自動・オンにした瞬間・狙う敵がいないときの切り替えボタン・ロックオン中の切り替え先のどれも同じ距離。外れる距離の式(1.5倍 = 120m)は変えていない。
         //   距離は足元どうしの直線距離(付け始めの判定も、枠の右辺の目盛りの印も同じ測り方。LockCandidate・DuelGame.DrawLockGauge)。
+        //
+        // 倒した敵(2026-11-21。作者「撃破後も爆発するまではロックオンを残してください」):
+        //   狙っている敵を倒しても、撃墜の演出で爆発する(DuelFighter.Exploded。倒してから約 0.6 秒)まではロックオンを外さない。爆発したフレームに外して次の敵を選ぶ。
+        //   その間は遮られても・遠ざかっても外さない。カメラ・角の枠・自機の向き・剣の向かう先は、付けたままの相手(倒した敵)を追う。
+        //   切り替え(右スティックの弾き・切り替えボタン)はその間もできる。倒した敵に新しく付くことはない(付け始め・切り替え先は生きている敵だけ)。
+        //   弾・剣が倒した敵に当たらないのは今までどおり。
 
         /// <summary>ロックオン距離(DuelStage.lockOnRange。付け始め・切り替え先のどれもこの1つ。0 なら制限なし)。</summary>
         float LockRange => game.stage.lockOnRange;
@@ -113,15 +119,16 @@ namespace Prototype
                 return;
             }
             bool justOn = !wasOn;   // このフレームにオンにした(ロックオンのボタンでも、切り替えのボタンでも)
-            // 狙っている敵が、壁・床ごし、またはロックオン距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。倒したらすぐ外す
+            // 狙っている敵が、壁・床ごし、またはロックオン距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。
+            // 倒した敵は、爆発するまでは外さず(その間は遮られる・遠いも見ない)、爆発したら外す(作者「撃破後も爆発するまではロックオンを残してください」)
             if (Target != null)
             {
-                bool seen = !Target.Dead;
-                if (seen && LockRange > 0f)
+                bool seen = true;
+                if (!Target.Dead && LockRange > 0f)
                     seen = (Target.transform.position - transform.position).sqrMagnitude <= LockRange * LockRange * 2.25f &&
                            DuelSenses.ClearSight(LockPoint, Target.LockPoint);
                 lockLostFor = seen ? 0f : lockLostFor + Time.deltaTime;
-                if (Target.Dead || lockLostFor >= lockLoseAfter) { Target = null; lockLostFor = 0f; }
+                if (Target.Exploded || lockLostFor >= lockLoseAfter) { Target = null; lockLostFor = 0f; }
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
             // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。

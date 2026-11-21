@@ -103,6 +103,13 @@ namespace Prototype
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) ? hit.point.y : 0f;
         }
 
+        /// <summary>
+        /// これより奥(+z)へは動けない(既定は制限なし)。DuelStage が、ボス以外の敵を大ホールの入口の手前で止めるのに入れる
+        /// (見えない壁は機体みなに当たるので使えない:自機とボスは通す)。歩き・ダッシュ・技の踏み込み・跳び上がり・ノックバックのどれも Move を通るので越えない。
+        /// 越える分の移動を切るだけなので、線に沿った横の動きはそのまま(引っかからない)。
+        /// </summary>
+        [System.NonSerialized] public float maxZ = float.PositiveInfinity;
+
         /// <summary>平面の速度で動かす(ノックバック・重力を足す)。外へ出ないのは、ステージの壁(見えない壁も)で止める。</summary>
         protected void Move(Vector3 planar, float dt)
         {
@@ -119,7 +126,10 @@ namespace Prototype
                 vy -= Gravity * dt;
             }
             planar.y = 0f;
-            cc.Move((planar + push + Vector3.up * vy) * dt);
+            Vector3 step = (planar + push + Vector3.up * vy) * dt;
+            float room = maxZ - transform.position.z;
+            if (step.z > 0f && step.z > room) step.z = Mathf.Max(0f, room);   // 奥の限りを越える分は進まない(手前へ戻る動きは止めない)
+            cc.Move(step);
             UpdateGround();
         }
 

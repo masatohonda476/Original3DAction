@@ -326,6 +326,7 @@ namespace Prototype
         /// 頭頂部の大ホール(床176m):広い。天井が大きく裂けている。四隅寄りに柱(突進を柱にぶつけられる)。
         /// 座標は拡張前(機関区画の北の口の先にあったとき)のまま書き、dy・dz だけ上・奥へ移す。
         /// 手前の部屋の北の壁(z 460〜463 に当たる所。口は x -14〜14・高さ 0〜23m)は手前の部屋が持つ。
+        /// 大ホールの入口(坂を上りきった所の壁の開口)には、ボス戦の間だけ閉じる扉がある(bossGate)。
         /// </summary>
         void BossHall(float dy, float dz)
         {
@@ -348,6 +349,10 @@ namespace Prototype
             Solid(-50, -42, 176 + dy, 236 + dy, 586 + dz, 594 + dz, WallColor);
             Solid(42, 50, 176 + dy, 236 + dy, 586 + dz, 594 + dz, WallColor);
             bossRoom = new Bounds(new Vector3(0f, 225f + dy, 559.5f + dz), new Vector3(140f, 110f, 119f));   // 入口の坂を上りきったら
+            // ボス戦の入口の扉:上の入口の壁(z 496〜499 に当たる所)の開口(x -14〜14・高さ 0〜21m)を、壁の厚みの中ほどでふさぐ。
+            // 開口より GateInset だけ大きくして、縁を左右の壁・床・上の壁に埋める(すき間を作らない)。作るのは DuelStage.BuildBossGate
+            bossGate.SetMinMax(new Vector3(-14f - GateInset, 176f + dy - GateInset, 497.5f + dz - GateThick / 2f),
+                               new Vector3(14f + GateInset, 197f + dy + GateInset, 497.5f + dz + GateThick / 2f));
             bossSpawn = Add(Kind.Boss, 0, 176 + dy, 575 + dz, 180, 0f);
         }
 
@@ -504,6 +509,8 @@ namespace Prototype
             }
             Gizmos.color = new Color(0.4f, 0.9f, 1f, 0.5f);
             foreach (var pl in places) Gizmos.DrawWireCube(pl.bounds.center, pl.bounds.size);
+            Gizmos.color = new Color(1f, 0.5f, 0.2f);
+            Gizmos.DrawWireCube(bossGate.center, bossGate.size);   // ボス戦の入口の扉(閉じたとき)
         }
     }
 }

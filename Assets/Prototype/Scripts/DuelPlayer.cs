@@ -247,14 +247,6 @@ namespace Prototype
             HP = Mathf.Min(MaxHP, HP + amount);
         }
 
-        /// <summary>HPとガードを満タンにする(セーブポイント)。</summary>
-        public void RestoreHP()
-        {
-            if (Dead) return;
-            HP = MaxHP;
-            Guard = MaxGuard;
-        }
-
         // ───────── 足音(敵が聞く。音の大きさの設定には関係なく、動いた距離から出す) ─────────
 
         /// <summary>一歩ごとに増える番号(敵は変わったときだけ聞く)・鳴った所・届く範囲(m)・鳴った時刻。</summary>

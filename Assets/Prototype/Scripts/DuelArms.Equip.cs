@@ -362,6 +362,7 @@ namespace Prototype
             resAmmo[i] = 0f;
             resN[i] = 0;
             mag[i] = 0;
+            uid[i] = 0;
             bloom[i] = 0f;
             reload[i] = cd[i] = cdMax[i] = 0f;
             pressedAt[i] = -10f;
@@ -373,22 +374,25 @@ namespace Prototype
         /// <summary>その状態が次に撃てる時刻(待ちがなければ 0)。</summary>
         float ReadyOf(int i) => cd[i] > 0f ? Time.time + cd[i] : 0f;
 
-        /// <summary>外すときに覚えさせる撃つ状態(弾倉の残り・主の撃ち方と、右手の両手の銃・砲なら L1 の撃ち方の装填待ち)。</summary>
+        /// <summary>外すときに覚えさせる撃つ状態(弾倉の残り・主の撃ち方と、右手の両手の銃・砲なら L1 の撃ち方の装填待ち・個体の番号)。</summary>
         Memo MemoOf(int i) => new()
         {
             mag = MagOf(i),
             ready = ReadyOf(i),
             altReady = i == R && TwoHandGun != null ? ReadyOf(AltIndex) : 0f,
+            id = uid[i],
         };
 
         /// <summary>
         /// 付けたばかりの撃つ状態(弾倉は left、-1 なら満タンに)。撃てるまで少なくとも 0.3 秒待つ。
         /// 外したときの装填待ち(ready。時刻)が残っていれば、その残りを待つ(外して付け直して待ちが縮まないように)。
+        /// id は個体の番号(Memo.id。外す前の番号を引き継ぐ)。
         /// </summary>
-        void ArmState(int i, DuelWeapon w, int left = -1, float ready = 0f)
+        void ArmState(int i, DuelWeapon w, int left = -1, float ready = 0f, int id = 0)
         {
             ResetState(i);
             if (w == null) return;
+            uid[i] = id;
             mag[i] = left >= 0 ? Mathf.Min(left, w.magazine) : w.magazine;
             cd[i] = cdMax[i] = w.IsShooter ? 0.3f : 0f;
             lastFire[i] = -10f;
@@ -401,6 +405,104 @@ namespace Prototype
                 cdMax[i] = Mathf.Max(rest, w.interval);
                 cdShown[i] = true;
             }
+        }
+
+        // ───────── ボス戦の前の弾(控える・戻す) ─────────
+
+        /// <summary>控えがあるか・控えた共通の弾・控えた弾倉の残り(個体の番号 Memo.id → 残り。-1 = 満タン)。</summary>
+        bool ammoKept;
+        float keptAmmo;
+        readonly Dictionary<int, int> keptMag = new();
+
+        static bool HasMagazine(DuelWeapon w) => w is { IsGun: true, magazine: > 0 };
+
+        /// <summary>
+        /// 今の共通の弾と、弾倉のある銃の個体ごとの弾倉の残りを控える(ボス戦の入口の扉が閉じた瞬間。DuelStage.BeginBossFight)。前の控えは捨てる。
+        /// 個体は番号(Memo.id / uid)で覚えるので、その後に付け替えても・外して持っても・床に置いても、同じ個体へ戻せる。
+        /// 控えるのは、付けている銃・所持品・床に落ちている銃の全部(床の銃も入れるのは、前の挑戦で大ホールの床に置いた銃を拾って詰め直し、
+        /// やられて共通の弾だけ戻ると、詰めた分の弾が増えるため)。この後に手に入れた個体(控えにない番号)は、戻すときに触らない。
+        /// リロードの途中の銃は詰め終えた残りで控える(取り置いた弾は共通の弾からもう引いてあるので、合計は今と同じ)。
+        /// L1 の溜めの途中なら、取り置いた1回分は共通の弾に入れて控える(溜めをやめた扱い)。
+        /// </summary>
+        public void KeepAmmo()
+        {
+            ammoKept = true;
+            keptAmmo = Ammo + chargeAmmo;
+            keptMag.Clear();
+            for (int i = 0; i < SlotCount; i++)
+            {
+                if (!HasMagazine(slots[i]) || (i == L && TwoHanded)) continue;   // 両手の銃の状態は右手の所で持つ
+                if (uid[i] == 0) uid[i] = ++nextUid;
+                keptMag[uid[i]] = Mathf.Min(slots[i].magazine, MagOf(i) + resN[i]);
+            }
+            foreach (var c in stash)
+            {
+                if (!HasMagazine(c.w)) continue;
+                if (c.memo.id == 0) c.memo.id = ++nextUid;
+                keptMag[c.memo.id] = c.memo.mag;
+            }
+            foreach (var l in DuelLoot.All)
+            {
+                if (l == null || !HasMagazine(l.Weapon)) continue;
+                var m = l.Memo;
+                if (m.id == 0)
+                {
+                    m.id = ++nextUid;
+                    l.Memo = m;
+                }
+                keptMag[m.id] = m.mag;
+            }
+        }
+
+        /// <summary>
+        /// 控えた弾へ戻す(ボス戦の間にやられて・落ちて再開するとき。DuelStage.Respawn)。控えがなければ何もせず false。控えそのものは変えない
+        /// (続けてやられても、毎回同じ結果になる)。
+        ///   1. 進行中の L1 の溜め・リロードを片付ける(溜めはやめ、リロードは詰め終える。取り置いた弾は返さない:共通の弾は次で控えた値にする)。
+        ///   2. 共通の弾を控えた値にする(上限 ammoMax まで)。
+        ///   3. 控えた個体の弾倉の残りを、今どこにあっても(付けている・所持品・床)控えた残りにする。
+        ///      ボス戦の間に分解した個体は戻らない(分解で得た弾も 2 で消える)。控えにない個体は触らない。
+        ///   4. 付けている銃のうち弾倉が満タンでないものを、共通の弾を使ってリロード済みにする(待ち時間なし。
+        ///      作者「装備している武装は、リロード前に入っていれば弾薬を使ってリロード済みの状態にしてください」)。使う弾と、足りないときに
+        ///      入るだけ入れる決まりは、ふつうのリロードと同じ(StartReload)。弾を取り合うときは付ける所の番号順
+        ///      (右手 → 左手 → 右肩 → 左肩。両手の銃は右手の所)。所持品・床の銃はリロードしない。
+        /// </summary>
+        public bool RestoreKeptAmmo()
+        {
+            if (!ammoKept) return false;
+            chargeAmmo = 0f;
+            charge = 0f;
+            for (int i = 0; i < StateCount; i++)
+                if (reload[i] > 0f) EndReload(i, StateWeapon(i));
+            Ammo = Mathf.Clamp(keptAmmo, 0f, Rules.ammoMax);
+            for (int i = 0; i < SlotCount; i++)
+            {
+                var w = slots[i];
+                if (!HasMagazine(w) || (i == L && TwoHanded)) continue;
+                if (keptMag.TryGetValue(uid[i], out int left)) mag[i] = left < 0 ? w.magazine : Mathf.Min(left, w.magazine);
+            }
+            foreach (var c in stash)
+                if (HasMagazine(c.w) && keptMag.TryGetValue(c.memo.id, out int left)) c.memo.mag = left;
+            foreach (var l in DuelLoot.All)
+            {
+                if (l == null || !HasMagazine(l.Weapon) || !keptMag.TryGetValue(l.Memo.id, out int left)) continue;
+                var m = l.Memo;
+                m.mag = left;
+                l.Memo = m;
+            }
+            for (int i = 0; i < SlotCount; i++)
+            {
+                var w = slots[i];
+                if (!HasMagazine(w) || (i == L && TwoHanded)) continue;
+                if (StartReload(i, w, true)) EndReload(i, w);
+            }
+            return true;
+        }
+
+        /// <summary>控えた弾を捨てる(ボスを倒した。この後の再開で古い弾が戻らないように)。</summary>
+        public void ForgetKeptAmmo()
+        {
+            ammoKept = false;
+            keptMag.Clear();
         }
 
         /// <summary>
@@ -455,8 +557,9 @@ namespace Prototype
                 else slots[i] = w;
                 if (oldR != null) mountRemoved.Add((oldR, memR));
                 if (oldL != null && !oldTwo) mountRemoved.Add((oldL, memL));
-                ArmState(R, slots[R], slots[R] == w ? memo.mag : -1, slots[R] == w ? memo.ready : 0f);
-                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L], slots[L] == w ? memo.mag : -1, slots[L] == w ? memo.ready : 0f);
+                ArmState(R, slots[R], slots[R] == w ? memo.mag : -1, slots[R] == w ? memo.ready : 0f, slots[R] == w ? memo.id : 0);
+                ArmState(L, slots[L] != null && slots[L].IsTwoHand ? null : slots[L], slots[L] == w ? memo.mag : -1, slots[L] == w ? memo.ready : 0f,
+                    slots[L] == w ? memo.id : 0);
                 ArmState(AltIndex, AltFire, -1, w.IsTwoHand ? memo.altReady : 0f);
                 Refresh(DuelSlot.RightHand);
                 Refresh(DuelSlot.LeftHand);
@@ -469,7 +572,7 @@ namespace Prototype
                 var oldMemo = MemoOf(i);
                 slots[i] = w;
                 if (old != null) mountRemoved.Add((old, oldMemo));
-                ArmState(i, w, memo.mag, memo.ready);
+                ArmState(i, w, memo.mag, memo.ready, memo.id);
                 Refresh(slot);
                 if (hand && old is { IsBlade: true }) player.OnSwordDropped(i == R ? 0 : 1);
             }

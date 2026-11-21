@@ -180,7 +180,7 @@ namespace Prototype
                 case 2:
                     // 戻り:振り抜いてから dodgeLockAfterSwing 秒たったら回避で取り消せる。少し戻ったら次の段・強攻撃へつなげる
                     if (stateT >= dodgeLockAfterSwing && TryDodge(now, worldMove)) return Vector3.zero;
-                    if (stateT >= DuelSwing.ChainAfter && !Overheated && now - lightPressedAt <= attackBuffer && Arms.CanMelee(pressHand))
+                    if (stateT >= cur.ChainAt && !Overheated && now - lightPressedAt <= attackBuffer && Arms.CanMelee(pressHand))
                     {
                         // 押した手で次を振る(両手に剣なら、R1/L1 を交互に押すと左右の剣で交互に振る。素手も R1/L1 で左右のパンチ)
                         bool sameHand = pressHand == atkHand;

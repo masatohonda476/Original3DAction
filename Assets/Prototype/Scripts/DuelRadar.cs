@@ -56,7 +56,7 @@ namespace Prototype
         {
             var L = w.LightMoves;
             float cyc = 0f;
-            foreach (var m in L) cyc += m.windup + m.active + DuelSwing.ChainAfter;
+            foreach (var m in L) cyc += m.windup + m.active + m.ChainAt;
             return L.Length / Mathf.Max(0.01f, cyc) * Mathf.Max(0.3f, w.speedMul);
         }
 

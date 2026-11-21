@@ -103,10 +103,16 @@ namespace Prototype
         void UpdateLock()
         {
             // ロックオンのボタン:オン・オフを切り替える。切り替えのボタンは、オフならオンに戻す(電脳斬禅の Cycle)
-            // 落ちている武装の分解を選んでいる間と、抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
+            // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ロックオンのボタン(オン・オフ:十字左・Q・中クリック / 切り替え:R3・Tab)を
+            // 読まない(DuelArms.ChoiceLocksInput。作者「ドロップした武装の操作中に移動とカメラ以外の操作ができないように」)。
+            // 自動で選ぶ・見失って外す・倒した敵から次へ移るのは、選ぶ表示の間も今までどおり動く。
+            // ロックオン中の右スティックの弾き・マウスの振りでの切り替え(下)も、選ぶ表示の間は止める(作者が 2 案から「止める」を選んだ。
+            // ロックオン中は右スティックでカメラが回らないので、その間の選ぶ表示では右スティックは何もしない)。
+            // 分解を選ぶ表示を抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
             bool wasOn = LockOn;
-            bool toggle = Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle;
-            bool switchPressed = ProtoInput.SwitchTarget;
+            bool choice = Arms.ChoiceLocksInput;
+            bool toggle = !choice && (Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle);
+            bool switchPressed = !choice && ProtoInput.SwitchTarget;
             if (toggle) SetLockOn(!LockOn);
             else if (switchPressed && !LockOn) SetLockOn(true);
             if (!LockOn)
@@ -148,8 +154,9 @@ namespace Prototype
             // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 照準を動かしている間(DuelArms.CursorActive。DuelArmsRules.cursorMovable がオンの構えの間)は、右スティック・マウスが
-            // 画面の上の照準を動かす(カメラは回さない)ので切り替えない。照準を動かせない既定では、構えの間も切り替えられる
-            if (Target == null || Arms.CursorActive) { stickArmed = false; mouseFlick = 0f; return; }
+            // 画面の上の照準を動かす(カメラは回さない)ので切り替えない。照準を動かせない既定では、構えの間も切り替えられる。
+            // 落ちている武装の選ぶ表示の間と閉じたフレーム(choice)も切り替えない。倒したまま閉じても、一度戻すまで切り替わらない(stickArmed)
+            if (Target == null || Arms.CursorActive || choice) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }

@@ -13,30 +13,35 @@ namespace Prototype
         /// <summary>
         /// 十字右:付け先を選ぶ表示にする(手・肩・背中・両手持ちとも同じ流れ。付け先が空きでもふさがっていても同じ)。
         /// 選んでいる間は R1/L1(手)・R2/L2(肩)・✗(背中)で決める(背中は R1〜L2 では付かず、手・肩は ✗ では付かない)。
-        /// ✗ は押し始めだけ数える(飛んでいて押し続けていた ✗ では付かない)。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。もう一度十字右・武装から離れる・動ける状態(Free・ガード)でなくなると取り消し。
+        /// ✗ は押し始めだけ数える(飛んでいて押し続けていた ✗ では付かない)。両手持ちは R1/L1 のどちらでも両手に付く(R2/L2 では付かない。Equip)。
         /// 選ぶ・付けるのは動ける状態のときだけ(振っている最中・回避の間に手の武装が替わって、当たりと見た目がずれないように)。
         /// 拾う案内(選んでいない間)では、十字右で付け先を選ぶ表示、十字下でそのまま所持品へ(重さの上限を超えるなら持てない)、
-        /// 十字上で分解を選ぶ表示。分解を選ぶ表示では、十字左(←)で弾・十字右(→)で回復・十字上(F。入ったのと同じボタン)でやめる
-        /// (離れる・動ける状態でなくなるでも取り消し)。十字上を続けて押しても分解されない(作者が選んだ形:押し間違いで武装が消えないように)。
-        /// 十字左はふだんロックオンの切り替えなので、この間と、抜けた後に離すまでは切り替えにしない(LockDpadTaken)。
+        /// 十字上で分解を選ぶ表示。分解を選ぶ表示では、十字左(←)で弾・十字右(→)で回復。
+        /// 十字上を続けて押しても分解されない(作者が選んだ形:押し間違いで武装が消えないように)。
+        /// 取り消し(どちらの選ぶ表示も、閉じるだけで何も付けない・分解しない):○・B / Backspace(ProtoInput.ChoiceCancel。作者「○でキャンセルできるように」)、
+        /// 入ったのと同じボタンをもう一度(付け先 = 十字右 / 分解 = 十字上)、武装から離れる、空中に出る、動ける状態(Free・ガード)でなくなる(怯むなど)。
+        /// 選ぶ表示の間に効くのは、移動・カメラと、ここで読む選ぶ表示の操作だけ(ChoiceOpen / ChoiceLocksInput。攻撃・射撃・ガード・飛行は Held / Pressed /
+        /// FlyBlocked が、回避・ブーストの切り替え・ロックオンのボタンは DuelPlayer が止める)。開くときに、それより前に押して覚えている先行入力も捨てる(BeginChoice)。
+        /// 十字左はふだんロックオンの切り替えなので、分解を選ぶ表示を抜けた後も、離すまでは切り替えにしない(LockDpadTaken)。
         /// 付け先を選ぶ表示で、付けると重さの上限を超える所のボタンを押したら、付けずに知らせる(表示はそのまま)。
         /// </summary>
         void UpdateChoice()
         {
             bool ready = player.Current is DuelPlayer.State.Free or DuelPlayer.State.Guard;
+            bool cancel = ProtoInput.ChoiceCancel;   // ○・B / Backspace(選ぶ表示を開いている間だけ見る。ふだんの ○ はブーストの切り替え)
             if (Breaking != null)
             {
                 breakLeftHold = true;   // 抜けた後も、十字左を離すまでロックオンの切り替えにしない(Tick で離したら下ろす)
-                if (Breaking != Nearby || ProtoInput.BreakNow || !ready)
+                if (Breaking != Nearby || ProtoInput.BreakNow || cancel || !ready)
                 {
-                    Breaking = null;
+                    EndChoice();
                     return;
                 }
                 bool toAmmo = ProtoInput.BreakAmmoNow, toHeal = !toAmmo && ProtoInput.BreakHealNow;
                 if (!toAmmo && !toHeal) return;
                 if (SalvageFull(toHeal)) return;   // 弾が上限・HP が満タン:武装だけ消えないよう、分解しない(選ぶ表示はそのまま)
                 var loot = Breaking;
-                Breaking = null;
+                EndChoice();
                 var w = loot.Weapon;
                 int left = loot.Memo.mag;
                 loot.Take();
@@ -45,7 +50,7 @@ namespace Prototype
             }
             if (Choosing != null)
             {
-                if (Choosing != Nearby || ProtoInput.EquipNow || !ready)
+                if (Choosing != Nearby || ProtoInput.EquipNow || cancel || !ready)
                 {
                     EndChoice();
                     return;
@@ -68,9 +73,27 @@ namespace Prototype
                 return;
             }
             if (!ready || Nearby == null) return;
-            if (ProtoInput.EquipNow) Choosing = Nearby;
+            if (ProtoInput.EquipNow)
+            {
+                Choosing = Nearby;
+                BeginChoice();
+            }
             else if (ProtoInput.StashNow) StashLoot(Nearby);
-            else if (ProtoInput.BreakNow) Breaking = Nearby;
+            else if (ProtoInput.BreakNow)
+            {
+                Breaking = Nearby;
+                BeginChoice();
+            }
+        }
+
+        /// <summary>
+        /// 選ぶ表示(付け先・分解)を開いた:それより前に押して覚えている攻撃・回避・射撃(先行入力)を捨てる
+        /// (ENの回復待ち・撃てるまでの待ちが明けて、選んでいる間に遅れて出ないように)。選んでいる間に押した分は、もとから覚えない。
+        /// </summary>
+        void BeginChoice()
+        {
+            ClearBufferedInput();
+            player.ClearBufferedInput();
         }
 
         /// <summary>落ちている武装を所持品に入れる(重さの上限を超えるなら入れない)。弾倉の残りも覚える。</summary>
@@ -149,22 +172,24 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 付け先を選ぶ表示を終える(決めた・取り消した)。その時に押している R1/L1/R2/L2 は全部、離すまで攻撃・射撃・ガードにしない
-        /// (決めたボタンと同時に押したボタンや、選んでいる間に押し続けていたボタンが、終わった瞬間に効かないように)。
+        /// 選ぶ表示(付け先を選ぶ表示・分解を選ぶ表示)を終える(決めた・分解した・取り消した)。その時に押している R1/L1/R2/L2/✗ は全部、
+        /// 離すまで攻撃・射撃・ガード・飛行にしない(決めたボタンと同時に押したボタンや、選んでいる間に押し続けていたボタンが、終わった瞬間に効かないように)。
+        /// 終えたフレームは覚えておき、そのフレームの間は DuelPlayer が回避・ブーストの切り替え・ロックオンのボタンを読まない(ChoiceLocksInput)。
         /// </summary>
         void EndChoice()
         {
             Choosing = null;
+            Breaking = null;
+            choiceEndFrame = Time.frameCount;
             for (int b = 0; b < suppress.Length; b++)
                 if (RawHeld(b) || RawPressed(b)) suppress[b] = true;
         }
 
-        /// <summary>付け先を選ぶ表示の途中なら取り消す(メニューを開いたとき)。L1 の溜めもやめる(閉じた後に、離したことになって撃たないように)。</summary>
+        /// <summary>選ぶ表示(付け先・分解)の途中なら取り消す(メニューを開いたとき)。L1 の溜めもやめる(閉じた後に、離したことになって撃たないように)。</summary>
         public void CancelChoice()
         {
             StopCharge();
-            Breaking = null;
-            if (Choosing != null) EndChoice();
+            if (ChoiceOpen) EndChoice();
         }
 
         /// <summary>先行入力(押してからの受付時間内の射撃)を捨てる。メニューを開いたとき(閉じた直後に撃たないように)。</summary>
@@ -505,8 +530,7 @@ namespace Prototype
             for (int i = 0; i < SlotCount; i++) Refresh((DuelSlot)i);
             StopCharge();
             for (int i = 0; i < StateCount; i++) ResetState(i);
-            if (Choosing != null) EndChoice();
-            Breaking = null;
+            if (ChoiceOpen) EndChoice();
             player.OnShieldsChanged(false);
             // 所持品も消し飛び、共通の弾も0に戻る(弧の終わりに全部失う。仮置き)
             n += stash.Count;

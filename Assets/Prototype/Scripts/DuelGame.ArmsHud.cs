@@ -267,7 +267,8 @@ namespace Prototype
         /// 画面の下の中央:拾える武装があれば、その案内。無視すればそのまま残る。空中では出ない(DuelArms.Nearby が null)。
         ///   まだ何も押していない間:枠のあるカード(BuildPickCard / DrawPickCard)。名前・その武装の数値・付け先ごとの今の武装との差・操作を最初から並べる。
         ///   十字右で付け先を選ぶ表示(付け先が空きでもふさがっていても同じ):手・肩なら左右それぞれの今の武装と、背中なら今の背中と比べる(背中は ✗ で付ける)。
-        ///   十字上で分解を選ぶ表示:十字左で弾・十字右で回復・十字上でやめる。
+        ///   十字上で分解を選ぶ表示:十字左で弾・十字右で回復。
+        ///   どちらの選ぶ表示も、入ったのと同じボタン(十字右 / 十字上)か ○・B(Backspace)でやめる(「[十字右] / [○] やめる」と並べて出す)。
         /// </summary>
         void DrawPickup(DuelArms arms)
         {
@@ -320,13 +321,16 @@ namespace Prototype
         void BuildPickLines(DuelArms arms, DuelWeapon w, DuelSlot[] to, DuelWeapon a, DuelWeapon b, bool curTwo, bool ammoFull, bool hpFull, float magBack)
         {
             string name = "<color=#" + ColorUtility.ToHtmlStringRGB(w.Color) + ">" + w.name + "〈" + w.RarityName + "〉</color>";
-            string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "]";
+            // 取り消し:入ったのと同じボタン(付け先 = 十字右 / 分解 = 十字上)か、○・B / Backspace(ProtoInput.ChoiceCancel。DuelArms.UpdateChoice)。2つを並べて出す
+            string back = "[" + ProtoInput.L(ProtoInput.Btn.Back) + "]";
+            string equip = "[" + ProtoInput.L(ProtoInput.Btn.EquipNow) + "] / " + back;
             string Heavy(DuelSlot s) => arms.Fits(arms.WeightIfEquipped(w, s)) ? "" : " <color=" + PickRed + ">重すぎる</color>";
             if (arms.Breaking != null)
             {
-                // 分解を選ぶ:十字左で弾、十字右で回復(装備の確認の「← 弾 / → 回復」と同じ左右)、十字上(入ったのと同じボタン)でやめる
+                // 分解を選ぶ:十字左で弾、十字右で回復(装備の確認の「← 弾 / → 回復」と同じ左右)、十字上(入ったのと同じボタン)か ○ でやめる。
+                // 「やめる」は2行目に分けて出す(1行目は弾・回復の選択肢だけで枠の幅に近いので、取り消しのボタンを足すとはみ出すおそれがある)
                 string ammoBtn = "[" + ProtoInput.L(ProtoInput.Btn.BreakAmmo) + "]", healBtn = "[" + ProtoInput.L(ProtoInput.Btn.BreakHeal) + "]";
-                string breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "]";
+                string breakBtn = "[" + ProtoInput.L(ProtoInput.Btn.Break) + "] / " + back;
                 int salAmmo = arms.SalvageAmmo(w), salHeal = arms.SalvageHeal(w);
                 var rules = arms.Rules;
                 // 弾倉の残りの分(magBack)は、弾にしても回復にしても共通の弾へ戻る(弾にするなら分解の量に足して出す)
@@ -341,10 +345,11 @@ namespace Prototype
                     ? "<color=" + PickRed + ">" + healBtn + " HP は満タン</color>"
                     : healBtn + " 回復にする +" + salHeal + "(HP " + Mathf.CeilToInt(player.HP) + "→" + Mathf.CeilToInt(h1) + "/" + player.MaxHP.ToString("0") + ")"
                       + (magBack > 0f && !ammoFull ? "・弾 +" + magText : "");
-                pickupLines[0] = name + " を分解する?   " + ammoOpt + "    " + healOpt + "    " + breakBtn + " やめる";
-                pickupLines[1] = "<color=" + PickGrey + ">分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)"
+                pickupLines[0] = name + " を分解する?   " + ammoOpt + "    " + healOpt;
+                pickupLines[1] = breakBtn + " やめる";
+                pickupLines[2] = "<color=" + PickGrey + ">分解した武装はなくなる(弾は上限まで・回復は HP の最大まで)"
                                  + (magBack > 0f ? "  弾倉の残り(弾 " + magText + " の分)は、どちらを選んでも弾に戻る" : "") + "</color>";
-                pickupLineCount = 2;
+                pickupLineCount = 3;
             }
             else if (w.IsTwoHand)
             {
@@ -361,7 +366,7 @@ namespace Prototype
             }
             else if (to.Length == 1)
             {
-                // 背中:✗ を押すと付く(✗ は飛行と同じボタン。選んでいる間は飛ばない)
+                // 背中:✗ を押すと付く(✗ は飛行と同じボタン。選んでいる間は飛ばない。ほかの戦闘のボタンも選んでいる間は効かない:DuelArms.ChoiceLocksInput)
                 string fly = "[" + ProtoInput.L(ProtoInput.Btn.Fly) + "]";
                 pickupLines[0] = name + " を背中に付ける?  " + fly + " " + DuelWeapon.SlotName(to[0]) + "に付ける(今:" + (a != null ? a.name : "なし") + ")" + Heavy(to[0]) + "    " + equip + " やめる";
                 pickupLines[1] = DuelWeapon.SlotName(to[0]) + "と比べて  " + DuelWeapon.CompareText(w, a);

@@ -39,9 +39,13 @@ namespace Prototype
     ///   飛ぶときの上昇の速さ)が決まる(Mobility)。歩き・走りには効かない(作者「歩きには効かないようにして、ENを使った移動に効くようにします」)。
     /// 拾う:落ちている武装の近くで、十字下(G)で所持品へ、十字上(F)で分解(選ぶ表示で十字左(←)が弾・十字右(→)が回復・十字上(F)でやめる)、十字右(V)で付ける。
     ///   付け先を選ぶ表示が出て(付け先が空きでもふさがっていても同じ手順。作者「枠が空きのときと装備済みのときの動作は変えないでほしい」)、
-    ///   R1/L1(手)・R2/L2(肩)・✗(背中。選んでいる間は ✗ で飛ばない)で決める
-    ///   (選んでいる間、R1/L1/R2/L2 は攻撃・射撃・ガードにならない。決めた・取り消した時に押していたボタンは、離すまで効かない)。
-    ///   付け先を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ。攻撃・回避・怯み・ガードで受けた・崩れたら取り消し。もう一度十字右・離れるでも取り消し。
+    ///   R1/L1(手)・R2/L2(肩)・✗(背中)で決める。
+    ///   選ぶ表示(付け先・分解)の間に効くのは、移動・カメラ・選ぶ表示の操作だけ(作者「ドロップした武装の操作中に移動とカメラ以外の操作が
+    ///   できないようにし、○でキャンセルできるようにしてください」。ChoiceOpen / ChoiceLocksInput)。攻撃・射撃・ガード・溜め撃ち・リロード・飛行は
+    ///   ここで、回避・ブーストの切り替え・ロックオンのボタンは DuelPlayer で止める。終えた時に押していた R1/L1/R2/L2/✗ は、離すまで効かない。
+    ///   拾う案内のカードが出ているだけ(Nearby があるだけ)の間は何も止めない。
+    ///   付け先を選ぶ・分解を選ぶ・背中に付けるのは、自機が動ける(Free)かガード中だけ(入ると盾の構えは解ける)。怯み・ガード崩れなどで動けなくなったら取り消し。
+    ///   ○(Backspace)・入ったのと同じボタンをもう一度・離れるでも取り消し。
     ///   同じ所の今の武装は、拾った武装のあった所に置く(置いた直後から拾い直せる。素の剣も。ただし拾う案内の優先度は低く、
     ///   近くにふつうの武装があればそちらが先に対象になる。自機が拾える範囲から一度出ると戻る。DuelLoot.LowerPriority)。装備の確認の画面から、外して持つ・所持品を付ける・
     ///   足もとの床に捨てる(Drop)・分解する。
@@ -97,7 +101,8 @@ namespace Prototype
         /// <summary>L1 の溜め撃ちを溜めている秒数(0なら溜めていない)。</summary>
         float charge;
         /// <summary>
-        /// ボタン(0=R1 1=L1 2=R2 3=L2 4=✗)を、離すまで使わない(付け先を決めたボタンが、そのまま攻撃・射撃・飛行にならないように)。
+        /// ボタン(0=R1 1=L1 2=R2 3=L2 4=✗)を、離すまで使わない(付け先を決めたボタンや、選ぶ表示(付け先・分解)の間に押し続けていたボタンが、
+        /// 表示を終えた瞬間に攻撃・射撃・ガード・飛行にならないように。EndChoice が立て、Tick が離したら下ろす)。△+撃つボタンのリロードでも立てる。
         /// ✗(FlyBtn)は付け先を選ぶ表示で背中に付けるボタン。ふだんは飛行(DuelPlayer が FlyBlocked を見る)。
         /// </summary>
         readonly bool[] suppress = new bool[5];
@@ -114,10 +119,24 @@ namespace Prototype
         /// <summary>分解を選ぶ表示を抜けた後、「弾にする」のボタン(十字左 / ←)を離すまで立てておく(押しっぱなしの十字左でロックオンが切り替わらないように)。</summary>
         bool breakLeftHold;
         /// <summary>
-        /// 十字左を分解の「弾にする」に使っている(分解を選んでいる間と、抜けた後に離すまで)。この間、DuelPlayer は十字左でロックオンを切り替えない
-        /// (Q・中クリックでは切り替わる)。Tick は DuelPlayer.UpdateLock より先に呼ばれるので、「弾にする」を押したそのフレームも効く。
+        /// 十字左を分解の「弾にする」に使っている(分解を選んでいる間と、抜けた後に離すまで)。この間、DuelPlayer は十字左でロックオンを切り替えない。
+        /// 選ぶ表示の間と閉じたフレームは、ロックオンのボタンそのものが効かない(ChoiceLocksInput)ので、これが効くのは抜けた後、十字左を離すまでの間
+        /// (その間も Q・中クリックでは切り替わる)。
         /// </summary>
         public bool LockDpadTaken => Breaking != null || breakLeftHold;
+
+        /// <summary>選ぶ表示(付け先を選ぶ表示・分解を選ぶ表示)を開いている。拾う案内のカードが出ているだけ(Nearby があるだけ)の間は入らない。</summary>
+        public bool ChoiceOpen => Choosing != null || Breaking != null;
+        /// <summary>選ぶ表示を最後に終えたフレーム(EndChoice)。</summary>
+        int choiceEndFrame = -1;
+        /// <summary>
+        /// 選ぶ表示が戦闘の入力を止めている:開いている間と、閉じたそのフレーム。この間に効くのは、移動・カメラ・選ぶ表示の操作だけ
+        /// (作者「ドロップした武装の操作中に移動とカメラ以外の操作ができないようにし、○でキャンセルできるようにしてください」)。
+        /// 手・肩のボタンと ✗ は Held / Pressed / FlyBlocked が止める。DuelPlayer はこれを見て、回避・ブーストの切り替え・ロックオンのボタンを読まない。
+        /// 閉じたフレームも入れるのは、Tick が DuelPlayer の入力より先に走るため(取り消しの ○ がそのフレームにブーストの切り替えにならないように。
+        /// 選ぶ表示を終えたのと同じフレームに押したボタンも出さない)。押した瞬間だけ読む入力は、閉じた後に押しっぱなしでも出ない。
+        /// </summary>
+        public bool ChoiceLocksInput => ChoiceOpen || choiceEndFrame == Time.frameCount;
 
         // ───────── 所持品・共通の弾 ─────────
 
@@ -262,7 +281,7 @@ namespace Prototype
         {
             get
             {
-                if (player == null || player.Dead || Choosing != null) return false;
+                if (player == null || player.Dead || ChoiceOpen) return false;   // 選ぶ表示の間は構えない(右スティック・マウスはカメラのまま)
                 if (player.Current is DuelPlayer.State.Attack or DuelPlayer.State.Dodge) return false;
                 float now = Time.time, cut = player.MeleeOrDodgeAt, hold = Rules.aimHoldAfterShot;
                 for (int i = 0; i < StateCount; i++)
@@ -369,23 +388,23 @@ namespace Prototype
         };
 
         /// <summary>
-        /// ✗ を飛行に使わない(付け先を選んでいる間と、選ぶ表示を終えた時に押していた ✗ を離すまで)。DuelPlayer の飛行が見る。
+        /// ✗ を飛行に使わない(選ぶ表示(付け先・分解)の間と、選ぶ表示を終えた時に押していた ✗ を離すまで)。DuelPlayer の飛行が見る。
         /// 空中では選ぶ表示を開かない(Nearby が null)。
         /// </summary>
-        public bool FlyBlocked => Choosing != null || suppress[FlyBtn];
+        public bool FlyBlocked => ChoiceOpen || suppress[FlyBtn];
 
-        /// <summary>その所のボタンを押している(付け先を選んでいる間・決めたボタンを離すまでは数えない)。</summary>
+        /// <summary>その所のボタンを押している(選ぶ表示(付け先・分解)の間と、終えた時に押していたボタンを離すまでは数えない)。攻撃・射撃・ガードはこれを読む。</summary>
         public bool Held(DuelSlot s)
         {
             int b = Btn(s);
-            return b >= 0 && Choosing == null && !suppress[b] && RawHeld(b);
+            return b >= 0 && !ChoiceOpen && !suppress[b] && RawHeld(b);
         }
 
-        /// <summary>その所のボタンをこのフレームに押した(付け先を選んでいる間・決めたボタンを離すまでは数えない)。</summary>
+        /// <summary>その所のボタンをこのフレームに押した(選ぶ表示(付け先・分解)の間と、終えた時に押していたボタンを離すまでは数えない)。</summary>
         public bool Pressed(DuelSlot s)
         {
             int b = Btn(s);
-            return b >= 0 && Choosing == null && !suppress[b] && RawPressed(b);
+            return b >= 0 && !ChoiceOpen && !suppress[b] && RawPressed(b);
         }
 
         // ───────── 画面に出す情報 ─────────
@@ -550,9 +569,8 @@ namespace Prototype
             if (player == null || player.Dead)
             {
                 Nearby = null;
-                Breaking = null;
                 StopCharge();
-                if (Choosing != null) EndChoice();
+                if (ChoiceOpen) EndChoice();
                 Frames.Clear();
                 Marks.Clear();
                 return;
@@ -615,7 +633,7 @@ namespace Prototype
             }
             if (a.charge > 0f)
             {
-                if (!can || Choosing != null)   // 付け先を選び始めたら溜めをやめる(ボタンが選ぶ側に回り、離したことになって撃たないように)
+                if (!can || ChoiceOpen)   // 付け先・分解を選び始めたら溜めをやめる(Held が数えなくなり、離したことになって撃たないように)
                 {
                     StopCharge();
                     return;
@@ -682,7 +700,7 @@ namespace Prototype
         /// △を押しながら、弾倉のある銃を撃つボタンを押した:その銃のリロードを始める(弾倉が満タン・もうリロード中なら何もしない)。
         /// どちらの場合も、押したボタンは離すまで撃つ・溜める・振るのに使わない(この押下で弾が出たり、L1 の溜め撃ちが始まったりしないように)。
         /// 押して覚えている射撃(先行入力)も忘れる。押したのが剣・盾・砲・弾倉のない銃のボタンなら何もしない(△+R1 の強攻撃などは DuelPlayer がそのまま読む)。
-        /// 撃てない間(振っている途中・回避中など)でも始められる。付け先を選んでいる間は Pressed が数えないので始めない。
+        /// 撃てない間(振っている途中・回避中など)でも始められる。選ぶ表示(付け先・分解)の間は Pressed が数えないので始めない。
         /// </summary>
         void TryManualReload()
         {

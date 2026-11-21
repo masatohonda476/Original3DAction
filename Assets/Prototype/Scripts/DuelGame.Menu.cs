@@ -265,6 +265,8 @@ namespace Prototype
             HelpRow(B(ProtoInput.Btn.EquipNow), $"武装を付ける → 付ける所のボタン(背中は {B(ProtoInput.Btn.Fly)})");
             HelpRow(B(ProtoInput.Btn.Stash), "武装を持つ(所持品へ)");
             HelpRow(B(ProtoInput.Btn.Break), "武装を分解(弾か回復)");
+            // 付け先・分解を選ぶ表示の取り消し(入ったのと同じボタンでもやめられる。選んでいる間に効くのは移動とカメラだけ)
+            HelpRow(B(ProtoInput.Btn.Back), "付け先・分解を選んでいる間:やめる");
             HelpRow(B(ProtoInput.Btn.EquipView), "メニュー(装備・所持品/操作方法)");
             HelpRow(B(ProtoInput.Btn.Restart), "最初からやり直す");
 

@@ -20,6 +20,8 @@ namespace Prototype
         public float jumpSpeed = 30f;
         [Tooltip("ジャンプで使う EN(回避は 30)。EN が少しでもあれば跳べ、足りない分はマイナスになる。スラスターなどの EN の倍率は掛かる")]
         public float jumpCost = 25f;
+        [Tooltip("ジャンプ中に敵の体の上に乗った・乗りそうなとき、水平に押し出す速さ(m/s)。頭の上に着地せず、滑り落ちる(落ちるまではジャンプ中のまま)。0 で押し出さない")]
+        public float slideOffSpeed = 20f;
 
         [Header("跳べる技・跳べない技(ジャンプ中だけの決まり。飛行中・地上は今までどおり、高さの差が機体の高さを超えたら届かない)")]
         [Tooltip("跳べる技(下段)は、ジャンプ中の自機の足もとが敵の足もとよりこの高さ(m)以上高ければ外れる。敵の大きさは掛けない(ボスでも同じ)。\n" +
@@ -42,7 +44,7 @@ namespace Prototype
                  "オフ(既定)は「ジャンプ中に、水平の間合いは当たる技を高さで外した」だけで成功")]
         public bool jumpAfterWindupOnly = false;
 
-        [Header("落下攻撃(ジャンプ中の空中で、近接のボタン。相手へ向かって降り、着地した瞬間に斬る。技の威力・届く範囲は DuelMoveSet.Drop)")]
+        [Header("落下攻撃(ジャンプ中に近接のボタン。相手へ向かって降り、着地した瞬間に斬る。技の威力・届く範囲は DuelMoveSet.Drop)")]
         [Tooltip("成功している間の落下攻撃が、跳び越えた敵の怯みゲージへためる量(兵卒の最大 10・剣士 25・ボス 70)。武装の倍率・下の「ふつうの殴り」の倍率は掛からない。\n" +
                  "敵が攻撃の後の隙の間に当てると、さらに 1.6 倍(DuelEnemy.recoverStaggerMul)")]
         public float dropSuccessStagger = 30f;
@@ -52,11 +54,11 @@ namespace Prototype
         public float dropMinFall = 25f;
         [Tooltip("相手とのすき間がこれ(m)以内なら、相手へ向かって降りる。遠ければ、向いている方の斜め下へ降りる")]
         public float dropRange = 26f;
-        [Tooltip("相手の手前、このすき間(m)の所へ降りる(相手の上には降りない)")]
+        [Tooltip("相手の手前、このすき間(m)の所へ降りる(相手の上には降りない。真上・近すぎる所から出したときも、ここまで水平に出てから・下がりながら降りる)")]
         public float dropStopGap = 1.5f;
-        [Tooltip("当てたときの着地の隙(秒)。この間は回避・次の攻撃で取り消せない")]
+        [Tooltip("当てたときの着地の隙(秒)。この間は回避・次の攻撃・ジャンプで取り消せない")]
         public float dropRecoverHit = 0.35f;
-        [Tooltip("外したときの着地の隙(秒)。この間は回避・次の攻撃で取り消せない")]
+        [Tooltip("外したときの着地の隙(秒)。この間は回避・次の攻撃・ジャンプで取り消せない")]
         public float dropRecoverMiss = 0.8f;
         [Tooltip("降り始めてからこの秒数たっても着地しなければ、その場で振る(引っかかったときの保険)")]
         public float dropMaxTime = 1.2f;

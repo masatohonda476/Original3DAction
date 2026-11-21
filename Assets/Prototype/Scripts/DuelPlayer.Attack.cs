@@ -54,7 +54,7 @@ namespace Prototype
             if (Overheated) return false;   // ENが0以下の間は攻撃できない(押したことは少しの間覚えておく)
             if (!Arms.CanMelee(pressHand)) { lightPressedAt = -10f; return false; }   // 押した後に剣を持ち替えた(素手でもなくなった)
             atkHand = pressHand;
-            if (CanDrop) { StartDrop(); return true; }   // ジャンプ中の空中なら落下攻撃(△ を押していても。DuelPlayer.Jump.cs)
+            if (CanDrop) { StartDrop(); return true; }   // ジャンプ中なら落下攻撃(踏み切った直後でも・△ を押していても。DuelPlayer.Jump.cs)
             if (HeavyPressed) { StartHeavy(0); return true; }   // △+攻撃は回避の直後でも強攻撃
             // 回避が終わってすぐなら回避斬り(素手は同じパンチ)
             if (now - dodgeEndAt <= dodgeSlashWindow) { StartDodgeSlash(); return true; }
@@ -190,8 +190,6 @@ namespace Prototype
                         // 両手の近接は R1/L1 で同じ武装(強攻撃の段は、ボタンが替わっても続ける)
                         bool sameBlade = sameHand || (SwordIn(atkHand) is { IsTwoHand: true } tw && SwordIn(pressHand) == tw);
                         atkHand = pressHand;
-                        // 地上で振り始めてからジャンプした:空中での次の一振りは落下攻撃
-                        if (CanDrop) { StartDrop(); return Vector3.zero; }
                         // △+攻撃:強攻撃。同じ剣の強攻撃の後なら次の段、それ以外は1段目
                         if (HeavyPressed) { StartHeavy(cur.heavy && sameBlade ? heavyStep + 1 : 0); return Vector3.zero; }
                         // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後・手が替わったら、その剣の1段目から
@@ -219,7 +217,7 @@ namespace Prototype
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
-                if (TooFarVertically(e)) continue;   // 上下に離れすぎていれば届かない
+                if (TooFarVertically(e) && !DropOnTopOf(e)) continue;   // 上下に離れすぎていれば届かない(落下攻撃を敵の体の上で振ったときは別)
                 Vector3 to = e.transform.position - transform.position;
                 to.y = 0f;
                 if (GapTo(e) > cur.reach) continue;

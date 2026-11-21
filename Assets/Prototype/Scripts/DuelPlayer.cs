@@ -157,6 +157,8 @@ namespace Prototype
         /// <summary>空中の横の速さ(慣性)。地上では毎フレームの速さと同じ。</summary>
         Vector3 airVel;
         bool flyHeldPrev;
+        /// <summary>落下攻撃の間に押していた ✗ は、一度離すまで飛行にもジャンプにも使わない(着地の隙の後、押したままで浮き上がらないように)。</summary>
+        bool flyNeedRelease;
         /// <summary>R1を押したときに△も押されていたか(強攻撃)。</summary>
         bool pressHeavy;
         /// <summary>今の強攻撃が何段目か(素の剣は 0=右→左 / 1=左→右)。</summary>
@@ -224,6 +226,8 @@ namespace Prototype
             BoostOn = false;
             combo = 0;
             airVel = Vector3.zero;
+            flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
+            slideOff = Vector3.zero;
             Target = null;   // ロックオンのオン・オフはそのまま(オンなら、出し直した所で次の敵を探す)
             lockLostFor = 0f;
             stepTravel = 0f;
@@ -303,14 +307,17 @@ namespace Prototype
             // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ブーストを切り替えない(○ は選ぶ表示の取り消し。DuelArms.ChoiceLocksInput)。
             // オンのまま選ぶ表示に入ったら、オンのまま(速い移動はそのまま効く)
             if (!Arms.ChoiceLocksInput && ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
-            // ✗:押したら自動でブーストオン。地上で押した瞬間はジャンプ(UpdateJump。上がっている間は飛行にしない)。
+            // ✗:押したら自動でブーストオン。地上で押していればジャンプ(UpdateJump。地上では飛ばない・上がっている間は飛行にしない)。
             // 空中で押している間・ジャンプの頂点を過ぎても押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
             // 選ぶ表示(付け先・分解)の間と、それを終えた時に押していた ✗ を離すまでは跳ばない・飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
-            bool flyHeld = ProtoInput.FlyHeld && !Arms.FlyBlocked;
-            bool flyPressed = flyHeld && !flyHeldPrev;
-            if (flyPressed && Energy > 0f) BoostOn = true;
-            flyHeldPrev = flyHeld;
-            bool mayFly = UpdateJump(now, flyHeld, flyPressed);
+            bool flyRaw = ProtoInput.FlyHeld && !Arms.FlyBlocked;
+            if (flyRaw && !flyHeldPrev && Energy > 0f) BoostOn = true;
+            flyHeldPrev = flyRaw;
+            // 落下攻撃の間(降下・振り・着地の隙)に押していた ✗ は、一度離すまで効かない(着地の隙の後に、押したままで跳んだり浮いたりしない)
+            if (!flyRaw) flyNeedRelease = false;
+            else if (dropping) flyNeedRelease = true;
+            bool flyHeld = flyRaw && !flyNeedRelease;
+            bool mayFly = UpdateJump(now, flyHeld);
             flying = mayFly && flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;
             riseSpeed = flyRiseSpeed * DashMul;
             riseAccel = flyRiseAccel;
@@ -390,7 +397,7 @@ namespace Prototype
                     {
                         dodgeEndAt = now;
                         atkHand = pressHand;   // 押したボタンの手の剣で斬る(素手ならその手のパンチ)
-                        if (CanDrop) StartDrop();   // ジャンプ中の空中なら落下攻撃
+                        if (CanDrop) StartDrop();   // ジャンプ中なら落下攻撃
                         else StartDodgeSlash();
                         break;
                     }
@@ -418,6 +425,7 @@ namespace Prototype
             }
             else airVel = vel;
 
+            vel = WithSlideOff(vel);   // ジャンプ中に敵の体の上に乗ったら、水平に押し出して滑り落とす(UpdateJump。慣性には入れない)
             Vector3 before = transform.position;
             Move(vel, dt);
             RecordFootsteps(before, dt, worldMove.sqrMagnitude > 0.02f);

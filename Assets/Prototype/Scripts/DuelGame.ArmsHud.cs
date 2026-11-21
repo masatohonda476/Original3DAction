@@ -120,6 +120,11 @@ namespace Prototype
 
         /// <summary>素手のときに、右手・左手のセルに出す名前。</summary>
         const string BareName = "素手";
+        /// <summary>
+        /// セルのいちばん上の行(左にボタン名、右に状態)の文字の枠の高さ。高さ 16 では「両手持ち」の下半分が切れて見えた
+        /// (同じ字の大きさで高さ 18 の重さの行は切れていない)ので、余裕を持たせる。
+        /// </summary>
+        const float TinyRowH = 20f;
 
         void ArmCell(DuelArms arms, Rect r, DuelSlot slot)
         {
@@ -243,10 +248,10 @@ namespace Prototype
                     _ => new Color(1f, 1f, 1f, 0.5f),
                 };
                 // 武装ハントは中央寄せ。キーボードのボタン名(「右クリック」など)と重ならないよう右に寄せる
-                GUI.Label(new Rect(r.x, r.y + 3f, r.width - 8f, 16f), cellStatus[i], cellTinyRight);
+                GUI.Label(new Rect(r.x, r.y + 3f, r.width - 8f, TinyRowH), cellStatus[i], cellTinyRight);
             }
             GUI.color = new Color(1f, 1f, 1f, 0.75f);
-            GUI.Label(new Rect(r.x + 8f, r.y + 3f, 90f, 16f), cellBtn[i], cellTiny);
+            GUI.Label(new Rect(r.x + 8f, r.y + 3f, 90f, TinyRowH), cellBtn[i], cellTiny);
             if (w != null) Chip(new Rect(r.x + 8f, r.y + 23f, 10f, 10f), w.Color);
             GUI.color = bare ? new Color(1f, 1f, 1f, 0.85f) : w == null ? new Color(1f, 1f, 1f, 0.4f) : twoL ? new Color(1f, 1f, 1f, 0.85f) : Color.white;
             // 両手持ちの L1 の技名は長いことがあるので、少し小さい字で

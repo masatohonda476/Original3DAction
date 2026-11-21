@@ -13,11 +13,18 @@ namespace Prototype
     ///   昇降機の竪穴(細く高い。足場と止まった昇降機の箱を上る)→ 船首の外板(開けた外の斜面)→ 艦橋の下(ボスの前の群れ)→
     ///   頭頂部の大ホール(天井が裂けている。ボス)。
     /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
-    /// セーブポイント(光る柱)に触れると再開地点が変わる。撃墜されたら最後に触れたセーブポイントから再開し、
+    /// セーブポイント(光る柱)に触れると再開地点が変わる(HP・ガードは回復しない。作者「セーブポイントでは回復できないようにしてください」)。
+    /// 撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
+    /// ボス戦(作者「ボス戦に入ったら入口を閉じ、死亡したら入る前の弾薬の状態で復活するようにしてください」):自機が大ホールに入りきったら入口の扉が閉じ、
+    /// そのときの共通の弾と武装ごとの弾倉の残りを控える(DuelArms.KeepAmmo)。ボスを倒すか、やられて再開すると扉は開く(入り直すとまた閉じる)。
+    /// ボスは扉が閉じている間だけダメージを受ける(作者「ボス部屋の外からの攻撃は0ダメージにしてください」)。
+    /// ボス以外の敵は大ホールへ入れず、入口の手前で止まる(作者「敵はボス部屋に入れないようにしてください」。DuelFighter.maxZ)。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
     /// 「重厚→無双」の弧ひとつ分:倒した敵がときどき武装を落とし(上ほどレア度の高い武装)、十字右で付け替えながら強くなる(DuelArms)。
-    /// 撃墜されても武装・所持品・共通の弾は残る。ボスを倒すと爆発で武装も所持品も全部消し飛び、弾も0になってクリア。
+    /// 撃墜されても武装・所持品・共通の弾は残る。ただしボス戦の間にやられて再開したときは、共通の弾と弾倉の残りだけを扉が閉じたときに戻し、
+    /// 付けている銃を共通の弾でリロード済みにする(武装・所持品はやられた時点のまま。ボス戦の間に分解した武装は戻らず、分解で得た弾も残らない)。
+    /// ボスを倒すと爆発で武装も所持品も全部消し飛び、弾も0になってクリア。
     /// 地形と敵の配置(Define)とシーンビューのギズモは DuelStage.Layout.cs。
     /// </summary>
     public partial class DuelStage : MonoBehaviour
@@ -43,8 +50,6 @@ namespace Prototype
         [Header("セーブポイント")]
         [Tooltip("触れたとみなす水平の距離(m)")]
         public float saveRadius = 14f;
-        [Tooltip("触れたら HP とガードを満タンにする(作者に未確認。切るなら外す)")]
-        public bool saveHeals = true;
         [Tooltip("撃墜されてから、セーブポイントで再開するまでの秒数")]
         public float respawnDelay = 2.5f;
 
@@ -85,12 +90,22 @@ namespace Prototype
         public float fallLimitY = -30f;
         public DuelEnemy.BossMoves bossMoves = new();
 
+        [Header("ボス戦の入口の扉(大ホールの入口。ボス戦の間だけ閉じる。数値は仮)")]
+        [Tooltip("自機が、扉の内側の面から「機体の半径 + この距離(m)」より奥へ入ったら扉を閉じる(閉じた扉に挟まれない・外に取り残されない余白)")]
+        public float gateClearance = 1f;
+        [Tooltip("扉が下りきる・上がりきるまでの秒数(見た目だけ。機体はこれを待たず、閉じた瞬間から通れない)。0 ならすぐ")]
+        public float gateTime = 0.35f;
+
         public enum Kind { Grunt, Duelist, Boss }
 
         /// <summary>壁の厚み。</summary>
         const float T = 3f;
         /// <summary>見えない天井の高さ。見えない壁はここまで伸びる(飛んで越えられない)。</summary>
         const float CeilingY = 450f;
+        /// <summary>ボス戦の入口の扉の厚み(壁の厚み T より薄く、壁の中ほどに置く。壁の面と同じ位置に面が来ない)と、開口の縁から壁・床へ埋める幅。</summary>
+        const float GateThick = 2f, GateInset = 0.2f;
+        /// <summary>機体を扉の面から離しておく余白(m。機体の半径に足す。当たり判定の皮 0.2m より少し広く)。</summary>
+        const float GateSkin = 0.3f;
 
         static readonly Color HullColor = new(0.36f, 0.38f, 0.42f), WallColor = new(0.45f, 0.46f, 0.48f),
             FloorColor = new(0.34f, 0.35f, 0.36f), DebrisColor = new(0.5f, 0.46f, 0.4f), FurnitureColor = new(0.55f, 0.5f, 0.42f),
@@ -144,6 +159,8 @@ namespace Prototype
         readonly List<Area> places = new();
         readonly List<SavePoint> saves = new();
         Bounds bossRoom;
+        /// <summary>ボス戦の入口の扉が、閉じたときに占める範囲(BossHall で決める)。</summary>
+        Bounds bossGate;
 
         public Vector3 StartPos { get; private set; }
         public Quaternion StartRot { get; private set; } = Quaternion.identity;
@@ -154,6 +171,20 @@ namespace Prototype
         SavePoint currentSave;
         float respawnAt = -1f, beganAt;
         bool built;
+        /// <summary>
+        /// ボス戦の間(入口の扉が閉じている)。自機が大ホールに入りきったら立ち、ボスを倒す・やられて(落ちて)再開すると下りる。
+        /// 立っている間の再開だけ、弾と弾倉を扉が閉じたときに戻す。
+        /// </summary>
+        bool bossFight;
+        /// <summary>
+        /// 扉の見える板(ふつうの壁と同じ層。開いている間は上の壁の中へ引っ込めて消す)と、その当たり判定(閉じきっている間だけ効かせる)、
+        /// 機体だけを止める見えない壁(閉じている間だけ出す)。
+        /// </summary>
+        Transform gateDoor;
+        Collider gateDoorCollider;
+        GameObject gateBarrier;
+        /// <summary>扉の下り具合(0 = 開ききった、1 = 閉じきった)。</summary>
+        float gateShut;
 
         /// <summary>ボスを倒した。</summary>
         public bool Cleared { get; private set; }
@@ -293,12 +324,110 @@ namespace Prototype
                     }
                 }
             }
+            BuildBossGate(root);
             // 見えない天井
             var ceil = new GameObject("Ceiling") { layer = DuelFighter.FighterLayer };
             ceil.transform.SetParent(root, false);
             ceil.transform.position = new Vector3(all.center.x, CeilingY + 1f, all.center.z);
             ceil.AddComponent<BoxCollider>().size = new Vector3(all.size.x + 40f, 2f, all.size.z + 40f);
             Physics.SyncTransforms();   // 置いたばかりの地形に、すぐレイ(足もとの高さ・敵の目線)が当たるように
+        }
+
+        // ───────── ボス戦の入口の扉 ─────────
+
+        /// <summary>
+        /// ボス戦の入口の扉を作る(開いた状態で始める)。Define の箱(blocks)には入れない:開け閉めするので参照が要り、面をずらす処理にも掛けない。
+        ///   見える板:ふつうの壁と同じ箱(既定の層・当たり判定つき)。閉じきっている間は、機体・弾・見通し・カメラの壁よけ・透かしがふつうの壁と同じに効く。
+        ///     閉じるときは開口の上の壁の中から下り、開くときは上の壁の中へ引っ込む(壁より薄いので、壁の中にある間は見えない)。
+        ///     動いている間(下りる・上がる途中)は当たり判定を切り、見た目だけにする(PlaceGate):動く板の底面をカメラの天井よけ
+        ///     (DuelCamera.FloorCeilingLimit)が拾って、カメラが急に前へ寄らないように(作者は 3D 酔いする)。その間の弾・見通しは板を素通りする。
+        ///   見えない壁:閉じた位置に固定の、機体だけが当たる壁(Barrier と同じ層)。板が下りきるのを待たず、閉じた瞬間から機体を通さない
+        ///     (下りてくる板の下をくぐる・板に挟まれることがない)。
+        /// </summary>
+        void BuildBossGate(Transform root)
+        {
+            var door = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            door.name = "BossGate";
+            door.transform.SetParent(root, false);
+            door.transform.localScale = bossGate.size;
+            var r = door.GetComponent<Renderer>();
+            r.sharedMaterial = ProtoFx.Lit(DoorColor);
+            if (!terrainShadows) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            gateDoor = door.transform;
+            gateDoorCollider = door.GetComponent<Collider>();
+            gateBarrier = new GameObject("BossGateBarrier") { layer = DuelFighter.FighterLayer };
+            gateBarrier.transform.SetParent(root, false);
+            gateBarrier.transform.position = bossGate.center;
+            gateBarrier.AddComponent<BoxCollider>().size = bossGate.size;
+            gateBarrier.SetActive(false);
+            gateShut = 0f;
+            PlaceGate();
+        }
+
+        /// <summary>
+        /// 扉の見える板を、下り具合(gateShut)の位置に置く。開ききったら消す。板の当たり判定は、閉じきっていて、ボス戦の間だけ効かせる
+        /// (動いている間は見た目だけ。開け始めたら、板が動き出す前でもすぐ切る)。
+        /// </summary>
+        void PlaceGate()
+        {
+            gateDoor.position = bossGate.center + Vector3.up * (bossGate.size.y * (1f - gateShut));
+            gateDoor.gameObject.SetActive(gateShut > 0f);
+            gateDoorCollider.enabled = bossFight && gateShut >= 1f;
+        }
+
+        /// <summary>扉の見える板を、閉じる・開くほうへ動かす(gateTime 秒で端から端まで。画面は揺らさない)。</summary>
+        void TickGate(float dt)
+        {
+            float target = bossFight ? 1f : 0f;
+            if (gateShut == target) return;
+            gateShut = gateTime > 0f ? Mathf.MoveTowards(gateShut, target, dt / gateTime) : target;
+            PlaceGate();
+        }
+
+        /// <summary>
+        /// ボス戦を始める:入口の扉を閉じ、そのときの共通の弾と弾倉の残りを控える(やられて再開するときに戻す)。
+        /// 呼ぶのは、自機が扉の内側の面から「機体の半径 + gateClearance」より奥にいるときだけ(Update)なので、自機は扉に掛からず、必ず内側にいる。
+        /// ここからボスにダメージが入る(SetBossInvulnerable)。
+        /// 扉に重なっている機体は押し出す(閉じた扉に埋まらないように):入口に寄ってきたボスは今いる側(奥)へ。ボス以外の敵は入口の手前で止まるので
+        /// (DuelFighter.maxZ)重ならないはずだが、重なっていたら必ず手前(通路)側へ出す(奥へ出すと、中の自機に重なる)。
+        /// </summary>
+        void BeginBossFight()
+        {
+            bossFight = true;
+            gateBarrier.SetActive(true);
+            SetBossInvulnerable(false);
+            foreach (var e in game.Enemies)
+            {
+                if (e == null || e.Dead) continue;
+                Vector3 q = e.transform.position;
+                float r = e.Radius + GateSkin;
+                if (q.x <= bossGate.min.x - r || q.x >= bossGate.max.x + r || q.z <= bossGate.min.z - r || q.z >= bossGate.max.z + r) continue;
+                if (q.y >= bossGate.max.y || q.y + game.mechHeight * e.Size <= bossGate.min.y) continue;
+                q.z = e.IsBoss && q.z >= bossGate.center.z ? bossGate.max.z + r : bossGate.min.z - r;
+                e.Teleport(q, e.transform.rotation);
+            }
+            player.Arms.KeepAmmo();
+        }
+
+        /// <summary>
+        /// ボス戦を終える(ボスを倒した・やられて再開した):入口の扉を開ける(板の当たり判定はすぐ切る)。
+        /// ボスは、次に扉が閉じるまでまたダメージを受けなくなる。
+        /// </summary>
+        void EndBossFight()
+        {
+            bossFight = false;
+            gateBarrier.SetActive(false);
+            gateDoorCollider.enabled = false;
+            SetBossInvulnerable(true);
+        }
+
+        /// <summary>
+        /// ボスがダメージを受けないかを切り替える(作者「ボス部屋の外からの攻撃は0ダメージにしてください」):
+        /// 入口の扉が閉じている間(ボス戦の間)だけダメージが入り、それ以外(入る前・入口に立って撃つ・やられて再開してから入り直すまで)は 0。
+        /// </summary>
+        void SetBossInvulnerable(bool on)
+        {
+            if (bossSpawn != null && bossSpawn.enemy != null) bossSpawn.enemy.invulnerable = on;
         }
 
         /// <summary>セーブポイントの目印:細く光る柱(当たり判定なし)と、まわりを照らす小さな明かり。</summary>
@@ -362,7 +491,13 @@ namespace Prototype
             e.homeRotation = rot;
             e.leashRadius = s.kind == Kind.Boss ? bossLeash : s.leash;
             e.ignoreLeashRange = s.kind == Kind.Boss;   // ボスは持ち場から離れすぎで発覚を切らない(見失いだけで切る)
-            if (s.kind == Kind.Boss) e.rangedTakenMul = bossRangedTaken;
+            if (s.kind == Kind.Boss)
+            {
+                e.rangedTakenMul = bossRangedTaken;
+                e.invulnerable = true;   // 入口の扉が閉じる(ボス戦が始まる)まではダメージを受けない(SetBossInvulnerable)
+            }
+            // ボス以外の敵は、大ホールの入口(扉の手前の面)より奥へ入れない(作者「敵はボス部屋に入れないようにしてください」。扉が開いていても)
+            else e.maxZ = bossGate.min.z - e.Radius - GateSkin;
             e.UseSenses(senses);
             s.enemy = e;
             game.Enemies.Add(e);
@@ -383,6 +518,7 @@ namespace Prototype
                 BannerAt += udt;
                 return;
             }
+            TickGate(Time.deltaTime);
             if (respawnAt > 0f && Time.unscaledTime >= respawnAt)
             {
                 respawnAt = -1f;
@@ -413,13 +549,16 @@ namespace Prototype
 
             // ボス:大ホールに入っている間は、気づいて戦う(見失わない)
             var boss = bossSpawn != null ? bossSpawn.enemy : null;
-            if (boss != null && !boss.Dead && bossRoom.Contains(p)) boss.KeepEngaged();
+            if (boss == null || boss.Dead || !bossRoom.Contains(p)) return;
+            boss.KeepEngaged();
+            // 入口の扉より十分奥まで入ったら、扉を閉じてボス戦を始める(入口に立っているだけでは閉じない)
+            if (!bossFight && p.z >= bossGate.max.z + player.Radius + gateClearance) BeginBossFight();
         }
 
+        /// <summary>セーブポイントに触れた:再開地点を変えて知らせる(HP・ガードは回復しない)。</summary>
         void Touch(SavePoint sp)
         {
             SetCurrentSave(sp);
-            if (saveHeals) player.RestoreHP();
             ShowBanner("セーブしました");
         }
 
@@ -441,6 +580,8 @@ namespace Prototype
         /// <summary>
         /// 最後に触れたセーブポイントから再開する。倒した敵はそのまま。生きている敵は HP を戻して持ち場へ帰し、発覚・警戒を切る
         /// (ボス戦の途中でも、ボスは HP 満タンで持ち場へ戻る)。
+        /// ボス戦の間(入口の扉が閉じている間)の再開なら、扉を開け(再開地点は扉の外)、共通の弾と弾倉の残りを扉が閉じたときに戻して、
+        /// 付けている銃をリロード済みにする(DuelArms.RestoreKeptAmmo。落下での再開も同じ)。ボス戦でなければ、弾はやられた時点のまま。
         /// </summary>
         void Respawn()
         {
@@ -448,6 +589,11 @@ namespace Prototype
                 if (s.enemy != null && !s.enemy.Dead) s.enemy.ResetToHome();
             var sp = currentSave ?? saves[0];
             player.Respawn(sp.RespawnPos, sp.RespawnRot);
+            if (bossFight)
+            {
+                EndBossFight();
+                player.Arms.RestoreKeptAmmo();
+            }
             foreach (var other in saves) other.inside = other == sp;   // 再開した所で、もう一度触れたことにしない
             var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;
             if (cam != null) cam.Snap();   // カメラを補間せずに合わせる(大きく流れて向きが急に回らないように)
@@ -465,6 +611,8 @@ namespace Prototype
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
             game.Log("ボスを倒した");
+            EndBossFight();                  // 入口の扉を開ける
+            if (player != null) player.Arms.ForgetKeptAmmo();   // 控えた弾は捨てる(この後の再開で古い弾が戻らないように)
             DuelLoot.ClearAll();   // 床の武装も消す(消し飛んだ後にまた付けられないように)
             StartCoroutine(BossBlast(e.Chest, e.Size));
         }

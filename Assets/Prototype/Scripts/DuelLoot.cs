@@ -28,6 +28,8 @@ namespace Prototype
         public DuelArms.Memo Memo { get; set; } = DuelArms.Memo.Fresh;
 
         static readonly List<DuelLoot> all = new();
+        /// <summary>落ちている武装の全部(消えた直後の null が混じることがある。ボス戦の前の弾倉の残りを控える・戻すのに DuelArms が見る)。</summary>
+        public static IReadOnlyList<DuelLoot> All => all;
         Transform visual;
         float vy, t;
         Vector3 kick;

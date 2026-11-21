@@ -355,9 +355,13 @@ namespace Prototype
             return (player.transform.position - transform.position).sqrMagnitude > r * r;
         }
 
-        /// <summary>持ち場の半径(leashRadius)の外へ向かう分の速さを消す。</summary>
+        /// <summary>
+        /// 持ち場の半径(leashRadius)の外へ向かう分の速さを消す。奥の限り(maxZ。大ホールの入口の手前)に着いていれば、奥へ向かう分の速さも消す
+        /// (その先へは Move が進ませないので、見えない線へ向かって走り続ける・噴射炎を出し続ける見た目にならないように)。
+        /// </summary>
         Vector3 LimitToLeash(Vector3 vel)
         {
+            if (vel.z > 0f && transform.position.z >= maxZ - 0.05f) vel.z = 0f;
             if (leashRadius <= 0f) return vel;
             Vector3 off = transform.position - home;
             off.y = 0f;
@@ -369,6 +373,12 @@ namespace Prototype
 
         /// <summary>射撃(自機の肩の武装)で受けるダメージと怯みの倍率(ボスの厚い装甲。1 なら減らない)。ステージが置くときに決める。</summary>
         [HideInInspector] public float rangedTakenMul = 1f;
+
+        /// <summary>
+        /// 攻撃(近接・射撃・ミサイル)が当たっても、ダメージ・怯み・押し返しを受けない。気づきはする(TakeHit)。
+        /// ボスが、入口の扉が閉じる(ボス戦が始まる)までの間これになる(DuelStage.SetBossInvulnerable)。
+        /// </summary>
+        [HideInInspector] public bool invulnerable;
 
         /// <summary>射撃が当たった(rangedTakenMul を掛けてから TakeHit)。</summary>
         public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
@@ -387,6 +397,7 @@ namespace Prototype
             if (Dead) return;
             Engage();   // 斬られたら発覚(見通せる近くの仲間にも伝わる)
             if (senses != null) holdEngagedUntil = Time.time + senses.holdAfterHit;   // 斬られた直後は、持ち場から遠くても発覚を切らない
+            if (invulnerable) return;   // ダメージ・怯み・押し返しなし(ダメージの数字も、被弾の白い光・のけぞりも出さない)
             bool broken = Current == State.Flinch && !ranged;   // 崩れた敵を斬った
             if (broken) dmg *= game.brokenMeleeDamageMul;
             HP -= dmg;

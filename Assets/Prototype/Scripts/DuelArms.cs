@@ -49,7 +49,9 @@ namespace Prototype
     ///   同じ所の今の武装は、拾った武装のあった所に置く(置いた直後から拾い直せる。素の剣も。ただし拾う案内の優先度は低く、
     ///   近くにふつうの武装があればそちらが先に対象になる。自機が拾える範囲から一度出ると戻る。DuelLoot.LowerPriority)。装備の確認の画面から、外して持つ・所持品を付ける・
     ///   足もとの床に捨てる(Drop)・分解する。
-    /// 撃墜されても武装・所持品・弾は残る。ボスを倒すと爆発で全部消し飛ぶ(LoseAll。両手持ちも消え、右手は素の剣、左手は空に戻る。所持品も消え、弾は0)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
+    /// 撃墜されても武装・所持品・弾は残る。ただしボス戦の間(入口の扉が閉じている間。DuelStage)にやられて再開したときは、共通の弾と弾倉の残りだけを
+    ///   扉が閉じたときに戻し、付けている銃を共通の弾でリロード済みにする(KeepAmmo / RestoreKeptAmmo。武装・所持品はやられた時点のまま)。
+    /// ボスを倒すと爆発で全部消し飛ぶ(LoseAll。両手持ちも消え、右手は素の剣、左手は空に戻る。所持品も消え、弾は0)。自機の素の性能(HP・EN・怯み)は変えない。画面は揺らさない。
     /// 両手持ち(両手の近接・両手の銃・砲):右手と左手の両方の所に同じ武装を入れる。R1 が主の技、L1 が別の技(近接は別の振り、射撃は別の撃ち方)。
     ///   付け先を選ぶ表示で R1/L1 のどちらを押しても両手に付き、それまでの右手・左手の武装は拾った所に置く(素の剣も)。
     ///   両手持ちのまま片手の武装を付けると、両手持ちは外れて置かれ、もう片方の手は空になる。捨てると両手が空く。盾がないのでガードはできない。
@@ -84,6 +86,9 @@ namespace Prototype
         /// <summary>弾が受け継ぐ自機の速度(今の速度へ DuelArmsRules.inheritSmoothTime 秒ほどで追いつく。Fly と十字の見込み PredictShot で同じ値を使う)。</summary>
         Vector3 inheritVel;
         readonly int[] mag = new int[StateCount];
+        /// <summary>撃つ状態ごとの、付けている武装の個体の番号(Memo.id。0 = まだ付けていない)。</summary>
+        readonly int[] uid = new int[StateCount];
+        int nextUid;
         /// <summary>撃つ状態ごとの反動の広がり(度。spread に足す)。撃つたびに広がり、撃つのをやめると戻る。</summary>
         readonly float[] bloom = new float[StateCount];
 
@@ -149,6 +154,11 @@ namespace Prototype
         {
             public int mag;
             public float ready, altReady;
+            /// <summary>
+            /// 個体の番号(0 = まだ付けていない)。同じ種類の武装は同じ DuelWeapon を指すので、個体を見分けるのはこの番号だけ。
+            /// ボス戦の前の弾倉の残りを控えるとき(KeepAmmo)に付け、付ける・外す・持つ・床に置くの間ついて回る(付けている間は uid)。
+            /// </summary>
+            public int id;
             /// <summary>まだ撃っていない武装(敵が落とした武装など。弾倉は満タン)。</summary>
             public static readonly Memo Fresh = new() { mag = -1 };
         }
@@ -465,15 +475,15 @@ namespace Prototype
         /// <summary>
         /// リロードを始める(弾倉のある銃で、満タンでもリロード中でもなく、共通の弾で1発以上詰められるとき)。
         /// 詰める分(足りなければ詰められる分だけ)を、始めたときに共通の弾から取り置く(終わったら弾倉へ。外す・捨てるなどでやめたら返す。ResetState)。
-        /// 始めたら true。
+        /// 始めたら true。quiet なら、共通の弾が1発分もなくても知らせない(再開のときのリロード。RestoreKeptAmmo)。
         /// </summary>
-        bool StartReload(int i, DuelWeapon w)
+        bool StartReload(int i, DuelWeapon w, bool quiet = false)
         {
             if (w == null || w.magazine <= 0 || reload[i] > 0f || mag[i] >= w.magazine) return false;
             int n = Loadable(w, w.magazine - mag[i]);
             if (n <= 0)
             {
-                OutOfAmmo();
+                if (!quiet) OutOfAmmo();
                 return false;
             }
             resN[i] = n;
@@ -481,6 +491,18 @@ namespace Prototype
             Ammo = Mathf.Max(0f, Ammo - resAmmo[i]);
             reload[i] = w.reload;
             return true;
+        }
+
+        /// <summary>
+        /// リロードを終える:始めたときに取り置いた分を弾倉へ詰める(2つの銃が同時にリロードしても、先に終わった方が弾を使い切らないように、
+        /// 共通の弾は始めたときに引いてある)。
+        /// </summary>
+        void EndReload(int i, DuelWeapon w)
+        {
+            if (w != null) mag[i] = Mathf.Min(w.magazine, mag[i] + resN[i]);
+            resN[i] = 0;
+            resAmmo[i] = 0f;
+            reload[i] = 0f;
         }
 
         /// <summary>取り置いた弾を返す(上限まで)。</summary>
@@ -551,13 +573,7 @@ namespace Prototype
                 if (reload[i] > 0f)
                 {
                     reload[i] -= dt;
-                    if (reload[i] <= 0f)
-                    {
-                        // 始めたときに取り置いた分を詰める(2つの銃が同時にリロードしても、先に終わった方が弾を使い切らないように)
-                        mag[i] = Mathf.Min(w.magazine, mag[i] + resN[i]);
-                        resN[i] = 0;
-                        resAmmo[i] = 0f;
-                    }
+                    if (reload[i] <= 0f) EndReload(i, w);
                 }
                 // 待てば満タンに戻る自動リロードはない(作者「待てば自動リロードは消してください」)。撃ちかけの弾倉は △+撃つボタンで詰め直す
             }

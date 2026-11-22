@@ -5,7 +5,7 @@ namespace Prototype
 {
     /// <summary>
     /// 敵(人型の剣士メカ)。中距離で回り込みながら間合いを測り、距離に応じて技を選ぶ。
-    /// 横薙ぎ(ガード可・2連まで)/ 叩きつけ(ガード不可)/ 踏み込み突き(離れた所から一気に詰める)。
+    /// 横薙ぎ(2連まで)/ 叩きつけ/ 踏み込み突き(離れた所から一気に詰める)。
     /// どの技かは予備動作の姿勢だけで分かるようにする(色・技名・地面の印は出さない)。
     ///   横薙ぎ:剣を上げつつ上半身を横へひねって溜める / 叩きつけ:剣を高く掲げ、のけぞって浮き上がる(一番大きく長い)/
     ///   突き:低く前かがみに構え、少し後ろへ下がって溜める /
@@ -45,7 +45,7 @@ namespace Prototype
             public float approachSpeed = 15f, strafeSpeed = 7f, keepDistance = 12f;
             /// <summary>横薙ぎが2発目へ続く確率。</summary>
             public float sweepChain = 0.5f;
-            /// <summary>叩きつけ(ガード不可)を使うか。</summary>
+            /// <summary>叩きつけを使うか。</summary>
             public bool canSlam = true;
             /// <summary>ダッシュの速さ(離れているときに詰める・横へ回り込む)と、間合いを測っている間に横へダッシュする頻度(1秒あたり)。</summary>
             public float dashSpeed = 34f, sideDashRate = 0.25f;
@@ -71,24 +71,24 @@ namespace Prototype
             [Tooltip("予備動作:沈んで左へひねり、剣を担ぐ(秒)")] public float wideWindup = 1.1f;
             [Tooltip("1回転にかける時間(秒)。半分回ったところで当たる")] public float wideSpin = 0.45f;
             [Tooltip("届くすき間の距離(大きさの倍率が掛かる)")] public float wideReach = 11f;
-            public float wideDamage = 20f, wideGuardCost = 60f, wideStagger = 22f, wideKnock = 26f;
+            public float wideDamage = 20f, wideStagger = 22f, wideKnock = 26f;
             [Tooltip("振り終わってからの隙(秒)")] public float wideRecover = 1.0f;
 
             [Header("突進(遠くから一直線に突っ込む)")]
             [Tooltip("予備動作:剣を担いで前かがみになり、じりじり下がる(秒)")] public float chargeWindup = 0.9f;
             [Tooltip("予備動作の最後に向きを固める時間(秒)。この間に横へ避ければ外れる")] public float chargeCommit = 0.3f;
             public float chargeSpeed = 60f, chargeDistance = 70f;
-            public float chargeDamage = 22f, chargeGuardCost = 55f, chargeStagger = 22f, chargeKnock = 30f;
+            public float chargeDamage = 22f, chargeStagger = 22f, chargeKnock = 30f;
             [Tooltip("突っ込み終えた後の隙(秒) / 壁にぶつかって止まったときの隙(秒)")] public float chargeRecover = 1.2f, chargeWallRecover = 2.0f;
 
             [Header("跳躍叩きつけ(跳んで叩きつけ、衝撃波を広げる)")]
             [Tooltip("予備動作:深くしゃがみ込む(秒)")] public float leapWindup = 0.8f;
             [Tooltip("跳んでから落ちるまで(秒)")] public float leapAirTime = 1.5f;
             [Tooltip("跳べる横の距離の上限(m)")] public float leapMaxDistance = 55f;
-            [Tooltip("落ちた所の直撃の半径(大きさの倍率が掛かる)。ガード不可")] public float leapImpactRadius = 5f;
+            [Tooltip("落ちた所の直撃の半径(大きさの倍率が掛かる)")] public float leapImpactRadius = 5f;
             public float leapDamage = 28f, leapStagger = 30f, leapKnock = 28f;
             [Tooltip("衝撃波の広がる速さ(m/s)・最大の半径(m)・輪の太さ(m)")] public float waveSpeed = 38f, waveMaxRadius = 45f, waveWidth = 3f;
-            [Tooltip("衝撃波(ガード可。空中にいれば当たらない)")] public float waveDamage = 12f, waveGuardCost = 30f, waveStagger = 15f, waveKnock = 14f;
+            [Tooltip("衝撃波(空中にいれば当たらない)")] public float waveDamage = 12f, waveStagger = 15f, waveKnock = 14f;
             [Tooltip("着地してからの隙(秒)")] public float leapRecover = 1.4f;
 
             [Header("三段斬り(HPが半分を切ってから使い出す。踏み込みながら右・左・縦の3連撃)")]
@@ -98,8 +98,8 @@ namespace Prototype
             [Tooltip("2段目・3段目の振りかぶり(秒)。この間に前へ踏み込む")] public float flurryStepWindup = 0.45f;
             [Tooltip("2段目・3段目で踏み込む距離(m)")] public float flurryLunge = 6f;
             [Tooltip("届くすき間の距離(大きさの倍率が掛かる)と、正面からの角度(度)")] public float flurryReach = 8f, flurryArc = 70f;
-            [Tooltip("1・2段目(横の斬り。ガード可)")] public float flurryDamage = 14f, flurryGuardCost = 25f, flurryStagger = 10f, flurryKnock = 10f;
-            [Tooltip("3段目(縦の振り下ろし。ガード可だが重い)")] public float flurryLastDamage = 22f, flurryLastGuardCost = 40f, flurryLastStagger = 20f, flurryLastKnock = 24f;
+            [Tooltip("1・2段目(横の斬り)")] public float flurryDamage = 14f, flurryStagger = 10f, flurryKnock = 10f;
+            [Tooltip("3段目(縦の振り下ろし。重い一撃)")] public float flurryLastDamage = 22f, flurryLastStagger = 20f, flurryLastKnock = 24f;
             [Tooltip("3段目の後の隙(秒)")] public float flurryRecover = 1.6f;
         }
 
@@ -376,7 +376,7 @@ namespace Prototype
 
         // ───────── 被弾 ─────────
 
-        /// <summary>射撃(自機の肩の武装)で受けるダメージと怯みの倍率(ボスの厚い装甲。1 なら減らない)。ステージが置くときに決める。</summary>
+        /// <summary>自機の射撃で受けるダメージと怯みの倍率(ボスの厚い装甲。1 なら減らない)。ステージが置くときに決める。</summary>
         [HideInInspector] public float rangedTakenMul = 1f;
 
         /// <summary>
@@ -397,7 +397,7 @@ namespace Prototype
         /// (knock の大きい射撃は1発ごとに軽く押し返すだけ)。最後に崩すのは近接だけ。
         /// 崩れている(怯んでいる)敵に近接を当てると、ダメージが brokenMeleeDamageMul 倍(数字は橙)。
         /// </summary>
-        public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime, bool ranged = false)
+        public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime, bool ranged = false, bool forceKnock = false)
         {
             if (Dead) return;
             Engage();   // 斬られたら発覚(見通せる近くの仲間にも伝わる)
@@ -410,6 +410,11 @@ namespace Prototype
             Flash(Color.white, 0.08f);
             Jolt(-7f);
             if (HP <= 0f) { Die(); return; }
+            if (forceKnock && Current != State.Flinch)   // 崩れた敵は押し出さない(致命攻撃の間合いから外さない)
+            {
+                Vector3 shove = knock * Kind.knockMul;
+                if (shove.sqrMagnitude > push.sqrMagnitude) Knockback(shove);
+            }
             if (Current == State.Flinch) return;
 
             float mul = Current == State.Recover ? recoverStaggerMul : 1f;   // 攻撃の後の隙に当てると多くたまる

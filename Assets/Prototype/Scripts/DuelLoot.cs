@@ -6,8 +6,8 @@ namespace Prototype
 {
     /// <summary>
     /// 落ちている武装(ステージだけ)。倒した敵が落とし、真下の床まで落ちて、レア度の色の光の柱を立てる。時間では消えない。
-    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で付ける(手・肩は付け先を R1/L1・R2/L2 で選ぶ。DuelArms)、
-    /// 十字下(G)で所持品へ、十字上(F)で分解(弾か回復)。無視すれば残る。
+    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で入れ替えを確認し、もう一度押して同じ種類の枠に付ける。
+    /// 十字上(F)で解体(弾か回復)。無視すれば残る。
     /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。置いた直後から拾えるが、拾う案内の優先度は低い
     /// (LowerPriority。作者「落とした後すぐ触れるようにはしてほしい(優先度を下げるだけ)」):拾える範囲にふつうの武装があればそちらが対象で、
     /// なければ外した武装が対象になる。優先度が戻るのは、自機がその武装の拾える範囲から一度出たときだけ(時間では戻さない。RestorePriorities)。
@@ -22,10 +22,10 @@ namespace Prototype
 
         public DuelWeapon Weapon { get; private set; }
         /// <summary>
-        /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした武装はまっさら(弾倉は満タン)。捨てた・付け替えで外した武装は、撃ちかけの残りと装填待ちを覚えておく
+        /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした銃の弾倉は空。付け替えで外した銃は、撃ちかけの残りと装填待ちを覚えておく
         /// (拾い直しで満タン・待ちなしにならないように)。
         /// </summary>
-        public DuelArms.Memo Memo { get; set; } = DuelArms.Memo.Fresh;
+        public DuelArms.Memo Memo { get; set; } = new();
 
         static readonly List<DuelLoot> all = new();
         /// <summary>落ちている武装の全部(消えた直後の null が混じることがある。ボス戦の前の弾倉の残りを控える・戻すのに DuelArms が見る)。</summary>
@@ -111,7 +111,7 @@ namespace Prototype
 
         /// <summary>
         /// この武装をいま拾えるか(拾える距離・高さの内で、壁・床ごしでない。Nearest と同じ条件)。
-        /// 付け先・分解を選んでいる途中の武装を、対象のまま保つかの判定に使う(DuelArms.Tick)。
+        /// 入れ替え・解体を選んでいる途中の武装を、対象のまま保つかの判定に使う(DuelArms.Tick)。
         /// </summary>
         public bool CanPick(DuelFighter who) =>
             InPickRange(who, out _) && DuelSenses.ClearSight(who.Chest, transform.position + Vector3.up);

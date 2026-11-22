@@ -5,80 +5,138 @@ using UnityEngine;
 
 namespace Prototype
 {
-    // DuelArms の撃つ処理:銃・砲・ミサイル(partial。本体と全体の説明は DuelArms.cs)
+    // 通常射撃・大技。時間差の連射、複数の弾、貫通、爆発で撃ち方を分ける。
     public partial class DuelArms
     {
-        // ───────── 銃(手・肩) ─────────
-
         static readonly Color BulletColor = new(1f, 0.85f, 0.35f), BeamColor = new(1f, 0.45f, 0.95f);
+        static readonly Color ShellColor = new(1f, 0.6f, 0.25f);
+        const float BlastWallOffset = 0.08f; // 仮。爆心を着弾面から発射側へずらす距離。
+        const float BlastEdgePower = 0.35f; // 仮。爆風の端で残る威力・崩し・押し出しの割合。
+        const float BlastLife = 0.30f; // 仮
+        const int BlastSparks = 14; // 仮
+        const float FuseArmingDistance = 4f; // 仮。銃口からこの距離を飛ぶと近接信管が働く。
+        const float WideBeamThreshold = 1f, WideBeamLife = 0.18f; // 仮
 
-        /// <summary>
-        /// 銃を撃つ(撃てる間隔・弾倉の残り・共通の弾・ENがあれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。
-        /// エネルギー武器はENが0以下なら撃たない(charged の溜め撃ちは除く)。1発ごとにEN(EnPerShot)を使い、足りない分はマイナスになる。
-        /// </summary>
-        bool FireGun(DuelWeapon w, int i, DuelSlot s, bool charged = false)
+        static bool IsWideBeam(DuelShot shot) =>
+            shot.pierce && shot.shotSpeed <= 0f && shot.beamWidth >= WideBeamThreshold;
+
+        int roundsPending;
+        bool burstSpecial;
+        int burstAmmoPaid, burstRoundCount;
+        float nextRoundAt;
+
+        int RefundableBurstAmmo() => burstSpecial && roundsPending > 0
+            ? burstAmmoPaid * roundsPending / burstRoundCount : 0; // 仮。未発射分の端数は切り捨てる。
+
+        internal void StopBurst()
         {
-            if (cd[i] > 0f || reload[i] > 0f) return false;
-            if (w.magazine > 0 && mag[i] <= 0)
+            int refund = RefundableBurstAmmo();
+            roundsPending = 0;
+            if (refund > 0) AddAmmo(refund);
+        }
+
+        bool CanPayPrimary(DuelWeapon weapon) =>
+            weapon.HasMagazine ? Magazine > 0 : weapon.enCost <= 0f || !player.Overheated;
+
+        bool PayPrimary(DuelWeapon weapon)
+        {
+            if (!CanPayPrimary(weapon))
             {
-                StartReload(i, w);   // 共通の弾が1発分もなければ知らせるだけ
-                return false;
-            }
-            bool prepaid = charged && chargeAmmo > 0f;   // 溜め撃ち:溜め始めに1回分を取り置いてある
-            if (!prepaid && w.PaysPerShot && Ammo < w.ammoCost - 0.0001f)
-            {
-                OutOfAmmo();
-                return false;
-            }
-            if (!charged && NoEnergy(w))
-            {
-                OutOfEnergy();
-                return false;
-            }
-            lastFire[i] = Time.time;
-            cdShown[i] = true;
-            Vector3 from = Muzzle(s);
-            // 照準の先へ撃つ(枠の中の敵がいれば、狙いを少しだけ寄せる。照準を動かせるときは、弾が速さを持つ撃ち方は寄せない。AssistDeg)
-            var t = TargetFor(w, i, from);
-            Vector3 aim = AssistedAimPoint(t, AssistDeg(w, ParentOf(i)), from, w.range);
-            Vector3 dir = (aim - from).normalized;
-            Color c = w.magazine <= 0 ? BeamColor : BulletColor;
-            int n = Mathf.Max(1, w.pellets);
-            float speed = SpeedOf(w);   // 0 以下ならすぐ届く光線(照射し続けるレーザー)
-            // 間隔の端数は持ち越す(1フレームより短い間隔なら、そのフレームに何発か出す。最大4回。押すたびに撃つ銃は1回)
-            int bursts = w.hold ? 4 : 1;
-            for (int k = 0; k < bursts && cd[i] <= 0f; k++)
-            {
-                if (k > 0 && NoEnergy(w)) break;   // 同じフレームの2発目からは、ENが0以下になったら止める
-                if (!prepaid && !PayAmmo(w)) break;   // 弾倉のない実弾の撃ち方は撃つたびに共通の弾を使う(1回目は上で確かめてある)
-                if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
-                cd[i] += Mathf.Max(0.01f, w.interval);
-                // ばらつき = 武装の spread + 反動の広がり(撃つたびに広がる。カメラは動かさない)
-                float jitter = w.spread + bloom[i];
-                for (int p = 0; p < n; p++)
+                if (weapon.HasMagazine)
                 {
-                    if (speed > 0f) StartCoroutine(Fly(from, Jitter(dir, jitter), w, c, n > 1, speed, false, CursorInView));   // 見える弾が速さを持って飛ぶ
-                    else Shot(from, Jitter(dir, jitter), w, c, n > 1);
+                    NoAmmoAt = Time.time;
+                    game.Log("弾倉が空。近接に戻ると弾を詰められる");
                 }
-                AddRecoil(i, w);
-                Kick(w);   // 照準そのものが上へずれる(カメラは動かさない)
-                if (w.magazine > 0 && --mag[i] <= 0) { StartReload(i, w); break; }   // 撃ち切ったらリロード(共通の弾が足りれば)
+                else
+                {
+                    NoEnergyAt = Time.time;
+                    game.Log("射撃に必要な EN が足りない");
+                }
+                return false;
             }
-            cd[i] = Mathf.Max(cd[i], 0f);
-            cdMax[i] = Mathf.Max(0.01f, w.interval);   // 次に撃てるまでのゲージの分母(両手の銃の L1 の弾。付けたときの 0.3 秒のままだとゲージが合わない)
+
+            if (weapon.HasMagazine) rangedMemo.mag--;
+            else if (weapon.enCost > 0f) player.SpendEnergy(weapon.enCost);
             return true;
         }
 
-        /// <summary>撃った後の反動:撃つ状態 i の広がりを1回分足す(上限まで。DuelArmsRules.recoilMul を掛ける)。</summary>
-        void AddRecoil(int i, DuelWeapon w)
+        void StartFiring(bool special, Vector3 from, Vector3 aim)
         {
-            float mul = Mathf.Max(0f, Rules.recoilMul);
-            if (w.recoilPerShot <= 0f || mul <= 0f) return;
-            bloom[i] = Mathf.Min(Mathf.Max(0f, w.recoilMax) * mul, bloom[i] + w.recoilPerShot * mul);
+            var weapon = RangedWeapon;
+            var shot = special ? weapon.Special : weapon.Primary;
+            if (special)
+            {
+                if (Ammo < weapon.SpecialAmmo)
+                {
+                    NoAmmoAt = Time.time;
+                    game.Log("大技に必要な共通の弾が足りない");
+                    return;
+                }
+                Ammo -= weapon.SpecialAmmo;
+            }
+            else if (!PayPrimary(weapon)) return;
+
+            float now = Time.time;
+            rangedMemo.cooldown = shot.interval;
+            rangedMemo.ready = now + shot.interval;
+            burstSpecial = special;
+            // 残弾が少ないときも、弾倉から出せる分だけ点射する。
+            int count = !special && weapon.HasMagazine ? Mathf.Min(shot.burstCount, Magazine + 1) : shot.burstCount;
+            burstAmmoPaid = special ? weapon.SpecialAmmo : 0;
+            burstRoundCount = count;
+            roundsPending = count - 1;
+            nextRoundAt = now + shot.burstInterval;
+            FireRound(weapon, shot, special, from, aim);
+        }
+
+        void FirePendingRounds(float now, Vector3 from, Vector3 aim)
+        {
+            var weapon = RangedWeapon;
+            var shot = burstSpecial ? weapon.Special : weapon.Primary;
+            // 長いフレームでも発射間隔を持ち越す。1 回の点射に含まれる発射数が上限。
+            while (roundsPending > 0 && now >= nextRoundAt)
+            {
+                if (!burstSpecial && !PayPrimary(weapon))
+                {
+                    StopBurst();
+                    break;
+                }
+                roundsPending--;
+                nextRoundAt += shot.burstInterval;
+                FireRound(weapon, shot, burstSpecial, from, aim);
+            }
+        }
+
+        void FireRound(DuelWeapon weapon, DuelShot shot, bool special, Vector3 from, Vector3 aim)
+        {
+            lastFire = Time.time;
+            Vector3 direction = (aim - from).normalized;
+            if (direction == Vector3.zero) direction = player.transform.forward;
+            bool beam = IsWideBeam(shot) || (!special && weapon.enCost > 0f);
+            Color color = shot.blastRadius > 0f ? ShellColor : beam ? BeamColor : BulletColor;
+            float speed = SpeedOf(shot);
+            bool spread = shot.pellets > 1;
+            for (int i = 0; i < shot.pellets; i++)
+            {
+                Vector3 dir = direction;
+                if (special && spread)
+                {
+                    // 三方向射撃と拡散爆発は横へ等間隔に撃ち分ける。通常の散弾は立体的に散る。
+                    float angle = Mathf.Lerp(-shot.spread, shot.spread, (float)i / (shot.pellets - 1));
+                    dir = Quaternion.AngleAxis(angle, Vector3.up) * direction;
+                }
+                else dir = Jitter(direction, shot.spread + (special ? 0f : bloom));
+                if (speed > 0f) StartCoroutine(Fly(from, dir, shot, color, spread, speed, CursorInView));
+                else Shot(from, dir, shot, color, spread);
+            }
+            float recoil = Mathf.Max(0f, Rules.recoilMul);
+            if (shot.recoilPerShot > 0f)
+                bloom = Mathf.Min(shot.recoilMax * recoil, bloom + shot.recoilPerShot * recoil);
+            Kick(shot);
         }
 
         /// <summary>銃の弾が敵 e の at に当たった:当てて、当たった所から火花を出し、ヒットマーカー(Shot・Fly で同じ。mark は NoteHit)。</summary>
-        void BulletHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelWeapon w, Color c, bool pellet, bool mark)
+        void BulletHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelShot w, Color c, bool pellet, bool mark)
         {
             e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f);
             DuelSpark.Burst(at, -dir, c, pellet ? 2 : 3, 0.6f);
@@ -86,7 +144,7 @@ namespace Prototype
         }
 
         /// <summary>貫く弾が敵 e の at に当たった:当てて、太さに応じた火花を出し、ヒットマーカー(PierceShot・PierceSegment で同じ。mark は NoteHit)。</summary>
-        void PierceHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelWeapon w, Color c, bool mark)
+        void PierceHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelShot w, Color c, bool mark)
         {
             e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f);
             DuelSpark.Burst(at, -dir, c, 3, 0.6f + w.beamWidth * 0.2f);
@@ -94,7 +152,7 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 射撃(銃・砲)が敵 e に当たった:照準の真ん中のヒットマーカーを出す。同じ瞬間に何発も当たったら(散弾・貫く弾・爆発)強い方の印。
+        /// 遠距離武器が敵 e に当たった:照準の真ん中のヒットマーカーを出す。同じ瞬間に何発も当たったら(拡散・貫通)強い方の印。
         /// TakeRangedHit の後に呼ぶ(倒した・崩れている・崩せるを見分ける)。
         /// mark は、その弾を撃ったときに照準の先が視界の中だったか(CursorInView)。視界の外へ撃った弾は、当たっても印を出さない
         /// (撃ったあと向きを変えて照準の先が画面に戻っても、敵のいない所に印が出ないように。作者が 2 案から「撃ったときに視界外だった弾では出さない」)。
@@ -152,7 +210,7 @@ namespace Prototype
         /// 銃の1発(弾の速さが 0 の撃ち方だけ。照射し続けるレーザーなど):すぐ届く光線。最初に当たった地形・敵で止まる(貫く弾は地形まで飛び、線の上の敵みんなに当たる)。
         /// 当たればヒットマーカー。外れた弾は筋を長めに残し、地形に当たったら小さな火花を出す。速さのある弾は Fly。
         /// </summary>
-        void Shot(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet)
+        void Shot(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet)
         {
             float len = w.range;
             bool wall = Physics.Raycast(from, dir, out var hit, len, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
@@ -163,18 +221,19 @@ namespace Prototype
                 PierceShot(from, dir, len, w, c, wall ? hit : (RaycastHit?)null);
                 return;
             }
-            bool hitEnemy = RayHitsEnemy(from, dir, len, out var e, out float d);
-            if (hitEnemy)
-            {
-                end = from + dir * d;
-                BulletHit(e, end, dir, w, c, pellet, CursorInView);   // すぐ届く光線は、撃ったフレームに当たる(今の照準の先 = 撃ったときの照準の先)
-            }
-            else if (wall) DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
+            bool hitEnemy = FindProjectileTarget(from, dir, len, w, out var enemy, out float distance);
+            if (hitEnemy) end = from + dir * distance;
+            if (w.blastRadius > 0f && (hitEnemy || wall || w.blastAtEnd))
+                Explode(wall && distance >= len ? BlastCenter(hit) : end, dir, w, CursorInView);
+            else if (hitEnemy)
+                BulletHit(enemy, end, dir, w, c, pellet, CursorInView);
+            else if (wall)
+                DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);
             Tracer(from, end, c, pellet ? 0.15f : 0.25f, !hitEnemy);
         }
 
         /// <summary>貫く弾:from から len まで、線から(敵の半径 + 太さ)の内にいる敵みんなに当てる。太いほど光線も太く長く残る。</summary>
-        void PierceShot(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c, RaycastHit? wall)
+        void PierceShot(Vector3 from, Vector3 dir, float len, DuelShot w, Color c, RaycastHit? wall)
         {
             Vector3 to = from + dir * len;
             bool any = false;
@@ -183,116 +242,37 @@ namespace Prototype
                 if (e == null || e.Dead) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
-                PierceHit(e, from + dir * (s * len), dir, w, c, CursorInView);
+                Vector3 at = from + dir * (s * len);
+                if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
+                PierceHit(e, at, dir, w, c, CursorInView);
                 any = true;
             }
             if (!any && wall is { } wh) DuelSpark.Burst(wh.point, wh.normal, c, 1, 0.45f);   // 外れて地形に当たった:小さな火花
-            // 太い光線(溜め撃ち)は今までどおり長めに残す。細い光線は弾の筋と同じ(外れたら長めに)
-            if (w.beamWidth >= 1f) ProtoFx.Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, 0.18f);
-            else Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, !any);
-            if (any && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
+            float width = 0.25f + w.beamWidth * 0.5f;
+            if (IsWideBeam(w)) ProtoFx.Tracer(from, to, c, width, WideBeamLife);
+            else Tracer(from, to, c, width, !any);
         }
 
-        // ───────── 砲・ミサイル(肩) ─────────
+        // ───────── 飛ぶ弾 ─────────
 
-        static readonly Color ShellColor = new(0.8f, 1f, 0.35f), MissileColor = new(1f, 0.6f, 0.25f), BlastColor = new(1f, 0.6f, 0.25f);
-
-        /// <summary>
-        /// 砲・ミサイルを撃つ(次に撃てるまでの時間がたっていれば)。i は撃つ状態の番号、s は撃ち出す所。撃ったら true。
-        /// 今の一覧に ENを使う砲・ミサイルはないが、enCost を入れれば銃と同じ決まりで ENを使う。
-        /// </summary>
-        bool FireHeavy(DuelWeapon w, int i, DuelSlot s, bool charged = false)
+        /// <summary>見た目だけの球。生成したフレームも、弾やカメラの地形判定に使われない。</summary>
+        static GameObject VisualSphere(string name, Vector3 at, Color color, float size)
         {
-            if (cd[i] > 0f) return false;
-            if (!charged && NoEnergy(w))
-            {
-                OutOfEnergy();
-                return false;
-            }
-            if (!(charged && chargeAmmo > 0f) && !PayAmmo(w))   // 溜め撃ちは溜め始めに取り置いた分を使う
-            {
-                OutOfAmmo();
-                return false;
-            }
-            if (w.UsesEnergy) player.SpendEnergy(w.EnPerShot);
-            cd[i] = cdMax[i] = w.interval;
-            lastFire[i] = Time.time;
-            cdShown[i] = true;
-            Vector3 from = Muzzle(s);
-            if (w.IsMissile)
-            {
-                // ミサイル:枠(照準の位置が中心)に掛かっている狙える敵に順番に割り振る(ロックオン中の敵が先、あとは近い順)。いなければ照準の先へ
-                var targets = MissilesFor(w, i);
-                Vector3 point = FreeAimPoint(from, w.range);
-                for (int j = 0; j < w.salvo; j++)
-                {
-                    var t = targets.Count > 0 ? targets[j % targets.Count] : null;
-                    Vector2 sc = Random.insideUnitCircle * w.radius;
-                    StartCoroutine(Missile(from, t, point + new Vector3(sc.x, 0f, sc.y), w, j * 0.06f));
-                }
-                return true;
-            }
-            // 砲も銃と同じく照準の先へ(吸い付きの決まりも銃と同じ。AssistDeg)。砲弾は速さを持って飛び、地形・敵に当たるか射程の端で爆発する
-            var target = TargetFor(w, i, from);
-            Vector3 aim = AssistedAimPoint(target, AssistDeg(w, ParentOf(i)), from, w.range);
-            Vector3 dir = Jitter((aim - from).normalized, bloom[i]);   // 反動の広がり(今の砲は広がり 0。.Recoil を入れれば広がる)
-            AddRecoil(i, w);
-            Kick(w);   // 照準そのものが上へずれる(カメラは動かさない)
-            float speed = SpeedOf(w);
-            StartCoroutine(Fly(from, dir, w, ShellColor, false, speed > 0f ? speed : FallbackShellSpeed, true, CursorInView));
-            return true;
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            DestroyImmediate(go.GetComponent<Collider>());
+            go.name = name;
+            go.transform.position = at;
+            go.transform.localScale = Vector3.one * size;
+            var r = go.GetComponent<Renderer>();
+            r.sharedMaterial = ProtoFx.Unlit(color);
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return go;
         }
-
-        /// <summary>
-        /// ミサイルの狙える敵(list に入れて返す。多くても1回に撃つ数 salvo まで):照準の枠に掛かっていて(ロックオン中の敵は lockFrameMul 倍に広くみなす)、
-        /// 射程の内で見通せる敵。ロックオン中の敵が先、あとは近い順。先に枠と射程で絞って並べ、見通し(Linecast)は前から salvo 体そろうまでだけ調べる。
-        /// 射程は銃・砲(AimTarget。弾が銃口から射程の分だけ飛ぶので銃口から)と違い、自機(viewEye = LockPoint)から測る。
-        /// ミサイルは追いかけて必ず届き、射程は狙う敵を選ぶのにだけ使うので、付けた所によらず同じ敵を選ぶ方をとった(差は数m。作者確認済み)。
-        /// </summary>
-        List<DuelEnemy> MissileTargets(DuelWeapon w, DuelWeapon parent, List<DuelEnemy> list)
-        {
-            list.Clear();
-            var cam = Camera.main;
-            if (cam == null) return list;
-            PrepareViews(cam);
-            var rules = Rules;
-            float range = w.range, hw = FrameTan(w, parent), hh = hw * rules.frameAspect, lm = Mathf.Max(1f, rules.lockFrameMul);
-            Vector3 eye = viewEye;
-            var t = player.Target;
-            missileCand.Clear();
-            for (int k = 0; k < viewCount; k++)
-            {
-                var e = views[k].e;
-                if (e == null || e.Dead) continue;
-                if ((e.Chest - eye).sqrMagnitude > range * range) continue;
-                float m = e == t ? lm : 1f;
-                if (!InFrame(k, hw * m, hh * m)) continue;
-                missileCand.Add((e == t ? -1f : (e.transform.position - eye).sqrMagnitude, k));   // ロックオン中の敵が先(-1)、あとは近い順
-            }
-            missileCand.Sort(ByNear);
-            int cap = Mathf.Max(1, w.salvo);
-            for (int c = 0; c < missileCand.Count && list.Count < cap; c++)
-            {
-                int k = missileCand[c].k;
-                if (Visible(k)) list.Add(views[k].e);
-            }
-            return list;
-        }
-
-        readonly List<(float key, int k)> missileCand = new();
-        static readonly System.Comparison<(float key, int k)> ByNear = (a, b) => a.key.CompareTo(b.key);
 
         /// <summary>弾の見た目:光る球と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
         static Transform Projectile(Vector3 at, Color c, float size, float trail = 0.18f)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            Destroy(go.GetComponent<Collider>());
-            go.name = "Shot";
-            go.transform.position = at;
-            go.transform.localScale = Vector3.one * size;
-            var r = go.GetComponent<Renderer>();
-            r.sharedMaterial = ProtoFx.Unlit(c);
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var go = VisualSphere("Shot", at, c, size);
             var tr = go.AddComponent<TrailRenderer>();
             tr.time = trail;
             tr.startWidth = size * 0.7f;
@@ -302,18 +282,8 @@ namespace Prototype
             return go.transform;
         }
 
-        /// <summary>砲の弾の速さが 0 のときの速さ(m/s。前の砲弾の速さ)。</summary>
-        const float FallbackShellSpeed = 160f;
-
-        /// <summary>
-        /// 速さを持って飛ぶ弾(実弾の銃・砲。作者が選んだ形「弾に速さを持たせる」)。from から dir へ speed(m/s)でまっすぐ飛び、射程(range)まで。
-        /// 毎フレーム、進む分の線で地形と敵を調べる(偏差の自動補正はしない。動く敵には照準を先に置く)。
-        ///   銃の弾:最初に当たった敵に当てて火花とヒットマーカー、地形なら小さな火花で消える。貫く弾は地形・射程の端まで飛び、線の上の敵に1回ずつ当てる。
-        ///   砲弾(explosive):敵・地形に当たるか射程の端で爆発する。
-        /// 弾の筋は弾の尾(TrailRenderer)。止まったら球を隠して尾だけ消えていく。ヒットストップ中は止まる(Time.deltaTime)。
-        /// mark は、撃ったときに照準の先が視界の中だったか(当たったときにヒットマーカーを出すか。NoteHit)。弾ごとに覚えておく。
-        /// </summary>
-        IEnumerator Fly(Vector3 from, Vector3 dir, DuelWeapon w, Color c, bool pellet, float speed, bool explosive, bool mark)
+        /// <summary>速さを持つ弾。地形で止まり、貫通弾は射程までに通った敵に一度ずつ当たる。</summary>
+        IEnumerator Fly(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet, float speed, bool mark)
         {
             var r = Rules;
             // 撃った自機の速度を弾が受け継ぐ(作者「弾は、停止中を狙うより、相対速度を合わせる方が楽しそうです」):
@@ -324,11 +294,12 @@ namespace Prototype
                 float m = v.magnitude;
                 if (m > 1f) { dir = v / m; speed = m; }
             }
-            float size = explosive ? 1.2f + w.radius * 0.05f : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
-            float trail = explosive ? 0.18f : Mathf.Max(0.01f, r.bulletTrail);
-            var p = Projectile(from, explosive ? ShellColor : c, size, trail);
+            const float ShellSize = 1.1f; // 仮
+            float size = w.blastRadius > 0f ? ShellSize : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
+            float trail = Mathf.Max(0.01f, r.bulletTrail);
+            var p = Projectile(from, c, size, trail);
             Destroy(p.gameObject, w.range / Mathf.Max(1f, speed) + trail + 1f);   // 念のため(コルーチンが止まっても残らない)
-            List<DuelEnemy> pierced = w.pierce && !explosive ? new List<DuelEnemy>() : null;
+            List<DuelEnemy> pierced = w.pierce ? new List<DuelEnemy>() : null;
             Vector3 pos = from;
             float flown = 0f;
             while (true)
@@ -342,34 +313,90 @@ namespace Prototype
                 bool wall = Physics.Raycast(pos, dir, out var hit, step, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 float len = wall ? hit.distance : step;
                 if (pierced != null)
+                    PierceSegment(pos, dir, len, w, c, pierced, mark);
+                else if (FindProjectileTarget(pos, dir, len, w, out var enemy, out float distance, flown: flown))
                 {
-                    if (PierceSegment(pos, dir, len, w, c, pierced, mark) && w.charge > 0f) game.HitStop(0.06f);   // 溜め撃ちが当たったら短く止める(画面は揺らさない)
-                }
-                else if (RayHitsEnemy(pos, dir, len, out var e, out float d))
-                {
-                    Vector3 at = pos + dir * d;
-                    if (explosive) Explode(at, w, true, mark);
-                    else BulletHit(e, at, dir, w, c, pellet, mark);
+                    Vector3 at = pos + dir * distance;
+                    if (w.blastRadius > 0f) Explode(wall && distance >= len ? BlastCenter(hit) : at, dir, w, mark);
+                    else BulletHit(enemy, at, dir, w, c, pellet, mark);
                     EndProjectile(p, at, trail);
                     yield break;
                 }
-                pos += dir * len;
+
+                Vector3 end = pos + dir * len;
+                if (wall || last)
+                {
+                    if (w.blastRadius > 0f && (wall || w.blastAtEnd))
+                        Explode(wall ? BlastCenter(hit) : end, dir, w, mark);
+                    else if (wall)
+                        DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);
+                    EndProjectile(p, end, trail);
+                    yield break;
+                }
+                pos = end;
                 flown += len;
                 p.position = pos;
-                if (wall)
-                {
-                    if (explosive) Explode(hit.point, w, true, mark);
-                    else DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
-                    EndProjectile(p, hit.point, trail);
-                    yield break;
-                }
-                if (last)
-                {
-                    if (explosive) Explode(pos, w, true, mark);   // 射程の端で爆発(前と同じ)
-                    EndProjectile(p, pos, trail);
-                    yield break;
-                }
             }
+        }
+
+        // 直撃と近接信管を地形までの線分で調べる。十字の判定だけ、狙った奥行きと敵の太さでも範囲を絞る。
+        bool FindProjectileTarget(Vector3 from, Vector3 dir, float len, DuelShot shot, out DuelEnemy hit, out float distance,
+            float flown = 0f, float aimDepth = float.PositiveInfinity)
+        {
+            if (shot.blastRadius <= 0f) return RayHitsEnemy(from, dir, len, out hit, out distance);
+
+            bool hasFuse = shot.proximityRadius > 0f;
+            float fuseOffset = Mathf.Max(0f, FuseArmingDistance - flown);
+            Vector3 fuseStart = from + dir * fuseOffset;
+            hit = null;
+            distance = len;
+            foreach (var enemy in game.Enemies)
+            {
+                if (enemy == null || enemy.Dead) continue;
+                float forward = hasFuse ? Vector3.Dot(enemy.Chest - from, dir) : 0f;
+                if (forward < 0f) continue;
+                float radius = BodyAxis(enemy, out Vector3 a, out Vector3 b);
+                float reach = Mathf.Min(len, aimDepth + Mathf.Max(shot.proximityRadius, radius * 2f));
+                Vector3 end = from + dir * reach;
+                float along = SegSegDistance(from, end, a, b, out float direct) <= radius
+                    ? direct * reach : float.PositiveInfinity;
+                // 信管の有効距離をまたぐフレームは、その地点から先だけを調べる。直撃は全区間で調べる。
+                if (hasFuse && fuseOffset <= reach && forward >= fuseOffset &&
+                    SegSegDistance(fuseStart, end, a, b, out float near) <= radius + shot.proximityRadius)
+                    along = Mathf.Min(along, fuseOffset + near * (reach - fuseOffset));
+
+                if (along > distance || (hit != null && along == distance)) continue;
+                Vector3 at = from + dir * along;
+                if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
+                distance = along;
+                hit = enemy;
+            }
+            return hit != null;
+        }
+
+        static Vector3 ClosestBodyPoint(Vector3 point, Vector3 bottom, Vector3 top) =>
+            new(bottom.x, Mathf.Clamp(point.y, bottom.y, top.y), bottom.z);
+
+        static Vector3 BlastCenter(RaycastHit wall) => wall.point + wall.normal * BlastWallOffset;
+
+        void Explode(Vector3 at, Vector3 dir, DuelShot shot, bool mark)
+        {
+            foreach (var enemy in game.Enemies)
+            {
+                if (enemy == null || enemy.Dead) continue;
+                float bodyRadius = BodyAxis(enemy, out Vector3 a, out Vector3 b);
+                Vector3 nearest = ClosestBodyPoint(at, a, b);
+                float gap = Mathf.Max(0f, Vector3.Distance(at, nearest) - bodyRadius);
+                if (gap > shot.blastRadius || !DuelSenses.ClearSight(at, nearest)) continue;
+                float power = Mathf.Lerp(1f, BlastEdgePower, gap / shot.blastRadius);
+                Vector3 away = DuelFighter.Flat(enemy.Chest - at);
+                if (away == Vector3.zero) away = DuelFighter.Flat(dir);
+                enemy.TakeRangedHit(shot.damage * power, shot.stagger * power, away * (shot.knock * power), 0.3f);
+                NoteHit(enemy, mark);
+            }
+            var blast = VisualSphere("射撃の爆発", at, ShellColor, shot.blastRadius * 0.4f);
+            blast.AddComponent<FxAnim>().Setup(blast.transform.localScale, Vector3.one * (shot.blastRadius * 2f), BlastLife);
+            DuelSpark.Burst(at, Vector3.zero, ShellColor, BlastSparks);
         }
 
         /// <summary>弾が止まった:その所まで動かしてから球を隠し、尾が消えるのを待って消す(当たった所まで筋が届いて見えるように)。</summary>
@@ -384,14 +411,11 @@ namespace Prototype
             Destroy(p.gameObject, trail + 0.05f);
         }
 
-        /// <summary>
-        /// 貫く弾が from から len 進む間に、線から(敵の半径 + 太さ)の内にいる敵に当てる(1発で同じ敵には1回。pierced に覚える)。当たったら true。
-        /// </summary>
-        bool PierceSegment(Vector3 from, Vector3 dir, float len, DuelWeapon w, Color c, List<DuelEnemy> pierced, bool mark)
+        /// <summary>弾が進む間、線の近くの敵に当てる。同じ敵には一発につき一度。</summary>
+        void PierceSegment(Vector3 from, Vector3 dir, float len, DuelShot w, Color c, List<DuelEnemy> pierced, bool mark)
         {
-            if (len <= 0f) return false;
+            if (len <= 0f) return;
             Vector3 to = from + dir * len;
-            bool any = false;
             var list = game.Enemies;
             for (int i = 0; i < list.Count; i++)
             {
@@ -399,54 +423,12 @@ namespace Prototype
                 if (e == null || e.Dead || pierced.Contains(e)) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
+                Vector3 at = from + dir * (s * len);
+                if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
                 pierced.Add(e);
-                PierceHit(e, from + dir * (s * len), dir, w, c, mark);
-                any = true;
+                PierceHit(e, at, dir, w, c, mark);
             }
-            return any;
         }
 
-        /// <summary>ミサイル1発:上へ打ち上げてから、狙った敵へ曲がって飛ぶ(敵が動いても追いかける)。着いたら小さく爆発する。</summary>
-        IEnumerator Missile(Vector3 from, DuelEnemy target, Vector3 point, DuelWeapon w, float delay)
-        {
-            if (delay > 0f) yield return new WaitForSeconds(delay);
-            Vector3 lift = from + Vector3.up * 12f - player.transform.forward * 3f + Random.insideUnitSphere * 7f;
-            Vector3 goal = point;
-            var p = Projectile(from, MissileColor, 0.8f);
-            float dur = Random.Range(0.55f, 0.75f), t = 0f;
-            while (t < dur)
-            {
-                t += Time.deltaTime;
-                if (target != null && !target.Dead) goal = target.Chest;
-                float k = Mathf.Clamp01(t / dur);
-                p.position = Vector3.Lerp(Vector3.Lerp(from, lift, k), Vector3.Lerp(lift, goal, k), k);
-                yield return null;
-            }
-            Destroy(p.gameObject);
-            Explode(goal, w, false, false);
-        }
-
-        /// <summary>爆発:半径の中の敵に当てる(上下に離れすぎた敵には当たらない)。自機には当たらない。mark は、砲弾を撃ったときに照準の先が視界の中だったか(NoteHit)。</summary>
-        void Explode(Vector3 at, DuelWeapon w, bool shell, bool mark)
-        {
-            ProtoFx.Blast(at, w.radius, shell ? ShellColor : BlastColor, shell ? 0.35f : 0.25f);
-            DuelSpark.Burst(at, Vector3.zero, new Color(1f, 0.75f, 0.4f), shell ? 20 : 6, shell ? 1.2f : 0.7f);
-            bool any = false;
-            var list = game.Enemies;
-            for (int i = 0; i < list.Count; i++)
-            {
-                var e = list[i];
-                if (e == null || e.Dead) continue;
-                Vector3 d = e.transform.position - at;
-                float dy = at.y - e.transform.position.y;
-                d.y = 0f;
-                if (d.magnitude - e.Radius > w.radius) continue;
-                if (dy < -w.radius || dy > game.mechHeight * e.Size + w.radius) continue;
-                e.TakeRangedHit(w.damage, w.stagger, (d.sqrMagnitude > 0.01f ? d.normalized : player.transform.forward) * w.knock, 0.6f);
-                if (shell) NoteHit(e, mark);   // 砲だけヒットマーカー(ミサイルは自動で飛ぶので出さない)
-                any = true;
-            }
-            if (any && shell) game.HitStop(0.05f);   // 砲だけ。ミサイルは何発も当たるので止めない
-        }
     }
 }

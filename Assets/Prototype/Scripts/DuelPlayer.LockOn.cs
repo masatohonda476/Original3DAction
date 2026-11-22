@@ -138,19 +138,18 @@ namespace Prototype
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
             // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。
-            // 銃を構えている間は自動では選ばない。オンにしたフレームと、切り替えのボタンを押したフレームは、構えの間でも選ぶ。選ぶのは1フレームに1回だけ(PickBest)。
+            // 射撃入力中・発射直後・照準操作中は自動では選ばない。オンにしたフレームと切り替えのボタンを押したフレームは、その間も選ぶ。選ぶのは1フレームに1回だけ(PickBest)。
             // 狙う敵がいて切り替えのボタンを押したら、画面の中のほかの敵へ(枠は使わない。オンにしたフレーム・このフレームに付いた相手からは切り替えない)
             DuelEnemy candidate = null;
             float candidateDist = 0f;
             if (Target == null)
             {
-                if (!Arms.Aiming || justOn || switchPressed) Target = PickBest(out candidate, out candidateDist);
+                if (!Arms.BlocksAutoLock || justOn || switchPressed) Target = PickBest(out candidate, out candidateDist);
             }
             else if (switchPressed && !justOn) Target = NearestToView(Target);
-            // 距離の目盛りの印に出す敵:付かなかったときの、距離のほかの条件を満たす一番近い敵(付いたら出さない。自動で選ばない構えの間も出さない)
-            LockCandidate = Target == null && !Arms.Aiming ? candidate : null;
+            // 距離の目盛りの印に出す敵:付かなかったときの、距離のほかの条件を満たす一番近い敵(付いたら出さない。自動選択を待っている間も出さない)
+            LockCandidate = Target == null && !Arms.BlocksAutoLock ? candidate : null;
             LockCandidateDistance = LockCandidate != null ? candidateDist : 0f;
-            // 上の自動で選ぶのは、銃の構えの間はしない(撃っている最中に、相手が替わってカメラが回り出さないように。構えが終わってから選ぶ)。
             // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 照準を動かしている間(DuelArms.CursorActive。DuelArmsRules.cursorMovable がオンの構えの間)は、右スティック・マウスが

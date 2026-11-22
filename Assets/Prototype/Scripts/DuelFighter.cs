@@ -8,10 +8,6 @@ namespace Prototype
     public struct DuelHit
     {
         public float damage;
-        /// <summary>ガードできる攻撃か(叩きつけ・跳躍叩きつけの直撃はできない。どの技かは色ではなく予備動作の姿勢で見分ける)。</summary>
-        public bool guardable;
-        /// <summary>ガードしたときに減るガードのゲージ。</summary>
-        public float guardCost;
         /// <summary>怯みゲージへの量。</summary>
         public float stagger;
         /// <summary>この攻撃で怯みゲージがいっぱいになったときに怯む時間(秒)。</summary>
@@ -220,7 +216,7 @@ namespace Prototype
 
         // ───────── 色 ─────────
 
-        /// <summary>一瞬だけ色を付ける(被弾・ガード)。</summary>
+        /// <summary>被弾などで一瞬だけ色を付ける。</summary>
         protected void Flash(Color c, float t)
         {
             flashColor = c;

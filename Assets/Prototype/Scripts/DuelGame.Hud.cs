@@ -19,24 +19,16 @@ namespace Prototype
                 label = new GUIStyle(GUI.skin.label) { fontSize = 20 };
                 big = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 center = new GUIStyle(small) { alignment = TextAnchor.MiddleCenter };
-                richCenter = new GUIStyle(small) { richText = true, alignment = TextAnchor.MiddleCenter };
                 richSmall = new GUIStyle(small) { richText = true, wordWrap = false, clipping = TextClipping.Clip };
-                richRight = new GUIStyle(richSmall) { alignment = TextAnchor.UpperRight };
                 viewHeadStyle = new GUIStyle(label) { fontStyle = FontStyle.Bold, wordWrap = false };
                 viewTitleStyle = new GUIStyle(label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
                 rightSmall = new GUIStyle(small) { alignment = TextAnchor.UpperRight };
-                chartHeadStyle = new GUIStyle(small) { fontSize = 15, richText = true, wordWrap = false, clipping = TextClipping.Clip };
-                chartLegendStyle = new GUIStyle(chartHeadStyle) { fontSize = 14 };
-                chartNoteStyle = new GUIStyle(small) { fontSize = 15, richText = true, wordWrap = true };
                 // 右下の武装の欄(武装ハントの WeaponCell と同じ大きさ。色は GUI.color で付けるので文字は白)
                 cellTiny = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = false, clipping = TextClipping.Clip };
                 cellTiny.normal.textColor = Color.white;
                 cellTinyRight = new GUIStyle(cellTiny) { alignment = TextAnchor.UpperRight };
                 cellNameStyle = new GUIStyle(cellTiny) { fontSize = 17 };
                 cellNameSmall = new GUIStyle(cellTiny) { fontSize = 14 };
-                cellBack = new GUIStyle(cellTiny) { fontSize = 14 };
-                // 拾う案内のカードの見出し(武装の名前。色は GUI.color で付けるので文字は白)
-                cardTitleStyle = new GUIStyle(cellTiny) { fontSize = 18, fontStyle = FontStyle.Bold };
             }
             var cam = Camera.main;
             if (player != null) DrawOverheadGauges(cam);   // 被ダメージの数字より奥に描く
@@ -50,7 +42,6 @@ namespace Prototype
 
             // 左下:自機のHP・EN、その下にメニューを開くボタンの短い案内を1行。
             // 操作方法は出し続けず、メニューの「操作方法」のページで見せる(作者「操作方法は常に出すのではなく、オプションにメニューを出してください」。DuelGame.Menu.cs)。
-            // ガードのゲージは、右下の武装の欄の盾のセルに出す(ArmCell)。左下には出さない
             const float hintH = LeftHintH;
             float x = 24f;
             float y = leftTop + 5f;
@@ -75,12 +66,11 @@ namespace Prototype
             GUI.color = new Color(1f, 1f, 1f, 0.8f);   // HP・EN より控えめに
             GUI.Label(new Rect(x, y - 2f, ArmsLeft - 16f - x, hintH), MenuHint(), small);
             GUI.color = Color.white;
-            DrawArms(player.Arms);
-            if (!MenuOpen) DrawPickup(player.Arms);
-            // 両手の銃・砲の溜め撃ち:照準の少し下に溜まり具合(溜まったら白)
-            float charge = player.Arms.Charge01;
-            Vector2 cc = CursorScreen(player.Arms);
-            if (charge > 0f && !MenuOpen) Bar(new Rect(cc.x - 60f, cc.y + 46f, 120f, 6f), charge, charge >= 1f ? Color.white : new Color(1f, 0.8f, 0.4f));
+            if (Event.current.type == EventType.Repaint)
+            {
+                DrawArms(player.Arms);
+                if (!MenuOpen) DrawPickup(player.Arms);
+            }
 
             // ロックオンの印は四つの角の枠だけ(敵を囲む。DrawLockCorners)。胸の上の白い十字は、枠と二重になるのでやめた(作者「敵の上で印が重なる」→「A」)
             var e = player.Target;
@@ -91,7 +81,7 @@ namespace Prototype
                 if (sp.z <= 0f || sp.x < 0f || sp.x > Screen.width || sp.y < 0f || sp.y > Screen.height) DrawOffscreenLock(cam, e.LockPoint);
                 else if (player.Arms.ShotPoint == null)
                 {
-                    // 銃・砲を持っていなければ、十字は相手の胸に出す(持っていれば、弾が飛んでいく所に出る。DrawAimFrames)
+                    // 近接を構えている間、十字は相手の胸に出す。遠距離は弾が飛んでいく所を示す(DrawAimFrames)。
                     Vector3 cp = cam.WorldToScreenPoint(e.Chest);
                     if (cp.z > 0f) DrawCross(cp.x / uiScale, SH - cp.y / uiScale, CrossMinGap, 0.6f);
                 }
@@ -140,8 +130,6 @@ namespace Prototype
         /// (作者「弾が当たるタイミングで今より濃いオレンジにしてほしいです」「十字の視認性が少し悪いので、当たるタイミングではもっと濃くしてください」)。
         /// </summary>
         static readonly Color FrameHit = new(1f, 0.45f, 0.05f);
-        // 枠に添えるボタン名(ボタンの組と機器が変わったときだけ作る)
-        readonly Dictionary<(int, ProtoInput.Device), string> frameLabels = new();
 
         /// <summary>画面の上の照準の位置(GUI の座標。y は下向き)。</summary>
         Vector2 CursorScreen(DuelArms arms)
@@ -152,60 +140,29 @@ namespace Prototype
 
         /// <summary>
         /// 照準の位置(DuelArms.Cursor。構えていない間は画面の中央へ戻る)に、撃つ武装の照準の枠を角の鉤(かぎ)だけで出す(アーマード・コアの FCS の枠)。
-        /// 大きさの違う枠は入れ子で全部出し、同じ大きさの枠は1つにまとめる。左上の角の上に使うボタン名。ふだんは薄く、その武装を撃っている・撃ったばかり・溜めている間は濃く。
-        /// 枠の中に当てる相手がいれば枠を橙にし、相手の胸に小さな橙の鉤の印(ミサイルは当てる相手みんな)。
+        /// 枠の中に当てる相手がいれば枠を橙にし、相手の胸に小さな橙の鉤の印を出す。
         /// 構えている間は、照準が動ける範囲の縁を薄い点で出す。画面は揺らさない。
         /// </summary>
         void DrawAimFrames(DuelArms arms, Camera cam)
         {
-            if (Event.current.type != EventType.Repaint || cam == null || player.Dead) return;
-            if (arms.Frames.Count == 0 && arms.Marks.Count == 0) return;
+            if (Event.current.type != EventType.Repaint || cam == null || player.Dead || !arms.Aiming) return;
+            if (arms.ShotFrame is not { } frame) return;
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
             Vector2 cur = CursorScreen(arms);
             float cx = cur.x, cy = cur.y;
             if (arms.CursorActive) DrawCursorRange(arms);
-            var dev = ProtoInput.Current;
-            float spread = -1f;
-            bool spreadHot = false;
-            foreach (var f in arms.Frames)
+            if (arms.Rules.showAimFrame)
             {
-                // 反動で広がっている間は、枠も少し外へ開く(見た目だけ。吸い付く範囲は広げない)
-                float hw = Mathf.Min(f.drawW * k, SW * 0.48f), hh = Mathf.Min(f.drawH * k, SH * 0.45f);
-                // 真ん中の十字に出すばらつき:撃っている武装を優先し、同じなら大きいほう
-                if (f.spread >= 0f)
-                {
-                    if (f.hot && !spreadHot)
-                    {
-                        spread = f.spread;
-                        spreadHot = true;
-                    }
-                    else if (f.hot == spreadHot) spread = Mathf.Max(spread, f.spread);
-                }
-                // 枠は出さない(作者「エイムの枠を消してください」)。狙い・吸い付きの判定は残る。出すなら DuelArmsRules.showAimFrame
-                if (!DuelArmsRules.Current.showAimFrame) continue;
-                var c = f.locked ? FrameLocked : FrameIdle;
-                c.a = f.hot ? 0.9f : 0.38f;
-                Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, c);
-                if (!frameLabels.TryGetValue((f.buttons, dev), out var label))
-                {
-                    var sb = new System.Text.StringBuilder();
-                    for (int b = 0; b < 4; b++)
-                    {
-                        if ((f.buttons & (1 << b)) == 0) continue;
-                        if (sb.Length > 0) sb.Append('/');
-                        sb.Append(SlotButton((DuelSlot)(b switch { 0 => 0, 1 => 1, 2 => 3, _ => 4 })));
-                    }
-                    label = sb.ToString();
-                    frameLabels[(f.buttons, dev)] = label;
-                }
-                GUI.color = c;
-                GUI.Label(new Rect(cx - hw, cy - hh - 16f, 200f, 16f), label, cellTiny);
+                float hw = Mathf.Min(frame.drawW * k, SW * 0.48f), hh = Mathf.Min(frame.drawH * k, SH * 0.45f);
+                var color = frame.locked ? FrameLocked : FrameIdle;
+                color.a = frame.hot ? 0.9f : 0.38f;
+                Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, color);
             }
             // 真ん中の十字:弾が飛んでいく所(吸い付きを入れた狙いの先。DuelArms.ShotPoint)に出す。4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
             // 弾が飛んでいく所がカメラの後ろ(自機がカメラの方を向いている。射撃では向き直らない)なら、十字は出さない
             // (作者「視界外に十字がいくと画面中央に十字が表示されるのをやめてください」。前は画面の中央に出ていた)。カメラの前で画面の外なら、画面の外に描かれて見えない
             Vector3 shotSp = arms.ShotPoint is Vector3 shot ? cam.WorldToScreenPoint(shot) : Vector3.forward;
-            if (spread >= 0f && shotSp.z > 0f)
+            if (shotSp.z > 0f)
             {
                 float sx = cx, sy = cy;
                 if (arms.ShotPoint != null) { sx = shotSp.x / uiScale; sy = SH - shotSp.y / uiScale; }
@@ -225,18 +182,20 @@ namespace Prototype
                     crossHit = Mathf.MoveTowards(crossHit, onEnemy, (now - crossShownAt) / CrossHitTime);
                 }
                 crossShownAt = now;
-                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(spread * k, CrossMinGap, SH * 0.3f), spreadHot ? 0.85f : 0.4f, crossHit);
+                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(frame.spread * k, CrossMinGap, SH * 0.3f), frame.hot ? 0.85f : 0.4f, crossHit);
             }
             var mc = FrameLocked;
             mc.a = 0.95f;
-            foreach (var e in arms.Marks)
+            var marked = arms.MarkedEnemy;
+            // ロックオンの角が囲んでいる相手には印を重ねない。
+            if (marked != null && !marked.Dead && (marked != player.Target || lockFollow <= 0f))
             {
-                if (e == null || e.Dead) continue;
-                if (e == player.Target && lockFollow > 0f) continue;   // ロックオンの角が囲んでいる相手には、印を重ねない(弾が当たるときは角が濃い橙になる。DrawLockCorners)
-                Vector3 sp = cam.WorldToScreenPoint(e.Chest);
-                if (sp.z <= 0f) continue;
-                float x = sp.x / uiScale, y = SH - sp.y / uiScale;
-                Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, mc);
+                Vector3 sp = cam.WorldToScreenPoint(marked.Chest);
+                if (sp.z > 0f)
+                {
+                    float x = sp.x / uiScale, y = SH - sp.y / uiScale;
+                    Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, mc);
+                }
             }
             GUI.color = Color.white;
         }
@@ -455,7 +414,7 @@ namespace Prototype
             // 角は枠と同じ水色のまま。弾が囲んでいる相手に当たるとき(真ん中の十字が相手に重なって橙になるのと同じ条件。DuelArms.ShotEnemy)だけ、濃い橙にする。
             // 銃・砲を付けていない(十字を出す弾がない)ときは、ミサイルが狙う相手なら橙(当てる相手の印を角に重ねないので、角の色で示す)
             var arms = player.Arms;
-            bool hit = onEnemy && (arms.ShotPoint != null ? arms.ShotEnemy == target : arms.Marks.Contains(target));
+            bool hit = onEnemy && (arms.ShotPoint != null ? arms.ShotEnemy == target : arms.MarkedEnemy == target);
             lockHit = Mathf.MoveTowards(lockHit, hit ? 1f : 0f, dt / LockHitTime);
 
             // 画面の縁寄りの枠(待機中に止まっている大きさは LockRestHalf。付け始めの判定と同じ値):縦が変わるときはなめらかに
@@ -764,9 +723,9 @@ namespace Prototype
             if (stage.Cleared)
             {
                 GUI.Label(new Rect(0f, SH * 0.36f, SW, 50f), "ステージクリア", big);
-                bool pad = ProtoInput.Current != ProtoInput.Device.Keyboard;
+                string restartButton = ProtoInput.L(ProtoInput.Btn.Restart);
                 GUI.Label(new Rect(0f, SH * 0.36f + 48f, SW, 26f),
-                    $"クリアタイム {Mathf.FloorToInt(stage.ClearTime / 60f)}:{Mathf.FloorToInt(stage.ClearTime % 60f):00}  ―  {(pad ? "SHARE+△" : "F1")} で最初から", center);
+                    $"クリアタイム {Mathf.FloorToInt(stage.ClearTime / 60f)}:{Mathf.FloorToInt(stage.ClearTime % 60f):00}  ―  {restartButton} で最初から", center);
                 if (!string.IsNullOrEmpty(stage.ClearNote)) GUI.Label(new Rect(0f, SH * 0.36f + 76f, SW, 26f), stage.ClearNote, center);
                 return;
             }
@@ -786,29 +745,6 @@ namespace Prototype
         /// 画面の高さだけで決まる(OnGUI の外=ロックオンの付け始めの判定からも同じ値を読めるよう、OnGUI で入れる値にしない)。
         /// </summary>
         float leftTop => SH - 8f - LeftHintH - 44f - 5f;
-
-        /// <summary>その所を使うボタンの名前(背中はなし)。</summary>
-        static string SlotButton(DuelSlot s) => s switch
-        {
-            DuelSlot.RightHand => ProtoInput.L(ProtoInput.Btn.R1),
-            DuelSlot.LeftHand => ProtoInput.L(ProtoInput.Btn.L1),
-            DuelSlot.RightShoulder => ProtoInput.L(ProtoInput.Btn.R2),
-            DuelSlot.LeftShoulder => ProtoInput.L(ProtoInput.Btn.L2),
-            _ => "",
-        };
-
-        /// <summary>その所の今の武装の名前(空きは「なし」)。</summary>
-        static string CurName(DuelWeapon w) => w == null ? "なし" : w.name + "〈" + w.RarityName + "〉";
-
-        /// <summary>両手持ちの技の一行:「R1 連撃3段  L1 突進斬り  △+R1/L1 強攻撃」(射撃は R1 と L1 の撃ち方)。</summary>
-        static string TwoHandMoves(DuelWeapon w)
-        {
-            string r1 = SlotButton(DuelSlot.RightHand), l1 = SlotButton(DuelSlot.LeftHand);
-            if (w.IsBlade)
-                return $"{r1} {w.MainMoveName}  {l1} {w.altMove}  {ProtoInput.L(ProtoInput.Btn.Aim)}+{r1}/{l1} 強攻撃  回避の後に {r1} 回避斬り・{l1} {w.altMove}  (ガードなし)";
-            string alt = w.alt is { charge: > 0f } ? $"{w.altMove}(押して溜め、離して撃つ)" : w.altMove;
-            return $"{r1} {w.MainMoveName}  {l1} {alt}  (ガードなし)";
-        }
 
         void Bar(Rect r, float k, Color c)
         {

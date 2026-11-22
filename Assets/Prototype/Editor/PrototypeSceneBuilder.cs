@@ -23,6 +23,7 @@ namespace Prototype.EditorTools
         /// ステージ(墜落した船の中を下から上へ登る。途中で外殻の道と配管の道に分かれ、頭頂部の大ホールにボス)のシーン。
         /// 地形と敵は DuelStage が Play の開始時にコードから組み立てるので、シーンにはカメラ・光・DuelGame と DuelStage だけを置く
         /// (地形・敵の位置と向き・セーブポイントはシーンビューにギズモで出る)。
+        /// 初期武装(近接・遠距離・背中)はプレイ時に自機の DuelArms が付ける。装填と弾の設定は DuelStage のインスペクターに出る。
         /// </summary>
         [MenuItem("Prototype/ステージのシーンを組み立てる")]
         public static void BuildStage()
@@ -58,7 +59,7 @@ namespace Prototype.EditorTools
 
             EditorSceneManager.SaveScene(scene, StageScenePath);
             AssetDatabase.SaveAssets();
-            Debug.Log($"[Prototype] ステージのシーンを組み立てました: {StageScenePath}");
+            Debug.Log($"[Prototype] 近接・遠距離・背中の武装を使うステージのシーンを組み立てました: {StageScenePath}");
         }
     }
 }

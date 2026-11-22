@@ -4,24 +4,10 @@ using UnityEngine;
 namespace Prototype
 {
     /// <summary>
-    /// 自機:移動・ロックオン・通常攻撃(2つの振りを交互にくり返す)・強攻撃(△+R1。右→左と左→右の薙ぎ払いを交互に)・
-    /// 回避・回避斬り・ブースト(○で切り替え)・ジャンプ(地上で ✗)・ブースト飛行(空中で ✗ 長押し。ジャンプから押し続けても jumpToFlyHold 秒で移る。押すと自動でブーストオン)・ガード。
-    /// ジャンプと落下攻撃(試す版):地上で ✗ を押すとすぐ跳ぶ。敵の跳べる技(下段)が当たる瞬間に跳ぶ(踏み切ってから justWindow 秒以内)と成功で、
-    ///   成功している間だけ、R1 / L1 が落下攻撃になる(跳び越えた敵の怯みを大きくためる)。ふつうの殴りは怯みがたまりにくい(DuelGame.meleeStaggerMul)。DuelPlayer.Jump.cs
-    /// 致命攻撃(試す版):崩れた敵の近くで、地上で R1 / L1 を押すと、ふつうの振りの代わりに出る大ダメージの一撃(DuelPlayer.Attack.cs)。
-    /// 守りは回避が軸。回避は出だしが無敵で、避けた後もすぐ動ける(敵の隙に差し込める)。
-    /// ガードは押している間ダメージを大きく減らすが、受けるたびに押し戻されて少し固まり、ゲージが尽きると崩れる。
-    /// 敵の叩きつけ・跳躍叩きつけの直撃はガードできない(DuelHit.guardable)。回避と攻撃はENを使う。ENが少しでもあれば出せ、足りない分はマイナスになり、
-    /// 0を超えるまで回復を待つ(その間は回避も攻撃もできない)。
-    /// 武装(DuelArms。いつも付いている):R1 / L1 はその手の武装を使う(剣なら攻撃、盾なら押している間ガード、手の銃なら撃つ)。
-    ///   技は剣ごとの表(DuelWeapon.moves → DuelMoveSet)。強攻撃(△+R1/L1)・回避斬りは押したボタンの手の剣で出す。
-    ///   弾倉のある銃のボタンでは △+ボタンはリロード(DuelArms.TryManualReload。剣の手のボタンは横取りしない)。
-    ///   ガードの値は構えている盾のもの。盾がなければガードできない。近接攻撃の間と回避の間は撃てない(CanShoot)。
-    ///   素手(右手・左手が両方とも空。DuelArms.Unarmed):R1 で右手、L1 で左手のパンチ(続けて・交互に押すと続けて殴る)。1発の威力は 4(0.5 秒に1発)、当てるたびに自機の HP が 2 減る。
-    ///   △+R1/L1・回避の直後でも同じパンチ(強攻撃・回避斬りはない)。技は DuelMoveSet.Bare。パンチの間も撃てない・ガードはできない。
-    ///   両手の近接:R1 で連撃、L1 で別の技(回避の後も R1 は回避斬り、L1 は別の技)、△+R1/L1 で強攻撃。右手のクリップで振り、左右反転しない。
-    ///   両手の銃・砲は DuelArms が撃つ(R1 が主の撃ち方、L1 が別の撃ち方)。両手持ちには盾がないのでガードできない。
-    /// ファイルは役割ごとに分けている:DuelPlayer.LockOn.cs(ロックオン)/ DuelPlayer.Attack.cs(回避・攻撃)/ DuelPlayer.Jump.cs(ジャンプ・落下攻撃)。
+    /// 自機の移動・回避・ジャンプ・近接攻撃。ふだんは R1 で通常攻撃、R2 で強攻撃。
+    /// L2 を押している間は遠距離を構え、DuelArms が射撃を受け付ける。構えている間も移動・回避・ジャンプができる。
+    /// 地上で跳べる攻撃が当たる瞬間に跳ぶと成功し、そのジャンプ中の近接 R1 が落下攻撃になる。
+    /// 崩れた敵の近くの地上では、近接 R1 で致命攻撃を出す。
     /// </summary>
     public partial class DuelPlayer : DuelFighter
     {
@@ -61,20 +47,10 @@ namespace Prototype
         [Tooltip("最後に回避・攻撃・射撃でENを使ってから、回復が始まるまでの秒数。ブースト移動・飛ぶのは待たず、やめた直後から回復する(ENを使い切ったときだけこの秒数を待つ)")]
         public float energyRegenDelay = 0.6f;
 
-        [Header("ガード(どの盾でも同じ値。ゲージの量・通す傷・構え歩きの速さなどは盾ごと=DuelWeapon)")]
-        public float guardStun = 0.28f;
-        public float guardPush = 12f;
-        public float guardBreakTime = 1.2f;
-        public float guardRegen = 30f;
-        [Tooltip("最後にガードで受けてから、ゲージが戻り始めるまでの秒数")]
-        public float guardRegenDelay = 0.8f;
-
         [Header("攻撃")]
         public float attackBuffer = 0.25f;
         [Tooltip("振り抜いてから(戻りに入ってから)この秒数は、回避で取り消せない")]
         public float dodgeLockAfterSwing = 0.1f;
-        [Tooltip("R1を押してからこの秒数のうちに△を押せば、同時押しとみなして強攻撃にする")]
-        public float heavyChordWindow = 0.1f;
         [Tooltip("回避のこの割合を過ぎてから、または回避が終わってこの秒数の間に攻撃すると回避斬りになる")]
         [Range(0f, 1f)] public float dodgeSlashFrom = 0.4f;
         public float dodgeSlashWindow = 0.2f;
@@ -96,9 +72,8 @@ namespace Prototype
                  "枠の大きさは DuelGame.Hud.cs の LockCornerHalfW / LockCornerHalfH。前の「画面の端から内側へ空ける割合 lockPickScreenMargin」はやめた)。ロックオン中の切り替え先は画面の中ならよい")]
         public float lockPickDistanceWeight = 0.12f;
 
-        public enum State { Free, Attack, Dodge, Guard, GuardStun, Hurt, GuardBroken, Dead }
+        public enum State { Free, Attack, Dodge, Hurt, Dead }
         public State Current { get; private set; }
-        public float Guard { get; private set; }
         /// <summary>EN。回避・攻撃・エネルギー武器の射撃で足りない分はマイナスになる。</summary>
         public float Energy { get; private set; }
         public float Stagger { get; private set; }
@@ -110,9 +85,6 @@ namespace Prototype
         /// オフの間は敵を狙わない(カメラは自由に回せる)。表示は DuelGame の照準枠(オン・オフの切り替わりで動く)。
         /// </summary>
         public bool LockOn { get; private set; }
-        public bool Guarding => Current is State.Guard or State.GuardStun;
-        /// <summary>構えている盾の手(0=右 / 1=左)。右下の武装の欄で、構えている盾のセルを見分けるのに使う。</summary>
-        public int GuardHand => guardHand;
         /// <summary>ブーストがオン(○で切り替え。ENが0以下になると自動でオフ)。</summary>
         public bool BoostOn { get; private set; }
         /// <summary>このフレームはブーストで移動している(見た目用)。</summary>
@@ -121,16 +93,13 @@ namespace Prototype
         public override bool Thrusting => flying || Dashing || Current == State.Dodge || JumpRising || DropDiving;
         /// <summary>武装(Init で必ず付く。null にはならない)。強くなるのは武装だけで、素の性能(HP・EN・怯み)は変えない。</summary>
         public DuelArms Arms { get; private set; }
-        /// <summary>手の銃・肩の武装を撃てる状態か(近接攻撃の振りかぶり〜戻り・回避・怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
-        public bool CanShoot => Current is State.Free or State.Guard;
-        /// <summary>
-        /// ガードのゲージの最大(持っている盾のうち大きいほう。盾がなければ0)。
-        /// 盾が2枚でもゲージは1本(作者に未確認の仮)。削れ方・通す傷などは構えている盾(guardShield)の値。
-        /// </summary>
-        public float MaxGuard => Arms.GuardMax;
+        /// <summary>移動中やジャンプ中も撃てる。回避・怯み・近接攻撃の間は撃てない。</summary>
+        public bool CanShoot => Current == State.Free;
+        /// <summary>近接攻撃のうち、動作を最後まで続けてから持ち替える区間。</summary>
+        public bool MeleeCommitted => Current == State.Attack &&
+            (dropping || FatalCommitted || phase == 1 || (phase == 2 && stateT < dodgeLockAfterSwing));
 
-        // 背中の武装(スラスター)・盾・重さを掛けた値。素の値はインスペクターの値のまま
-        // 重さ(DuelArms.Mobility)はENを使う移動(ブースト移動・回避の距離・飛ぶときの上昇)だけに掛かり、歩き・走り(RunMul)には掛からない
+        // 背中のスラスターによる機動の補正。
         float RunMul => Arms.RunMul;
         float DashMul => Arms.DashMul;
         float EnCostMul => Arms.EnCostMul;
@@ -142,16 +111,6 @@ namespace Prototype
 
         float stateT, stateDur;
         DuelSwing cur;
-        /// <summary>今の攻撃を振っている手(0=右 / 1=左)と、攻撃ボタンを押した手。</summary>
-        int atkHand, pressHand;
-        /// <summary>今の攻撃を左右反転して振るか(左手の片手の剣。両手の近接は反転しない)。</summary>
-        bool atkMirror;
-        /// <summary>
-        /// 構えている盾と、その手(0=右 / 1=左)。ガード中(Guarding)は必ず入っている:ガードに入るのは WantGuard が盾を覚えたときだけで、
-        /// 盾を外したら OnShieldsChanged が引き直し、なければガードを解く。
-        /// </summary>
-        DuelWeapon guardShield;
-        int guardHand = 1;
         int phase;   // 攻撃:0=振りかぶり 1=振り抜き 2=戻り
         int combo;
         float energyUsedAt = -10f, lastStaggerHitAt = -10f;
@@ -160,11 +119,8 @@ namespace Prototype
         bool flyHeldPrev;
         /// <summary>落下攻撃の間に押していた ✗ は、一度離すまで飛行にもジャンプにも使わない(着地の隙の後、押したままで浮き上がらないように)。</summary>
         bool flyNeedRelease;
-        /// <summary>R1を押したときに△も押されていたか(強攻撃)。</summary>
-        bool pressHeavy;
-        /// <summary>今の強攻撃が何段目か(素の剣は 0=右→左 / 1=左→右)。</summary>
-        int heavyStep;
-        float lightPressedAt = -10f, dodgePressedAt = -10f, dodgeEndAt = -10f, lastGuardHitAt = -10f;
+        bool heavyPressed;
+        float meleePressedAt = -10f, dodgePressedAt = -10f, dodgeEndAt = -10f;
         Vector3 dodgeDir, attackDir;
         float stepPhase;
 
@@ -175,57 +131,22 @@ namespace Prototype
             Energy = maxEnergy;
             LockOn = lockOnMemory ?? lockOnAtStart;
             gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中の噴射炎
-            if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
-            // 敵が落とす武装を拾って付けられる(最初は右手に素の剣、左手は空)
+            // 近接・遠距離・背中の武装。落とし物を拾うと同じ種類の武装を入れ替えられる。
             Arms = gameObject.AddComponent<DuelArms>();
             Arms.Init(this, g, rig);
-            Guard = MaxGuard;
         }
 
-        /// <summary>
-        /// 盾を付けた・外した(DuelArms から)。新しい盾を付けたらゲージを満タンに、外したら最大までに切る。
-        /// 構えている盾はその場で引き直す(構えていた手にまだ盾があればそれ、なければもう片方の手の盾)。
-        /// 盾がなくなったらガード(受けて固まっている間も)を解く。
-        /// </summary>
-        public void OnShieldsChanged(bool refill)
-        {
-            Guard = refill ? MaxGuard : Mathf.Min(Guard, MaxGuard);
-            guardShield = null;
-            if (Arms.Hand(guardHand) is { kind: DuelKind.Shield } same) guardShield = same;
-            else if (Arms.Hand(1 - guardHand) is { kind: DuelKind.Shield } other)
-            {
-                guardShield = other;
-                guardHand = 1 - guardHand;
-            }
-            if (Guarding && guardShield == null) Enter(State.Free);
-        }
-
-        /// <summary>
-        /// その手(0=右 / 1=左)の剣を捨てた(DuelArms.Drop。装備の確認の画面から)。その手で振っている途中なら振りをやめ
-        /// (剣のない手の振りで当たらないように)、その手で押して覚えている攻撃も忘れる。
-        /// 剣のない手では、通常攻撃・強攻撃・回避斬り・△との同時押しは出ない(TryAttack・TryChord などが DuelArms.CanMelee・SwordIn で止める)。
-        /// ただし右手・左手が両方とも空になったら素手で、R1 / L1 でパンチが出る(DuelArms.Unarmed)。
-        /// </summary>
-        public void OnSwordDropped(int hand)
-        {
-            if (pressHand == hand) lightPressedAt = -10f;
-            if (Current == State.Attack && atkHand == hand)
-            {
-                combo = 0;
-                Enter(State.Free);
-            }
-        }
-
-        /// <summary>撃墜からのやり直し:その場所に、HP・EN・ガードを満タンにして出し直す(ロックオンは外す)。</summary>
+        /// <summary>撃墜からのやり直し。その場所に HP・EN を満タンにして出し直す。</summary>
         public void Respawn(Vector3 pos, Quaternion rot)
         {
             Revive();
             Teleport(pos, rot);
-            Guard = MaxGuard;
             Energy = maxEnergy;
             Stagger = 0f;
             BoostOn = false;
-            combo = 0;
+            ClearBufferedInput();
+            Arms.ClearBufferedInput();
+            Arms.StopBurst();
             airVel = Vector3.zero;
             flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
             slideOff = Vector3.zero;
@@ -275,7 +196,7 @@ namespace Prototype
             Vector3 d = transform.position - before;
             float flat = new Vector2(d.x, d.z).magnitude;
             bool dodge = Current == State.Dodge;
-            bool walking = (Current is State.Free or State.Guard) && moveInput && !Airborne;
+            bool walking = Current == State.Free && moveInput && !Airborne;
             if (d.magnitude > Mathf.Max(6f, dt * 80f) || !(flying || dodge || walking))
             {
                 stepTravel = 0f;
@@ -295,22 +216,28 @@ namespace Prototype
 
         void Update()
         {
-            if (DuelGame.Paused) return;   // メニュー(装備の確認・操作方法)を開いている間は止める
+            if (DuelGame.Paused)
+            {
+                Arms.CheckPausedBurstRelease();
+                return;
+            }
             float dt = Time.deltaTime;
             float now = Time.time;
             stateT += dt;
             UpdateTint(dt);
-            Arms.Tick();   // 武装(拾う・付け先を選ぶ・撃つ)。ボタンの横取りを自機が読むより先に決める
-            if (Current == State.Dead) { flying = false; Move(Vector3.zero, dt); return; }
+            Arms.Tick();   // 持ち替え・弾倉・落とし物を、自機のボタン入力より先に更新する
+            if (Current == State.Dead) { flying = false; Move(Vector3.zero, dt); Arms.UpdateWeaponVisibility(); return; }   // 構えたまま撃墜されても剣の見た目に戻す
 
             UpdateLock();
             ReadButtons(now);
-            // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ブーストを切り替えない(○ は選ぶ表示の取り消し。DuelArms.ChoiceLocksInput)。
+            // 振り抜き・落下攻撃・致命攻撃は、取り消せる区間まで待ってから持ち替える。
+            if (Arms.RangedHeld && Current == State.Attack && !MeleeCommitted) Enter(State.Free);
+            // 落とし物の選択中と閉じたフレームは、ブーストを切り替えない(○ は選ぶ表示の取り消し。DuelArms.ChoiceLocksInput)。
             // オンのまま選ぶ表示に入ったら、オンのまま(速い移動はそのまま効く)
             if (!Arms.ChoiceLocksInput && ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
             // ✗:押したら自動でブーストオン。地上で押していればジャンプ(UpdateJump。地上では飛ばない・上がっている間は飛行にしない)。
             // 空中で押している間・ジャンプの頂点を過ぎても押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
-            // 選ぶ表示(付け先・分解)の間と、それを終えた時に押していた ✗ を離すまでは跳ばない・飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
+            // 落とし物の選択中と、それを終えた時に押していた ✗ を離すまでは跳ばない・飛ばない(DuelArms.FlyBlocked)
             bool flyRaw = ProtoInput.FlyHeld && !Arms.FlyBlocked;
             if (flyRaw && !flyHeldPrev && Energy > 0f) BoostOn = true;
             flyHeldPrev = flyRaw;
@@ -319,7 +246,7 @@ namespace Prototype
             else if (dropping) flyNeedRelease = true;
             bool flyHeld = flyRaw && !flyNeedRelease;
             bool mayFly = UpdateJump(now, flyHeld);
-            flying = mayFly && flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;
+            flying = mayFly && flyHeld && Energy > 0f && Current is State.Free or State.Attack or State.Dodge;
             riseSpeed = flyRiseSpeed * DashMul;
             riseAccel = flyRiseAccel;
             if (flying)
@@ -336,11 +263,6 @@ namespace Prototype
             Vector3 camRight = Vector3.Cross(Vector3.up, camFwd);
             Vector3 worldMove = Vector3.ClampMagnitude(camFwd * mv.y + camRight * mv.x, 1f);
 
-            // ガードのゲージ:最後に受けてから少しして戻る(構えている間は半分の速さ)
-            Guard = Mathf.Min(Guard, MaxGuard);
-            if (Current != State.GuardBroken && now - lastGuardHitAt >= guardRegenDelay)
-                Guard = Mathf.Min(MaxGuard, Guard + guardRegen * (Guarding ? 0.5f : 1f) * dt);
-
             if (now - lastStaggerHitAt >= staggerDecayDelay && Current != State.Hurt)
                 Stagger = Mathf.Max(0f, Stagger - staggerDecay * dt);
 
@@ -354,15 +276,11 @@ namespace Prototype
             switch (Current)
             {
                 case State.Free:
-                case State.Guard:
-                    // 回避 → 攻撃 → ガード の順に受け付ける
+                    // 回避 → 近接攻撃の順に受け付ける。射撃は移動後に扱う。
                     if (TryDodge(now, worldMove)) break;
                     if (TryAttack(now)) break;
-                    bool wantGuard = WantGuard();
-                    if (wantGuard != (Current == State.Guard)) Enter(wantGuard ? State.Guard : State.Free);
-                    // ブースト:オンの間に移動すると速く走り、ENを使い続ける(ガード中は効かない)
-                    Dashing = BoostOn && Current == State.Free && worldMove.sqrMagnitude > 0.04f && Energy > 0f;
-                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed) * RunMul * (Current == State.Guard ? GuardMoveMul : 1f);
+                    Dashing = BoostOn && worldMove.sqrMagnitude > 0.04f && Energy > 0f;
+                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed) * RunMul;
                     vel = worldMove * spd;
                     if (Dashing)
                     {
@@ -400,10 +318,9 @@ namespace Prototype
                         break;
                     }
                     // 回避の後半に攻撃を押したら、回避斬りへ
-                    if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !HeavyPressed && !Overheated && Arms.CanMelee(pressHand))
+                    if (stateT >= dodgeDuration * dodgeSlashFrom && LightInputReady(now) && !Overheated)
                     {
                         dodgeEndAt = now;
-                        atkHand = pressHand;   // 押したボタンの手の剣で斬る(素手ならその手のパンチ)
                         if (CanDrop) StartDrop();   // 成功しているジャンプ中なら落下攻撃
                         else StartDodgeSlash();
                         break;
@@ -412,12 +329,7 @@ namespace Prototype
                     break;
                 }
 
-                case State.GuardStun:
-                    if (stateT >= stateDur) Enter(WantGuard() ? State.Guard : State.Free);
-                    break;
-
                 case State.Hurt:
-                case State.GuardBroken:
                     if (stateT >= stateDur) Enter(State.Free);
                     break;
             }
@@ -426,7 +338,7 @@ namespace Prototype
             if (Airborne)
             {
                 if (Current == State.Dodge || DropDiving) airVel = vel;   // 回避・落下攻撃の降下はすぐその向きへ
-                else if (Current is State.Free or State.Guard) airVel = Vector3.MoveTowards(airVel, vel, airAccel * dt);
+                else if (Current == State.Free) airVel = Vector3.MoveTowards(airVel, vel, airAccel * dt);
                 else airVel = Vector3.MoveTowards(airVel, vel, airDrag * dt);   // 攻撃・怯みの間は勢いがゆるやかに抜ける
                 vel = airVel;
             }
@@ -437,60 +349,43 @@ namespace Prototype
             Move(vel, dt);
             RecordFootsteps(before, dt, worldMove.sqrMagnitude > 0.02f);
             Animate(dt, vel);
+            Arms.UpdateCombat(CanShoot);
         }
 
         void ReadButtons(float now)
         {
-            // 攻撃:剣を持つ手のボタン(R1=右手 / L1=左手。落ちている武装の選ぶ表示(付け先・分解)の間と、終えた時に押していたボタンを離すまでは数えない)。
-            // 素手(両手とも空)なら R1 / L1 で右手・左手のパンチ
-            if (Arms.CanMelee(0) && Arms.Pressed(DuelSlot.RightHand)) PressSword(0, now);
-            if (Arms.CanMelee(1) && Arms.Pressed(DuelSlot.LeftHand)) PressSword(1, now);
-            // 回避:選ぶ表示の間と閉じたフレームは覚えない(閉じた直後に飛び出さないように。DuelArms.ChoiceLocksInput)
+            if (Arms.RangedHeld || Arms.ChoiceLocksInput)
+                meleePressedAt = -10f;
+            else if (Arms.HeavyPressed)
+            {
+                meleePressedAt = now;
+                heavyPressed = true;
+            }
+            else if (Arms.LightPressed)
+            {
+                meleePressedAt = now;
+                heavyPressed = false;
+            }
+            // 落とし物の選択中と閉じたフレームには回避を先行入力しない。
             if (!Arms.ChoiceLocksInput && ProtoInput.Dodge) dodgePressedAt = now;
         }
 
-        /// <summary>先行入力(押してからの受付時間内の攻撃・回避)を捨てる。メニューを開いたとき(閉じた直後に出ないように)。</summary>
+        /// <summary>メニューや落とし物の選択を開いたとき、先行入力を捨てる。</summary>
         public void ClearBufferedInput()
         {
-            lightPressedAt = -10f;
+            meleePressedAt = -10f;
             dodgePressedAt = -10f;
-            pressHeavy = false;
+            heavyPressed = false;
         }
-
-        void PressSword(int hand, float now)
-        {
-            lightPressedAt = now;
-            pressHeavy = ProtoInput.AimHeld;
-            pressHand = hand;
-        }
-
-        // ───────── ガード ─────────
-
-        /// <summary>
-        /// ガードしたいか:盾を持つ手のボタンを押している間(構えている盾を覚える)。盾がなければガードできない。
-        /// 剣(L1)での素のガードは、部屋のモードと一緒にやめた。
-        /// </summary>
-        bool WantGuard()
-        {
-            if (!Arms.GuardHeld(out var shield, out int hand)) return false;
-            guardShield = shield;
-            guardHand = hand;
-            return true;
-        }
-
-        // 構えている盾の値。ガード中(Guarding)にしか読まないので、guardShield は必ず入っている
-        float GuardChip => guardShield.guardChip;
-        float GuardCostMul => guardShield.guardCostMul;
-        float GuardMoveMul => guardShield.guardMoveMul;
-        float GuardStunMul => guardShield.guardStunMul;
-
-        /// <summary>最後に近接(剣・両手の近接・回避斬り)か回避を始めた時刻。射撃の構え(DuelArms.Aiming)はこれで終わる。</summary>
-        public float MeleeOrDodgeAt { get; private set; } = -10f;
 
         void Enter(State s, float dur = 0f)
         {
-            if (s is State.Attack or State.Dodge) MeleeOrDodgeAt = Time.time;
-            if (s != State.Attack) dropping = fatal = false;
+            if (s is State.Dodge or State.Hurt) Arms.StopBurst();
+            if (s != State.Attack)
+            {
+                dropping = fatal = false;
+                combo = 0;
+            }
             Current = s;
             stateT = 0f;
             stateDur = dur;
@@ -498,42 +393,24 @@ namespace Prototype
 
         // ───────── 被弾 ─────────
 
-        /// <summary>敵の攻撃が当たった。回避の無敵中は当たらない。ガードできる攻撃を正面で受ければガード。</summary>
+        /// <summary>敵の攻撃が当たった。回避や致命攻撃の無敵中は当たらない。</summary>
         public void ReceiveHit(DuelHit h)
         {
             if (Dead || Invincible) return;
-            EndJump();   // 被弾(ガードで受けても)で「ジャンプ中」は終わる。成功も消える
-            if (DropDiving) airVel = Vector3.zero;   // 落下攻撃で降りている途中に受けたら、降りる勢いで流れ続けない(怯まなければ、そのまま降りて振る)
+            EndJump();   // 被弾で「ジャンプ中」は終わる。成功も消える
+            if (DropDiving) airVel = Vector3.zero;
             Vector3 away = Flat(transform.position - h.from);
             if (away == Vector3.zero) away = -transform.forward;
-            bool front = Vector3.Angle(transform.forward, -away) < 110f;
-            if (Guarding && h.guardable && front && MaxGuard > 0f)
+            Vector3 hurtAt = Chest - away * Radius;
+
+            if (HeavyGuardPoint)
             {
-                // 受け方は構えている盾の値
-                lastGuardHitAt = Time.time;
-                Guard -= h.guardCost * GuardCostMul;
-                HP -= h.damage * GuardChip;
-                ProtoDamageText.Show(Chest, h.damage * GuardChip);
-                Knockback(away * guardPush * GuardStunMul);
-                if (Guard <= 0f)
-                {
-                    // ガードが崩れた:しばらく無防備。ゲージは半分まで戻してから再開
-                    Guard = MaxGuard * 0.5f;
-                    StopRising();   // 空中で崩れたら上昇が止まり、そのまま落ちる
-                    Flash(new Color(1f, 0.4f, 0.2f), 0.4f);
-                    game.Log("ガードが崩れた");
-                    Enter(State.GuardBroken, guardBreakTime);
-                }
-                else
-                {
-                    Flash(new Color(0.4f, 0.7f, 1f), 0.12f);
-                    Enter(State.GuardStun, guardStun * GuardStunMul);
-                }
-                // ガード:受けた所から青白い火花
-                Vector3 guardAt = Chest - away * Radius;
-                DuelSpark.Burst(guardAt, -away, new Color(0.7f, 0.9f, 1f), 18, 1.1f);
-                ProtoFx.Blast(guardAt, 1.6f, new Color(0.5f, 0.8f, 1f), 0.1f);
-                Jolt(-4f);
+                float reduced = h.damage * GuardPointDamageMul;
+                HP -= reduced;
+                ProtoDamageText.Show(Chest, reduced);
+                Color tint = new(0.55f, 0.85f, 1f);
+                Flash(tint, 0.12f);
+                DuelSpark.Burst(hurtAt, -away, tint, 18, 1.1f);
                 if (HP <= 0f) Die();
                 return;
             }
@@ -543,7 +420,6 @@ namespace Prototype
             Flash(new Color(1f, 0.25f, 0.2f), 0.18f);
             Knockback(away * h.knock);
             Jolt(-8f);
-            Vector3 hurtAt = Chest - away * Radius;
             DuelSpark.Burst(hurtAt, -away, new Color(1f, 0.55f, 0.25f), 16, 1.1f);
             game.HitStop(0.08f);
             if (HP <= 0f) { Die(); return; }
@@ -553,7 +429,6 @@ namespace Prototype
             lastStaggerHitAt = Time.time;
             if (Stagger < maxStagger) return;
             Stagger = 0f;
-            combo = 0;
             StopRising();   // 空中で怯んだら上昇の勢いが止まり、怯んでいる間は落ちる(✗を押し続けていれば、怯みが終わるとまた上がる)
             Enter(State.Hurt, h.hurtTime);
         }
@@ -561,6 +436,9 @@ namespace Prototype
         void Die()
         {
             HP = 0f;
+            ClearBufferedInput();
+            Arms.ClearBufferedInput();
+            Arms.StopBurst();
             EndJump();
             // 空中で撃墜されたら、飛行と上昇の勢いを止めて落ちる
             flying = false;
@@ -575,7 +453,7 @@ namespace Prototype
 
         void Animate(float dt, Vector3 vel)
         {
-            // 機体全体の姿勢:怯みはのけぞって沈みよろめく / ガードで受けたら少しのけぞる / ガードが崩れたら大きくのけぞって沈む
+            // 機体全体の姿勢:怯みはのけぞって沈みよろめく
             float k = stateDur > 0f ? Mathf.Clamp01(stateT / stateDur) : 0f;
             float tLean = 0f, tTwist = 0f, tLift = 0f, tRoll = 0f, rate = 12f;
             if (Airborne)
@@ -598,10 +476,9 @@ namespace Prototype
             {
                 case State.Attack:
                 {
-                    // 技ごとの横のひねり・前傾・沈み(武器ごとの振り方の違い)。戻りで0へ。左手で振るときはひねりを左右反転
+                    // 技ごとの横のひねり・前傾・沈み(武器ごとの振り方の違い)。戻りで0へ
                     float a = phase == 0 ? Mathf.Clamp01(stateT / cur.windup) : phase == 1 ? Mathf.Clamp01(stateT / cur.active) : Mathf.Clamp01(stateT / cur.recover);
-                    float side = atkMirror ? -1f : 1f;
-                    tTwist = side * (phase == 0 ? Mathf.Lerp(cur.twist0, cur.twist1, a) : phase == 1 ? Mathf.Lerp(cur.twist1, cur.twist2, a) : Mathf.Lerp(cur.twist2, 0f, a));
+                    tTwist = phase == 0 ? Mathf.Lerp(cur.twist0, cur.twist1, a) : phase == 1 ? Mathf.Lerp(cur.twist1, cur.twist2, a) : Mathf.Lerp(cur.twist2, 0f, a);
                     tLean += phase == 0 ? Mathf.Lerp(cur.lean0, cur.lean1, a) : phase == 1 ? Mathf.Lerp(cur.lean1, cur.lean2, a) : Mathf.Lerp(cur.lean2, 0f, a);
                     tLift = phase == 0 ? 0f : phase == 1 ? -cur.drop * a : -cur.drop * (1f - a);
                     rate = 40f;
@@ -611,15 +488,6 @@ namespace Prototype
                     FlinchPose(k, out tLean, out tTwist, out tLift);
                     rate = 30f;
                     break;
-                case State.GuardStun:
-                    tLean = -8f * (1f - k);
-                    rate = 30f;
-                    break;
-                case State.GuardBroken:
-                    FlinchPose(Mathf.Min(k * 0.6f, 1f), out tLean, out tTwist, out tLift);
-                    tLift -= 0.6f * (1f - k);
-                    rate = 20f;
-                    break;
                 case State.Dead:
                     tLean = -30f;
                     tLift = -1.5f;
@@ -628,26 +496,17 @@ namespace Prototype
             }
             BodyOffset(tLean, tTwist, tLift, rate, dt, tRoll);
 
-            // 斬撃クリップ:左手で振るときは左右反転のクリップ(あれば)
-            string clip = atkMirror && rig != null && rig.Has(MechRig.AttackL) ? MechRig.AttackL : MechRig.Attack;
             switch (Current)
             {
                 case State.Attack:
                     float t = phase == 0 ? Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup))
                             : phase == 1 ? Mathf.Lerp(cur.pose1, cur.pose2, Mathf.Clamp01(stateT / cur.active))
                             : Mathf.Lerp(cur.pose2, cur.pose3, Mathf.Clamp01(stateT / cur.recover));
-                    Pose(clip, t, 25f);
-                    return;
-                case State.Guard:
-                case State.GuardStun:
-                    // 仮:振りかぶった途中の姿勢を、構えに見立てる(盾を持つ手を上げる)
-                    bool leftGuard = guardHand == 1 && rig != null && rig.Has(MechRig.AttackL);
-                    Pose(leftGuard ? MechRig.AttackL : MechRig.Attack, MechRig.AttackRaised * 0.55f, 18f);
+                    Pose(MechRig.Attack, t, 25f);
                     return;
                 case State.Dodge:
                     Pose(MechRig.Dash, 0f, 15f);
                     return;
-                case State.GuardBroken:
                 case State.Hurt:
                 case State.Dead:
                     Pose(MechRig.Idle, 0f, 10f);
@@ -657,8 +516,8 @@ namespace Prototype
             // ブースト移動中・空中。足もとの高さは機体の中心から真下へ測るので、足場の角に立つと中心が外へ出て高く出る。
             // 接地しているかも見る(Airborne)ことで、角に立っても空中の姿勢にしない
             if (Dashing || (Airborne && Altitude > 1.5f)) { Pose(MechRig.Dash, 0f, 12f); return; }
-            // 右手の銃(両手の銃・砲も)を撃った直後・L1 を溜めている間に止まっていれば、右腕を前に出した射撃の構え(左手用の構えのクリップはないので右手だけ)
-            if (sp <= 0.5f && Arms.AimPose(0.4f) && rig != null && rig.Has(MechRig.Aim))
+            // 停止中に L2 で遠距離を構えている間は、右腕を前に出す。
+            if (sp <= 0.5f && Arms.Aiming && rig != null && rig.Has(MechRig.Aim))
             {
                 Pose(MechRig.Aim, 0f, 20f);
                 return;

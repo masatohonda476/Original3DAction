@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using HuntProto;
 using UnityEngine;
 
@@ -9,15 +8,13 @@ namespace Prototype
     {
         // ───────── 狙い ─────────
 
-        /// <summary>撃ち出す所(その所の武装の先。なければ胸・肩の高さの左右)。</summary>
-        Vector3 Muzzle(DuelSlot s)
+        /// <summary>遠距離武器の銃口。</summary>
+        Vector3 Muzzle()
         {
-            var v = visuals[(int)s];
-            Vector3 f = player.transform.forward;
-            if (v != null) return v.position + f * (slots[(int)s] is { kind: DuelKind.TwoHandGun } ? 3.5f : 1.5f);   // 両手の銃・砲は長いので先まで
-            bool hand = s is DuelSlot.RightHand or DuelSlot.LeftHand;
-            float side = s is DuelSlot.RightShoulder or DuelSlot.RightHand ? 2f : -2f;
-            return player.transform.position + Vector3.up * game.mechHeight * (hand ? 0.55f : 0.85f) + player.transform.right * side + f * 1.5f;
+            var visual = visuals[(int)DuelSlot.Ranged];
+            Vector3 forward = player.transform.forward;
+            if (visual != null) return visual.position + forward * (RangedWeapon.scale.z * 0.5f);
+            return player.Chest + player.transform.right * 2f + forward * 1.5f;
         }
 
         // ───────── 画面の上の照準(カーソル) ─────────
@@ -27,7 +24,7 @@ namespace Prototype
         bool aimDirValid;
         Vector2 cursorTan;
         bool cursorOnEnemy;
-        /// <summary>照準の先がカメラの後ろにある(自機がカメラの方を向いている。枠を画面に置けないので、銃・砲は吸い付かない)。</summary>
+        /// <summary>照準の先がカメラの後ろにある(自機がカメラの方を向いている。枠を画面に置けないので、遠距離武器は吸い付かない)。</summary>
         bool cursorBehind;
         /// <summary>
         /// 照準の先が画面の中に映っているか(カメラの後ろ・画面の外なら false)。自機がカメラと違う方を向いて撃つと外れる(射撃では向き直らない)。
@@ -173,7 +170,7 @@ namespace Prototype
         /// 反動で照準そのものをずらす(1回撃つごと):上へ aimKick 度、左右へ ±aimKickSide 度のランダム(kickMul を掛ける)。
         /// 角度は今の画角で画面の上の距離へ直す。可動範囲で止まる(カメラは動かさない。端へ押し付けてもカメラは回らない)。
         /// </summary>
-        void Kick(DuelWeapon w)
+        void Kick(DuelShot w)
         {
             var r = Rules;
             if (!r.cursorMovable) return;   // 照準を動かせないときは、反動で照準をずらさない(押さえ込めないため。ばらつきの広がりは残る)
@@ -192,36 +189,33 @@ namespace Prototype
         Vector3 AimDir(Camera cam) => aimDirValid ? aimDir : cam.transform.forward;
 
         /// <summary>撃ち方の弾の速さ(m/s。DuelArmsRules.shotSpeedMul を掛ける)。0 以下なら弾を飛ばさず、今までどおりすぐ届く光線。</summary>
-        float SpeedOf(DuelWeapon w) => w.shotSpeed * Mathf.Max(0f, Rules.shotSpeedMul);
+        float SpeedOf(DuelShot w) => w.shotSpeed * Mathf.Max(0f, Rules.shotSpeedMul);
 
         // ───────── 照準の枠(射撃だけ。アーマード・コアの FCS のように、枠の中の敵に当てる) ─────────
 
-        /// <summary>画面に出す照準の枠1つ(大きさが同じ武装はまとめる)。halfW / halfH は画面の中央からの tan、buttons は使うボタン(1=R1 2=L1 4=R2 8=L2)。</summary>
+        /// <summary>画面に出す射撃の照準枠。</summary>
         public struct AimFrame
         {
-            public float halfW, halfH;
-            public int buttons;
-            /// <summary>その武装を今撃っている・撃ったばかり・溜めている(枠を明るく)。</summary>
+            /// <summary>次に撃てるまで待っている間は枠を明るくする。</summary>
             public bool hot;
             /// <summary>枠の中に当てる相手がいる(枠の色を変える)。</summary>
             public bool locked;
-            /// <summary>画面に描く大きさ(tan)。反動で広がっている分だけ halfW / halfH より大きい(吸い付く範囲は広げない。見た目だけ)。</summary>
+            /// <summary>画面に描く大きさ(tan)。反動で広がっている分だけ 判定範囲より大きい(吸い付く範囲は広げない。見た目だけ)。</summary>
             public float drawW, drawH;
-            /// <summary>今のばらつき(spread + 反動の広がり)の tan。真ん中の十字の開きに出す。ミサイルだけの枠は -1(十字を出さない)。</summary>
+            /// <summary>今のばらつき(spread + 反動の広がり)の tan。真ん中の十字の開きに出す。</summary>
             public float spread;
         }
 
-        /// <summary>今の照準の枠(撃つ武装ごと、同じ大きさはまとめる)と、枠の中で当てる相手(印を出す)。毎フレーム Tick で作り直す。</summary>
-        public readonly List<AimFrame> Frames = new();
-        public readonly List<DuelEnemy> Marks = new();
+        public AimFrame? ShotFrame { get; private set; }
+        public DuelEnemy MarkedEnemy { get; private set; }
         /// <summary>
-        /// 弾が飛んでいく所(銃・砲。撃つときと同じ狙いの先へ向けた弾が、自機の速度を受け継いで流れた先。PredictShot)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
-        /// 撃っている・撃ったばかり・溜めている武装を先に選ぶ。銃・砲を付けていなければ null。毎フレーム UpdateFrames で求める。
+        /// 弾が飛んでいく所(遠距離武器。撃つときと同じ狙いの先へ向けた弾が、自機の速度を受け継いで流れた先。PredictShot)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
+        /// 遠距離を構えていない間は null。
         /// </summary>
         public Vector3? ShotPoint { get; private set; }
         /// <summary>
         /// ShotPoint へ飛ぶ弾が敵の体に当たる(銃口から ShotPoint への線が、敵の体のカプセルを通る)。真ん中の十字が敵に重なっているときで、十字を橙にする
-        /// (作者「ロックオン中の弾道を示す十字は、敵と重なったらオレンジとかになるようにしてください」)。ばらつきは入れない。毎フレーム UpdateFrames で求める。
+        /// (作者「ロックオン中の弾道を示す十字は、敵と重なったらオレンジとかになるようにしてください」)。ばらつきは入れない。毎フレーム UpdateFrame で求める。
         /// </summary>
         public bool ShotOnEnemy => ShotEnemy != null;
         /// <summary>
@@ -229,24 +223,15 @@ namespace Prototype
         /// (作者「敵の囲みは枠と同じ青のままで、弾が当たるタイミングで今より濃いオレンジにしてほしいです」。DuelGame.DrawLockCorners)。
         /// </summary>
         public DuelEnemy ShotEnemy { get; private set; }
-        readonly List<DuelEnemy> missileBuf = new();
 
-        /// <summary>両手の銃・砲の L1 の撃ち方なら、その両手の武装(枠の大きさを借りる)。</summary>
-        DuelWeapon ParentOf(int i) => i == AltIndex ? TwoHandGun : null;
+        /// <summary>照準枠の横の半分の大きさ(角度の tan)。</summary>
+        float FrameTan(DuelWeapon w) => Mathf.Tan(Rules.FrameDeg(w) * Mathf.Deg2Rad);
 
-        /// <summary>枠の横の半分の大きさ(画面の中央からの角度の tan)。縦は frameAspect 倍。L1 の撃ち方に枠がなければ両手の武装の枠(DuelArmsRules.FrameDeg)。</summary>
-        public float FrameTan(DuelWeapon w, DuelWeapon parent = null) => Mathf.Tan(Rules.FrameDeg(w, parent) * Mathf.Deg2Rad);
-
-        /// <summary>
-        /// 敵1体の、このフレームの見え方(1フレームに1回まとめて求め、枠の判定・撃つ相手選び・ミサイルで使い回す)。
-        /// a / b は体(縦長のカプセル)の下と上の球の中心を画面に写した位置(tan)、ra / rb はその半径、off は胸が画面の中央からずれている角度(度)。
-        /// sight は自機(LockPoint)から胸まで見通せるか(0 = まだ調べていない / 1 = 見通せる / -1 = さえぎられている。要るときだけ調べる)。
-        /// </summary>
         struct EnemyView
         {
             public DuelEnemy e;
             public bool front;
-            public float ax, ay, ra, bx, by, rb, off;
+            public float ax, ay, ra, bx, by, rb;
             public sbyte sight;
         }
 
@@ -284,7 +269,6 @@ namespace Prototype
                 v.bx = b.x / b.z;
                 v.by = b.y / b.z;
                 v.rb = r / b.z;
-                v.off = Mathf.Atan(new Vector2(c.x / c.z, c.y / c.z).magnitude) * Mathf.Rad2Deg;
                 v.front = true;
             }
         }
@@ -328,20 +312,20 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 吸い付く相手(銃・砲):照準の枠に掛かっている、射程の内で見通せる敵のうち、照準から体まで寄せる角度が一番小さい敵
+        /// 吸い付く相手(遠距離武器):照準の枠に掛かっている、射程の内で見通せる敵のうち、照準から体まで寄せる角度が一番小さい敵
         /// (同じくらいならロックオン中の敵。ロックオン中の敵も枠は広くみなさない)。いなければ null(照準の先へまっすぐ撃つ)。
         /// 枠に掛かっていても、寄せきれなければ外れる(AssistDir)。射程は撃ち出す所(from)から測る。
         /// 見通しは自機から調べる(敵ごとに1フレーム1回。武装ごとに撃ち出す所から調べ直さない)。
         /// </summary>
-        DuelEnemy AimTarget(DuelWeapon w, DuelWeapon parent, Vector3 from)
+        DuelEnemy AimTarget(DuelWeapon w, DuelShot shot, Vector3 from)
         {
             var cam = Camera.main;
             // 照準の先がカメラの後ろ(自機がカメラの方を向いて撃つ)なら吸い付かない(枠が画面の中央に置かれ、背中側の敵へ狙いが寄ってしまうため)
             if (cam == null || cursorBehind) return null;
             PrepareViews(cam);
             var rules = Rules;
-            float hw = FrameTan(w, parent), hh = hw * rules.frameAspect;
-            float range2 = w.range * w.range;
+            float hw = FrameTan(w), hh = hw * rules.frameAspect;
+            float range2 = shot.range * shot.range;
             Vector3 o = cam.transform.position, d = AimDir(cam);
             var t = player.Target;
             DuelEnemy best = null;
@@ -362,15 +346,15 @@ namespace Prototype
 
         /// <summary>
         /// 吸い付きの強さ:照準の狙いを、枠の中の敵へ寄せられる最大の角度(度)。枠の大きさ × assistPart(小さい枠ほど弱い)。
-        /// 照準を動かせるとき(cursorMovable)だけ、弾が速さを持つ撃ち方(実弾の銃・砲)は projectileAssist がオフ(既定)なら 0
+        /// 照準を動かせるとき(cursorMovable)だけ、弾が速さを持つ撃ち方(実弾の遠距離武器)は projectileAssist がオフ(既定)なら 0
         /// (照準を先に置いた偏差射撃を、敵の今の位置へ引き戻さないように)。照準を動かせない既定では、どの撃ち方にも吸い付く。
         /// </summary>
-        float AssistDeg(DuelWeapon w, DuelWeapon parent)
+        float AssistDeg(DuelWeapon w, DuelShot shot)
         {
             var r = Rules;
             // 照準を動かせない(既定)ときは、先に置く偏差射撃ができないので、弾が速さを持つ撃ち方にも吸い付かせる(敵の今の位置へ。先読みはしない)
-            if (!r.projectileAssist && r.cursorMovable && (w.Explosive || SpeedOf(w) > 0f)) return 0f;
-            return r.FrameDeg(w, parent) * Mathf.Clamp01(r.assistPart);
+            if (!r.projectileAssist && r.cursorMovable && SpeedOf(shot) > 0f) return 0f;
+            return r.FrameDeg(w) * Mathf.Clamp01(r.assistPart);
         }
 
         /// <summary>
@@ -405,7 +389,7 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 銃・砲の狙う所:照準の向きを、吸い付く相手 t へ少しだけ寄せた向きの先(最初に当たる地形・敵)。from から射程(range)までに切る。
+        /// 遠距離武器の狙う所:照準の向きを、吸い付く相手 t へ少しだけ寄せた向きの先(最初に当たる地形・敵)。from から射程(range)までに切る。
         /// </summary>
         Vector3 AssistedAimPoint(DuelEnemy t, float maxDeg, Vector3 from, float range)
         {
@@ -433,130 +417,54 @@ namespace Prototype
             return d.magnitude > range ? from + d.normalized * range : p;
         }
 
-        /// <summary>
-        /// 撃つ状態 i の弾が通る所の見込み(真ん中の十字に出す):撃つときと同じ狙いの先(AssistedAimPoint)へ銃口から向けた弾が、
-        /// 自機の速度を受け継いで(Fly)流れた先の、狙いの先と同じ前後の距離の所。速さのない光線は狙いの先のまま。ばらつき(Jitter)は入れない(十字の開きで出す)。
-        /// </summary>
-        Vector3 PredictShot(DuelWeapon w, int i, DuelSlot at, DuelEnemy t)
+        /// <summary>弾が飛ぶ所の見込み。自機から受け継いだ速度も照準の十字に反映する。</summary>
+        Vector3 PredictShot(DuelShot shot, Vector3 from, Vector3 aim)
         {
-            Vector3 from = Muzzle(at);
-            Vector3 aim = AssistedAimPoint(t, AssistDeg(w, ParentOf(i)), from, w.range);
             Vector3 to = aim - from;
             float dist = to.magnitude;
-            float speed = SpeedOf(w);
-            if (w.Explosive && speed <= 0f) speed = FallbackShellSpeed;
+            float speed = SpeedOf(shot);
             float inherit = Rules.inheritShooterVelocity;
-            if (dist < 0.01f || speed <= 0f || player == null || inherit <= 0f) return aim;
+            if (dist < 0.01f || speed <= 0f || inherit <= 0f) return aim;
             Vector3 dir = to / dist;
-            Vector3 v = dir * speed + inheritVel * inherit;
-            float m = v.magnitude;
-            if (m <= 1f) return aim;
-            Vector3 fd = v / m;
-            float s = dist / Mathf.Max(0.05f, Vector3.Dot(fd, dir));   // 狙いの先と同じ前後の距離まで
-            return from + fd * Mathf.Min(s, w.range);
+            Vector3 velocity = dir * speed + inheritVel * inherit;
+            if (velocity.sqrMagnitude <= 1f) return aim;
+            Vector3 flightDir = velocity.normalized;
+            float along = dist / Mathf.Max(0.05f, Vector3.Dot(flightDir, dir));
+            return from + flightDir * Mathf.Min(along, shot.range);
         }
 
-        /// <summary>UpdateFrames が求めた、撃つ状態ごとの当てる相手(銃・砲)とミサイルの割り振り先。aimCacheFrame のフレームだけ使える。</summary>
-        readonly DuelEnemy[] aimCache = new DuelEnemy[StateCount];
-        readonly List<DuelEnemy>[] missileCache = new List<DuelEnemy>[StateCount];
-        int aimCacheFrame = -1;
-
-        /// <summary>撃つ状態 i の当てる相手(このフレームに UpdateFrames が求めていればそれ。このフレームに倒れていれば null)。</summary>
-        DuelEnemy TargetFor(DuelWeapon w, int i, Vector3 from)
+        bool UpdateFrame(bool special, out Vector3 from, out Vector3 aim)
         {
-            if (aimCacheFrame != Time.frameCount) return AimTarget(w, ParentOf(i), from);
-            var c = aimCache[i];
-            return c != null && !c.Dead ? c : null;
-        }
-
-        /// <summary>撃つ状態 i のミサイルの割り振り先(このフレームに UpdateFrames が求めていればそれ)。</summary>
-        List<DuelEnemy> MissilesFor(DuelWeapon w, int i) =>
-            aimCacheFrame == Time.frameCount && missileCache[i] != null ? missileCache[i] : MissileTargets(w, ParentOf(i), missileBuf);
-
-        /// <summary>
-        /// 画面に出す枠と印を作り直し、撃つ状態ごとの当てる相手をとっておく(撃つ武装ごと。同じ大きさの枠は1つにまとめ、ボタン名を並べる)。
-        /// Tick で撃つ前に呼び、撃つとき(FireGun・FireHeavy)はこの結果を使う。付け先を選んでいる間(性能のグラフを出している間)は出さない。
-        /// </summary>
-        void UpdateFrames()
-        {
-            Frames.Clear();
-            Marks.Clear();
+            ShotFrame = null;
+            MarkedEnemy = ShotEnemy = null;
             ShotPoint = null;
-            ShotEnemy = null;
-            bool shotHot = false;
+            from = aim = default;
             var cam = Camera.main;
-            if (cam == null || Choosing != null) return;
-            float aspect = Rules.frameAspect;
-            for (int i = 0; i < StateCount; i++)
-            {
-                aimCache[i] = null;
-                var w = StateWeapon(i);
-                if (w == null || !w.IsShooter || (i == L && w.IsTwoHand)) continue;
-                var parent = ParentOf(i);
-                bool alt = i == AltIndex;
-                var at = alt ? DuelSlot.RightHand : (DuelSlot)i;
-                int btn = alt ? 1 : Btn(at);
-                bool hot = Time.time - lastFire[i] < 0.6f || Held(alt ? DuelSlot.LeftHand : at) || (alt && charge > 0f);
-                float hw = FrameTan(w, parent);
-                // 反動の広がりを枠の見た目と真ん中の十字に出す(ミサイルは狙いの要らない武装なので出さない)
-                float drawW = hw, spread = -1f;
-                if (!w.IsMissile)
-                {
-                    float deg = Rules.FrameDeg(w, parent);
-                    drawW = bloom[i] > 0f ? Mathf.Tan(Mathf.Min(80f, deg + bloom[i]) * Mathf.Deg2Rad) : hw;
-                    spread = Mathf.Tan(Mathf.Min(80f, Mathf.Max(0f, w.spread) + bloom[i]) * Mathf.Deg2Rad);
-                }
-                bool any;
-                if (w.IsMissile)
-                {
-                    var list = missileCache[i] ??= new List<DuelEnemy>();
-                    MissileTargets(w, parent, list);
-                    any = list.Count > 0;
-                    for (int k = 0; k < list.Count; k++) AddMark(list[k]);
-                }
-                else
-                {
-                    var t = AimTarget(w, parent, Muzzle(at));
-                    aimCache[i] = t;
-                    // 枠を橙にして印を出すのは、吸い付いた狙いが体に掛かる(当たる)ときだけ
-                    any = false;
-                    if (t != null) AssistDir(cam, t, AssistDeg(w, parent), out any);
-                    if (any) AddMark(t);
-                    // 弾が飛んでいく所(自機の速度を受け継いで流れる分も入れる):撃っている・撃ったばかり・溜めている武装を先に、なければ最初の銃・砲
-                    if (ShotPoint == null || (hot && !shotHot))
-                    {
-                        Vector3 shot = PredictShot(w, i, at, t);
-                        ShotPoint = shot;
-                        ShotEnemy = PathEnemy(Muzzle(at), shot);
-                        shotHot = hot;
-                    }
-                }
-                int same = -1;
-                for (int k = 0; k < Frames.Count; k++)
-                    if (Mathf.Abs(Frames[k].halfW - hw) < 0.002f) { same = k; break; }
-                if (same >= 0)
-                {
-                    var f = Frames[same];
-                    f.buttons |= 1 << btn;
-                    f.hot |= hot;
-                    f.locked |= any;
-                    f.drawW = Mathf.Max(f.drawW, drawW);
-                    f.drawH = f.drawW * aspect;
-                    f.spread = Mathf.Max(f.spread, spread);
-                    Frames[same] = f;
-                }
-                else Frames.Add(new AimFrame
-                {
-                    halfW = hw, halfH = hw * aspect, buttons = 1 << btn, hot = hot, locked = any,
-                    drawW = drawW, drawH = drawW * aspect, spread = spread,
-                });
-            }
-            aimCacheFrame = Time.frameCount;
-        }
+            if (!Aiming || cam == null) return false;
 
-        void AddMark(DuelEnemy e)
-        {
-            if (!Marks.Contains(e)) Marks.Add(e);
+            var w = RangedWeapon;
+            var shot = special ? w.Special : w.Primary;
+            float recoil = special ? 0f : bloom;
+            float drawW = Mathf.Tan(Mathf.Min(80f, Rules.FrameDeg(w) + recoil) * Mathf.Deg2Rad);
+            from = Muzzle();
+            var target = AimTarget(w, shot, from);
+            float assist = AssistDeg(w, shot);
+            bool locked = false;
+            if (target != null)
+            {
+                AssistDir(cam, target, assist, out locked);
+                if (locked) MarkedEnemy = target;
+            }
+            aim = AssistedAimPoint(target, assist, from, shot.range);
+            Vector3 predicted = PredictShot(shot, from, aim);
+            ShotPoint = predicted;
+            ShotEnemy = PathEnemy(from, predicted, shot);
+            ShotFrame = new AimFrame
+            {
+                drawW = drawW, drawH = drawW * Rules.frameAspect, hot = Cooling > 0f, locked = locked,
+                spread = Mathf.Tan(Mathf.Min(80f, shot.spread + recoil) * Mathf.Deg2Rad),
+            };
+            return true;
         }
 
         /// <summary>狙う相手がいないとき:照準の先(最初に当たる地形・敵。なければ遠く)。</summary>
@@ -612,21 +520,38 @@ namespace Prototype
         /// from から p へ飛ぶ弾が、p のあたりまでに体(縦長のカプセル)を通る敵のうち、いちばん手前の敵(十字と、ロックオンの角の色。ShotEnemy)。いなければ null。
         /// p は狙いの先と同じ奥行き(体の手前の面のあたり)に置かれるので、体の太さの分(半径の2倍)だけ先まで見る(p が体の面の少し手前で止まっても、そのまま当たる弾を拾う)。
         /// </summary>
-        DuelEnemy PathEnemy(Vector3 from, Vector3 p)
+        DuelEnemy PathEnemy(Vector3 from, Vector3 p, DuelShot shot)
         {
             Vector3 d = p - from;
             float len = d.magnitude;
             if (len < 0.01f) return null;
             d /= len;
+            if (shot.blastRadius > 0f)
+            {
+                // 信管の作動距離と敵の半径を、実際の着弾判定と同じ計算で見る。
+                float reach = shot.range;
+                if (Physics.Raycast(from, d, out var wall, reach, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    reach = wall.distance;
+                FindProjectileTarget(from, d, reach, shot, out var fuseTarget, out _, aimDepth: len);
+                return fuseTarget;
+            }
+            bool wideBeam = IsWideBeam(shot);
+            float beamReach = shot.range;
+            if (wideBeam && Physics.Raycast(from, d, out var beamWall, beamReach, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                beamReach = beamWall.distance;
+
             DuelEnemy hit = null;
             float best = float.MaxValue;
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
-                float reach = len + r * 2f;
-                if (SegSegDistance(from, from + d * reach, a, b, out float s) > r) continue;
+                float reach = wideBeam ? beamReach : len + r * 2f;
+                float width = wideBeam ? r + shot.beamWidth : r;
+                if (SegSegDistance(from, from + d * reach, a, b, out float s) > width) continue;
                 if (s * reach >= best) continue;
+                Vector3 at = from + d * (s * reach);
+                if (wideBeam && !DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
                 best = s * reach;
                 hit = e;
             }

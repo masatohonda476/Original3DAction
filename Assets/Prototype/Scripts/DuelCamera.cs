@@ -15,7 +15,7 @@ namespace Prototype
     ///     向き直る速さは間合いで変えず一定(lockTurnRate)。角速度に上限(lockMaxTurnSpeed)と、速さの変わり方に上限(lockTurnAccel)を付け、
     ///     相手を切り替えたときも急に振られない。上下(敵の高さ)もゆっくり追い、見える向きの回り方にも上限(lockViewMaxSpeed)を付ける。
     ///   ロックオンしていない:右スティック・マウスで今までどおり回す。
-    ///   照準を動かせるとき(DuelArmsRules.cursorMovable。既定はオフ)の、銃のボタンを押している間(DuelArms.CursorActive):
+    ///   照準を動かせるとき(DuelArmsRules.cursorMovable。既定はオフ)の、遠距離を構えている間(DuelArms.CursorActive):
     ///     右スティック・マウスは画面の上の照準を動かし(DuelArms)、カメラは回さない。
     ///     ロックオンしていないときだけ、照準を可動範囲の端へ押し付けている間、その方向へゆっくり回す(edgeYawSpeed / edgePitchSpeed)。
     ///     ロックオン中は端でも回さない。撃っても(反動でも)カメラは動かない。
@@ -90,7 +90,7 @@ namespace Prototype
         [Tooltip("見上げられる角度(度。マイナスが上)。作者「もっとカメラは上を向けられるようにしてください」")]
         public float freeMinPitch = -55f;
 
-        [Header("銃のボタンを押している間、照準を画面の端へ押し付けたとき(ロックオンしていないときだけ)")]
+        [Header("遠距離を構えている間、照準を画面の端へ押し付けたとき(ロックオンしていないときだけ)")]
         [Tooltip("左右へ回る速さの上限(度/秒)。照準の動きは DuelArmsRules(ステージのインスペクター)")]
         public float edgeYawSpeed = 60f;
         [Tooltip("上下へ回る速さの上限(度/秒)")]
@@ -163,7 +163,7 @@ namespace Prototype
             float s = scale;
             Vector3 chest = p.LockPoint;   // 注視点の高さはロックオンの印と同じ(機体の高さの7割)
             var enemy = p.Target;
-            // 照準を動かせるときの、銃のボタンを押している間(と撃ってから少しの間):右スティック・マウスは照準を動かす(DuelArms)。カメラは回さない
+            // 照準を動かせるときの、遠距離を構えている間:右スティック・マウスは照準を動かす(DuelArms)。カメラは回さない
             bool aiming = p.Arms.CursorActive;
 
             Vector3 desired, look;

@@ -535,15 +535,23 @@ namespace Prototype
                 FindProjectileTarget(from, d, reach, shot, out var fuseTarget, out _);
                 return fuseTarget;
             }
+            bool wideBeam = IsWideBeam(shot);
+            float beamReach = shot.range;
+            if (wideBeam && Physics.Raycast(from, d, out var beamWall, beamReach, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                beamReach = beamWall.distance;
+
             DuelEnemy hit = null;
             float best = float.MaxValue;
             foreach (var e in game.Enemies)
             {
                 if (e == null || e.Dead) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
-                float reach = len + r * 2f;
-                if (SegSegDistance(from, from + d * reach, a, b, out float s) > r) continue;
+                float reach = wideBeam ? beamReach : len + r * 2f;
+                float width = wideBeam ? r + shot.beamWidth : r;
+                if (SegSegDistance(from, from + d * reach, a, b, out float s) > width) continue;
                 if (s * reach >= best) continue;
+                Vector3 at = from + d * (s * reach);
+                if (wideBeam && !DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
                 best = s * reach;
                 hit = e;
             }

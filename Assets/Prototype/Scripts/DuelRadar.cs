@@ -63,6 +63,7 @@ namespace Prototype
             // 1 m 進む時間で評価し、即着の値は 0 秒。表示は弾速に戻す。
             A("弾速", w => w.Primary.shotSpeed > 0f ? 1f / w.Primary.shotSpeed : 0f,
                 (_, v) => v == 0f ? "即着" : $"{1f / v:0} m/s", false),
+            A("大技弾費", w => w.SpecialAmmo, (_, v) => $"共通弾 {v:0}", false),
         };
 
         static Axis[] BackAxes() => new[]

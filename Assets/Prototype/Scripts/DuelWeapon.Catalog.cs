@@ -52,6 +52,15 @@ namespace Prototype
 
             // 仮。通常射撃の性能・大技の性能・大技の共通弾の消費。
             BaseGun,
+            Gun("短銃身ライフル", "ライフル", 0, "三方向射撃", 3f, new Vector3(0.4f, 0.7f, 2.6f),
+                8, 1f, 0f, 14f,
+                new DuelShot
+                {
+                    damage = 6f, range = 65f, interval = 0.32f, stagger = 1.5f, knock = 3f, shotSpeed = 250f,
+                    recoilPerShot = 0.8f, recoilMax = 3f, recoilRecover = 10f, aimKick = 1.2f, aimKickSide = 0.4f,
+                },
+                new DuelShot { damage = 10f, range = 50f, interval = 0.85f, stagger = 2f, knock = 4f, shotSpeed = 250f, spread = 7f, pellets = 3 },
+                5, "近中距離向けの単射。大技は中央と左右へ一発ずつ撃つ"),
             Gun("三連ライフル", "バーストライフル", 0, "高速連射", 5.5f, new Vector3(0.5f, 0.8f, 4.2f),
                 12, 1f, 0f, 12f,
                 new DuelShot
@@ -110,6 +119,15 @@ namespace Prototype
                     blastRadius = 12f, proximityRadius = 5f,
                 },
                 15, "通常は EN で即着のビーム。大技は敵のそばを通るだけで起爆する"),
+            Gun("重ビームライフル", "ビーム", 2, "極太ビーム", 7f, new Vector3(0.5f, 0.9f, 5.5f),
+                0, 0f, 12f, 10f,
+                new DuelShot
+                {
+                    damage = 10f, range = 100f, interval = 0.38f, stagger = 2.5f, knock = 5f, shotSpeed = 320f,
+                    recoilPerShot = 1.2f, recoilMax = 3.5f, recoilRecover = 9f, aimKick = 2.5f, aimKickSide = 0.5f,
+                },
+                new DuelShot { damage = 54f, range = 120f, interval = 1.65f, stagger = 22f, knock = 18f, pierce = true, beamWidth = 3f },
+                15, "通常は EN で光弾を放つ。大技は幅のある即着ビームで敵を貫く"),
             Gun("拡散散弾銃", "ショットガン", 2, "拡散爆裂弾", 7.5f, new Vector3(0.75f, 0.95f, 3.9f),
                 6, 1f, 0f, 16f,
                 new DuelShot

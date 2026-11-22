@@ -14,6 +14,10 @@ namespace Prototype
         const float BlastEdgePower = 0.35f; // 仮。爆風の端で残る威力・崩し・押し出しの割合。
         const float BlastLife = 0.30f; // 仮
         const int BlastSparks = 14; // 仮
+        const float WideBeamThreshold = 1f, WideBeamLife = 0.18f; // 仮
+
+        static bool IsWideBeam(DuelShot shot) =>
+            shot.pierce && shot.shotSpeed <= 0f && shot.beamWidth >= WideBeamThreshold;
 
         int roundsPending;
         bool burstSpecial;
@@ -94,7 +98,8 @@ namespace Prototype
             lastFire = Time.time;
             Vector3 direction = (aim - from).normalized;
             if (direction == Vector3.zero) direction = player.transform.forward;
-            Color color = shot.blastRadius > 0f ? ShellColor : !special && weapon.enCost > 0f ? BeamColor : BulletColor;
+            bool beam = IsWideBeam(shot) || (!special && weapon.enCost > 0f);
+            Color color = shot.blastRadius > 0f ? ShellColor : beam ? BeamColor : BulletColor;
             float speed = SpeedOf(shot);
             bool spread = shot.pellets > 1;
             for (int i = 0; i < shot.pellets; i++)
@@ -102,7 +107,7 @@ namespace Prototype
                 Vector3 dir = direction;
                 if (special && spread)
                 {
-                    // 拡散爆発は横へ等間隔に撃ち分ける。通常の散弾は立体的に散る。
+                    // 三方向射撃と拡散爆発は横へ等間隔に撃ち分ける。通常の散弾は立体的に散る。
                     float angle = Mathf.Lerp(-shot.spread, shot.spread, (float)i / (shot.pellets - 1));
                     dir = Quaternion.AngleAxis(angle, Vector3.up) * direction;
                 }
@@ -229,7 +234,9 @@ namespace Prototype
                 any = true;
             }
             if (!any && wall is { } wh) DuelSpark.Burst(wh.point, wh.normal, c, 1, 0.45f);   // 外れて地形に当たった:小さな火花
-            Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, !any);
+            float width = 0.25f + w.beamWidth * 0.5f;
+            if (IsWideBeam(w)) ProtoFx.Tracer(from, to, c, width, WideBeamLife);
+            else Tracer(from, to, c, width, !any);
         }
 
         // ───────── 飛ぶ弾 ─────────

@@ -114,6 +114,7 @@ namespace Prototype
             }
 
             slots[(int)w.Slot] = w;
+            if (w.IsBlade) player.ResetMeleeCombo();
             Refresh(w.Slot);
             loot.Take();
             Nearby = null;
@@ -158,6 +159,7 @@ namespace Prototype
         void ResetWeapons(bool loaded)
         {
             slots[(int)DuelSlot.Melee] = DuelWeapon.BaseSword;
+            player.ResetMeleeCombo();
             slots[(int)DuelSlot.Ranged] = DuelWeapon.BaseGun;
             slots[(int)DuelSlot.Back] = DuelWeapon.BaseThruster;
             rangedMemo = new Memo { mag = loaded ? DuelWeapon.BaseGun.magazine : 0 };
@@ -203,7 +205,15 @@ namespace Prototype
                 Destroy(visuals[i].gameObject);
             }
             visuals[i] = null;
-            if (slot == DuelSlot.Melee && rig != null && rig.sword != null)
+            if (w.UsesTwoHands && rig != null && rig.sword != null)
+            {
+                var grip = rig.sword;
+                var visual = CreateTwoHandVisual(w, grip.parent, true);
+                visual.SetLocalPositionAndRotation(grip.localPosition, grip.localRotation);
+                visual.localScale = grip.localScale;
+                visuals[i] = visual;
+            }
+            else if (slot == DuelSlot.Melee && rig != null && rig.sword != null)
             {
                 var block = new MaterialPropertyBlock();
                 if (w.rarity > 0) block.SetColor("_BaseColor", w.Color);
@@ -228,7 +238,7 @@ namespace Prototype
         public void UpdateWeaponVisibility()
         {
             bool ranged = Aiming;
-            if (rig != null && rig.sword != null) rig.sword.gameObject.SetActive(!ranged);
+            if (rig != null && rig.sword != null) rig.sword.gameObject.SetActive(!ranged && !MeleeWeapon.UsesTwoHands);
             var blade = visuals[(int)DuelSlot.Melee];
             if (blade != null) blade.gameObject.SetActive(!ranged);
             var gun = visuals[(int)DuelSlot.Ranged];
@@ -238,6 +248,7 @@ namespace Prototype
         /// <summary>武装を落とし物や機体に表示する仮の形。</summary>
         public static Transform CreateVisual(DuelWeapon w, Transform parent)
         {
+            if (w.UsesTwoHands) return CreateTwoHandVisual(w, parent, false);
             var root = new GameObject(w.name).transform;
             root.SetParent(parent, false);
             var part = GameObject.CreatePrimitive(PrimitiveType.Cube);

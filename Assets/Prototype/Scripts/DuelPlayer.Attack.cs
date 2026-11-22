@@ -50,19 +50,19 @@ namespace Prototype
             if (!MeleeInputReady(now)) return false;
             if (TryFatal(now)) return true;   // EN が 0 以下でも出る
             if (Overheated) return false;
+            var w = Arms.MeleeWeapon;
             if (heavyPressed)
             {
                 combo = 0;
-                var w = Arms.MeleeWeapon;
                 StartAttack(w.HeavyMove, w.MeleePower, true, w.HeavyEffect);
             }
             else if (CanDrop) StartDrop();
             else if (now - dodgeEndAt <= dodgeSlashWindow) StartDodgeSlash();
             else
             {
-                var light = DuelMoveSet.Base.light;
+                var light = w.MeleeMoves.light;
                 combo = combo % light.Length + 1;
-                StartAttack(light[combo - 1], Arms.MeleeWeapon.MeleePower);
+                StartAttack(light[combo - 1], w.MeleePower);
             }
             return true;
         }
@@ -70,8 +70,11 @@ namespace Prototype
         void StartDodgeSlash()
         {
             combo = 1;   // 次は連撃の2段目へつながる
-            StartAttack(DuelMoveSet.Base.dodgeSlash, Arms.MeleeWeapon.MeleePower);
+            var w = Arms.MeleeWeapon;
+            StartAttack(w.MeleeMoves.dodgeSlash, w.MeleePower);
         }
+
+        internal void ResetMeleeCombo() => combo = 0;
 
         void StartAttack(DuelSwing m, float power = 1f, bool strong = false, DuelHeavyEffect effect = DuelHeavyEffect.None)
         {

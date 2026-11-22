@@ -33,7 +33,7 @@ namespace Prototype
 
         static Axis[] MeleeAxes() => new[]
         {
-            A("通常威力", w => DuelMoveSet.Base.light[0].damage * w.MeleePower, (_, v) => $"{v:0.##}"),
+            A("通常威力", w => w.MeleeMoves.light[0].damage * w.MeleePower, (_, v) => $"{v:0.##}"),
             A("強攻威力", w => w.HeavyMove.damage * w.MeleePower, (_, v) => $"{v:0.#}"),
             A("強攻崩し", w => w.HeavyMove.stagger, (_, v) => $"{v:0.#}"),
             A("強攻発生", w => w.HeavyMove.windup, (_, v) => $"{v:0.##}秒", false),

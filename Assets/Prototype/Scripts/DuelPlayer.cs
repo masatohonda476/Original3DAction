@@ -216,6 +216,7 @@ namespace Prototype
 
         void Update()
         {
+            Arms.ReleaseSupportGrip();
             if (DuelGame.Paused)
             {
                 Arms.CheckPausedBurstRelease();

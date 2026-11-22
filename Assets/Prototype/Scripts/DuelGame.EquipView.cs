@@ -66,7 +66,8 @@ namespace Prototype
             Chip(new Rect(row.x, row.y, 3f, row.height), ActiveArms);
         }
 
-        static string WeaponName(DuelWeapon w) => w != null ? $"{w.name}〈{w.RarityName}〉" : "なし";
+        static string WeaponName(DuelWeapon w) =>
+            w != null ? $"{w.name}〈{w.RarityName}〉{(w.UsesTwoHands ? "　両手持ち" : "")}" : "なし";
 
         static string WeaponTechnique(DuelWeapon w) => w.Slot switch
         {

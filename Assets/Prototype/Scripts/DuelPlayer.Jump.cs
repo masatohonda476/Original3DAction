@@ -11,12 +11,12 @@ namespace Prototype
     //     飛行に移るのは、踏み切ってから ✗ を押し続けて jumpToFlyHold 秒たったとき(作者「ジャンプからブースト上昇開始までが長いです」)か、
     //     一度離した ✗ を押し直していて頂点を過ぎたとき。
     //     敵の体の上に乗っただけでは終わらない(水平に押し出されて滑り落ち、地面に着いたら終わる)。
-    //   踏み切れるとき:地上で ✗ を押していて、ふつう・ガード・回避の間か、近接を取り消せる間(回避と同じ決まり:振りかぶりの間と、振り抜いて少し後から。CanTakeOff)。
-    //     怯み・ガードの硬直・EN 切れなどで踏み切れなかったときは、✗ を押したまま踏み切れるようになったフレームに踏み切る(地上からゆっくり浮くことはない)。
+    //   踏み切れるとき:地上で ✗ を押していて、ふつうの移動・回避の間か、近接を取り消せる間(回避と同じ決まり:振りかぶりの間と、振り抜いて少し後から。CanTakeOff)。
+    //     怯み・EN 切れなどで踏み切れなかったときは、✗ を押したまま踏み切れるようになったフレームに踏み切る(地上からゆっくり浮くことはない)。
     //   成功:敵の跳べる技(下段)の当たりが出る瞬間に、踏み切ってから justWindow 秒以内だった(当たる瞬間に跳んだ。DuelEnemy.DoHit → OnJumpedOver)。
     //     水平の間合いは当たる範囲であること。そのジャンプが終わるまで有効。早く跳びすぎたときは、高さで越えていれば当たらないが、成功ではない。
     //   落下攻撃:成功しているジャンプ中だけ、近接のボタンで出る(跳び越えた敵の怯みを大きくためる)。
-    //     成功していないジャンプ中の近接のボタンは、空中のふつうの振り(飛行中と同じ。△+・回避の直後も今までの技)。
+    //     成功していないジャンプ中の近接 R1 は通常攻撃。R2 はジャンプ成功の有無にかかわらず強攻撃。
     //     落下攻撃の間(降下・振り・着地の隙)は跳べず・飛べず、その間に押していた ✗ は一度離すまで効かない(DuelPlayer.Update の flyNeedRelease)。
     public partial class DuelPlayer
     {
@@ -47,13 +47,13 @@ namespace Prototype
         const float MaxOnEnemy = 1f;
 
         /// <summary>
-        /// ✗ で踏み切れる状態か(地上にいること・EN は呼ぶ側が見る)。ふつう・ガード・回避の間はいつでも。
+        /// ✗ で踏み切れる状態か(地上にいること・EN は呼ぶ側が見る)。ふつうの移動・回避の間はいつでも。
         /// 近接の間は、回避(□)で取り消せるのと同じ間だけ(UpdateAttack の TryDodge と同じ判定):振りかぶりの間と、振り抜いて dodgeLockAfterSwing 秒たってから。
-        /// 当たり判定が出ている振り抜きの間・落下攻撃の間(降下・振り・着地の隙)・致命攻撃の踏み込みと振り抜きの間・怯み・ガードの硬直・ガード崩れの間は踏み切れない。
+        /// 当たり判定が出ている振り抜きの間・落下攻撃の間(降下・振り・着地の隙)・致命攻撃の踏み込みと振り抜きの間・怯みの間は踏み切れない。
         /// </summary>
         bool CanTakeOff => Current switch
         {
-            State.Free or State.Guard or State.Dodge => true,
+            State.Free or State.Dodge => true,
             State.Attack => !dropping && !FatalCommitted && (phase == 0 || (phase == 2 && stateT >= dodgeLockAfterSwing)),
             _ => false,
         };
@@ -61,7 +61,7 @@ namespace Prototype
         /// <summary>
         /// ジャンプの1フレーム(飛行を決めるより前に呼ぶ)。flyHeld は「✗ を押している」(落下攻撃の間に押していた分は、一度離すまで false)。
         /// 地上で ✗ を押していて踏み切れる(CanTakeOff・EN が 0 より多い)なら踏み切る。押した瞬間でなくてもよい
-        /// (怯み・ガードの硬直・EN 切れ・振り抜きの間に押して、押したまま踏み切れるようになったフレームにも踏み切る)。近接の途中なら、その振りを取り消す。
+        /// (怯み・EN 切れ・振り抜きの間に押して、押したまま踏み切れるようになったフレームにも踏み切る)。近接の途中なら、その振りを取り消す。
         /// 戻り値は「このフレームは ✗ で飛んでよいか」:
         ///   地上では飛ばない(跳ぶだけ。jumpSpeed が 0 のときだけ今までの上昇)。✗ を離して落ちている間・落下攻撃の間・敵の体の上にいる間も飛ばない。
         ///   踏み切ってから ✗ を押し続けて jumpToFlyHold 秒たったら、頂点を待たずにジャンプを終えて今までの飛行に移る(成功もそこで消える)。
@@ -82,7 +82,7 @@ namespace Prototype
                     if ((cc.collisionFlags & CollisionFlags.Above) != 0) StopRising();
                     // 踏み切ってから押し続けている:jumpToFlyHold 秒で、頂点を待たずに飛行へ(ジャンプ中は終わる。成功も消える)
                     if (jumpHeldThrough && j.jumpToFlyHold > 0f && now - jumpStartedAt >= j.jumpToFlyHold && Energy > 0f
-                        && Current is State.Free or State.Guard or State.Attack or State.Dodge)
+                        && Current is State.Free or State.Attack or State.Dodge)
                     {
                         EndJump();
                         return true;
@@ -98,7 +98,7 @@ namespace Prototype
                     return false;
                 }
                 if (!Airborne) EndJump();   // 着地(✗ を押したままなら、すぐ下でまた踏み切る)
-                else if (flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge) { EndJump(); return true; }   // 頂点を過ぎても押し続けている:飛行へ
+                else if (flyHeld && Energy > 0f && Current is State.Free or State.Attack or State.Dodge) { EndJump(); return true; }   // 頂点を過ぎても押し続けている:飛行へ
                 else return false;          // ✗ を離して落ちている途中
             }
             // 空中(上へ動いている間も):今までどおり ✗ で飛ぶ。jumpSpeed が 0 ならジャンプなし(地上からも今までの上昇)
@@ -108,7 +108,6 @@ namespace Prototype
                 if (Current == State.Attack)
                 {
                     // 近接を取り消して跳ぶ(回避での取り消しと同じ。払った EN は戻らない)
-                    combo = 0;
                     Enter(State.Free);
                 }
                 jumping = true;
@@ -211,7 +210,7 @@ namespace Prototype
         /// <summary>落下攻撃で降りている途中(着地して振るまで)。横の速さは慣性を通さずそのまま使う。</summary>
         bool DropDiving => dropping && Current == State.Attack && phase == 0;
         /// <summary>
-        /// 近接のボタンが落下攻撃になるか:成功しているジャンプ中だけ(作者「ただのジャンプでは落下攻撃は出ないようにしてください」)。
+        /// 近接 R1 が落下攻撃になるか:成功しているジャンプ中だけ(作者「ただのジャンプでは落下攻撃は出ないようにしてください」)。
         /// 成功していないジャンプ中・飛行中は、空中のふつうの振り(今までの技)。
         /// </summary>
         bool CanDrop => JumpSucceeded && game.jump.dropSpeed > 0f;
@@ -227,19 +226,14 @@ namespace Prototype
             return dy > 0f && dy <= game.mechHeight * e.Size + 2f && GapTo(e) <= 0.5f;
         }
 
-        /// <summary>素手なら素手の落下攻撃(当てると自機の HP が減る)。武装の倍率は、ふつうの技と同じく Armed が掛ける。</summary>
-        DuelSwing DropOf() => Unarmed ? DuelMoveSet.BareDrop : DuelMoveSet.Drop;
-
         /// <summary>
-        /// 落下攻撃を始める(atkHand の手で。成功しているジャンプ中だけ呼ばれる)。向かう先は、跳び越えた敵(ロックオンの相手より先)
-        /// → (跳び越えた敵がもう倒れていれば)ロックオンの相手 → 正面の近い敵。△ を押していても同じ技。
+        /// 成功したジャンプ中の近接 R1 で落下攻撃を始める。
+        /// 跳び越えた敵、ロックオンの相手、正面の近い敵の順に向かう先を選ぶ。
         /// </summary>
         void StartDrop()
         {
-            lightPressedAt = -10f;
-            pressHeavy = false;
             combo = 0;
-            StartAttack(DropOf());
+            StartAttack(DuelMoveSet.Drop, Arms.MeleeWeapon.MeleePower);
             dropping = true;
             dropAim = NearestJumpedOver() ?? (Target != null ? Target : SoftAim());
             if (dropAim != null)
@@ -323,7 +317,7 @@ namespace Prototype
                     if (stateT >= cur.active) { phase = 2; stateT = 0f; }
                     break;
                 case 2:
-                    if (stateT >= cur.recover) { combo = 0; Enter(State.Free); }
+                    if (stateT >= cur.recover) Enter(State.Free);
                     break;
             }
             return Vector3.zero;

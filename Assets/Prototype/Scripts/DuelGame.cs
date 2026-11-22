@@ -9,13 +9,13 @@ namespace Prototype
     /// ここは自機を出し、同時に攻撃してくる敵の数を絞り、ヒットストップ・撃破数・知らせ・画面の表示を受け持つ
     /// (地形・敵の配置・セーブポイント・クリアは DuelStage)。
     /// 確かめたいこと:剣士との1対1を続けて面白いか / 群れを位置取りと回避斬りでさばけるか /
-    /// 回避が軸になっているか / ガードが便利すぎないか。
+    /// 回避とジャンプで敵の攻撃を越え、近接と遠距離を使い分けられるか。
     /// F1(または SHARE+△)でやり直し。
     /// 平らな部屋に波で敵を出す「部屋のモード」(MeleeDuel.unity。stage なし・武装なし)はやめた(作者「MeleeDuel消して」2026-11-20)。stage は必ず要る。
     /// ファイルは役割ごとに分けている:DuelGame.Hud.cs(画面のゲージ・照準・ロックオンの表示・左下のメニューの案内)/
-    /// DuelGame.ArmsHud.cs(右下の武装の欄・拾う案内・付け先のグラフ)/
+    /// DuelGame.ArmsHud.cs(右下の武装の欄・拾う案内・装備の比較)/
     /// DuelGame.Menu.cs(OPTIONS / I で開く項目のメニュー・操作方法のページ。操作方法は画面に出し続けず、ここで見る)/
-    /// DuelGame.EquipView.cs(装備の確認。メニューの「装備・所持品」のページ)。
+    /// DuelGame.EquipView.cs(装備の確認。メニューの「装備」のページ)。
     /// </summary>
     public partial class DuelGame : MonoBehaviour
     {
@@ -36,7 +36,7 @@ namespace Prototype
         [Tooltip("同時に攻撃してくる敵の数の上限(ほかは回り込んで順番を待つ)")]
         public int maxAttackers = 2;
 
-        [Header("崩し(銃で崩しにいき、剣で仕留める。雑魚・ボス共通)")]
+        [Header("崩し(近接で崩す。雑魚・ボス共通)")]
         [Tooltip("射撃で溜められる敵の怯みゲージの上限(最大の何割)。射撃だけでは怯ませられず、最後に崩す(怯ませ切る)のは近接だけ。" +
                  "怯みのバーはこの少し手前から白く点滅する。1 にすると射撃でも怯む(元の動き)")]
         [Range(0f, 1f)] public float rangedStaggerCap = 0.9f;
@@ -48,7 +48,7 @@ namespace Prototype
         public float rangedPushMul = 1f;
         [Tooltip("武装の knock がこれ以上の射撃だけ1発ごとに押し返す(連射の銃で、寄ってくる敵を引き止め続けないように)")]
         public float rangedPushMin = 8f;
-        [Tooltip("自機の近接(通常攻撃・強攻撃・回避斬り・素手・成功していない落下攻撃)が、敵の怯みゲージへためる量に掛ける倍率。" +
+        [Tooltip("自機の近接(通常攻撃・回避斬り)が、敵の怯みゲージへためる量に掛ける倍率。" +
                  "ふつうに殴るだけでは崩しにくくする(1 で前と同じ)。攻撃の後の隙に当てると 1.6 倍・射撃の上限・崩れた敵への近接 2 倍はそのまま。" +
                  "攻撃を跳び越えた敵への落下攻撃には掛からない(下の jump.dropSuccessStagger)")]
         public float meleeStaggerMul = 0.3f;
@@ -82,14 +82,14 @@ namespace Prototype
         public List<DuelEnemy> Enemies { get; } = new();
 
         /// <summary>付ける所の数(DuelSlot の数。装備の確認の行数・右下の武装の欄の所の数も同じ)。</summary>
-        const int ArmRows = 5;
+        const int ArmRows = 3;
 
         DuelPlayer player;
         int kills;
         float startTime, warpUntil;
         readonly List<(string msg, float t)> log = new();
-        GUIStyle small, label, big, center, richCenter, rightSmall, richSmall, richRight, viewHeadStyle, viewTitleStyle, chartHeadStyle, chartLegendStyle, chartNoteStyle;
-        GUIStyle cellTiny, cellTinyRight, cellNameStyle, cellNameSmall, cellBack, cardTitleStyle;
+        GUIStyle small, label, big, center, rightSmall, richSmall, viewHeadStyle, viewTitleStyle;
+        GUIStyle cellTiny, cellTinyRight, cellNameStyle, cellNameSmall;
         /// <summary>頭上のゲージで、減ったHPを少し遅れて追う白い部分(敵ごと)。</summary>
         readonly Dictionary<DuelEnemy, (float ghost, float hp, float holdUntil)> overheadGhost = new();
         float uiScale = 1f;
@@ -107,7 +107,6 @@ namespace Prototype
             jump ??= new DuelJumpRules();
             Time.timeScale = 1f;
             ProtoInput.Paused = false;
-            DuelRadar.ClearCache();   // 前のシーンの武装の組をためこまない
         }
 
         void OnDestroy()
@@ -139,7 +138,7 @@ namespace Prototype
 
             startTime = Time.time;
             stage.Begin(player);
-            Log("ステージの試作:敵が落とす武装を拾って強くなりながら船の中を登り、頭頂部のボスを倒せばクリア。F1で最初から");
+            Log("敵が落とす武装を拾って船の中を登り、頭頂部のボスを倒す");
         }
 
         /// <summary>その敵が技を出し始めてよいか(同時に攻撃している敵が maxAttackers 未満なら)。</summary>

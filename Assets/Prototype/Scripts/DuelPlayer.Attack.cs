@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using HuntProto;
 using UnityEngine;
 
@@ -25,123 +27,61 @@ namespace Prototype
 
         // ───────── 攻撃 ─────────
 
-        /// <summary>その手(0=右 / 1=左)の剣(剣でなければ null)。</summary>
-        DuelWeapon SwordIn(int hand)
-        {
-            var w = Arms.Hand(hand);
-            return w != null && w.IsBlade ? w : null;   // 両手の近接は R1 でも L1 でも振る
-        }
+        // 強攻撃の追加効果(秒、倍率、距離、速さ)。仮
+        const float GuardPointWindow = 0.2f; // 仮
+        const float GuardPointDamageMul = 0.5f; // 仮
+        const float WaveRange = 34f; // 仮
+        const float WaveSpeed = 65f; // 仮
+        const float WaveHalfWidth = 4.5f; // 仮
+        const float WaveHalfHeight = 1f; // 仮
+        const float WaveDamageMul = 0.7f; // 仮
+        const float WaveStaggerMul = 0.75f; // 仮
 
-        /// <summary>
-        /// その手(ボタン)の剣の技の表(剣がなければ素の剣の表)。両手の近接は、R1 が連撃、L1 が別の技(回避の後の L1 も別の技)。
-        /// 強攻撃(△+R1/L1)はどちらのボタンでも同じ表。
-        /// 素手(Unarmed)のときは、どれも素手の表のパンチ(素の剣の技に化けないように。回避の後もふつうのパンチ)。
-        /// </summary>
-        DuelSwing[] LightOf(int hand) => Unarmed ? DuelMoveSet.Bare.light : (SwordIn(hand) ?? DuelWeapon.BaseSword).LightFor(hand);
-        DuelSwing[] HeavyOf(int hand) => Unarmed ? DuelMoveSet.Bare.light : (SwordIn(hand) ?? DuelWeapon.BaseSword).HeavyMoves;
-        DuelSwing DodgeOf(int hand) => Unarmed ? DuelMoveSet.Bare.light[0] : (SwordIn(hand) ?? DuelWeapon.BaseSword).DodgeFor(hand);
+        bool strongAttack;
+        DuelHeavyEffect heavyEffect;
 
-        /// <summary>
-        /// 素手(両手持ちの素手):右手・左手が両方とも空(DuelArms.Unarmed)。R1 で右手、L1 で左手(左右反転)のパンチ。
-        /// 武装ではないので倍率は掛からず(Armed は剣がなければそのまま返す)、強い別の技もない(△+R1/L1・回避の直後でも同じパンチ)。
-        /// </summary>
-        bool Unarmed => Arms.Unarmed;
-        /// <summary>△+攻撃で強攻撃を出すか。素手に強攻撃はないので、△を押していてもふつうのパンチ。</summary>
-        bool HeavyPressed => pressHeavy && !Unarmed;
+        bool MeleeInputReady(float now) => !Arms.RangedHeld && now - meleePressedAt <= attackBuffer;
+        bool LightInputReady(float now) => !heavyPressed && MeleeInputReady(now);
+        bool HeavyGuardPoint => Current == State.Attack && phase == 0 && stateT <= GuardPointWindow &&
+            heavyEffect == DuelHeavyEffect.GuardPoint;
 
         bool TryAttack(float now)
         {
-            if (now - lightPressedAt > attackBuffer) return false;
-            if (TryFatal(now)) return true;   // 崩れた敵の近く(地上):ふつうの振りの代わりに致命攻撃(EN は使わないので、0以下でも出る)
-            if (Overheated) return false;   // ENが0以下の間は攻撃できない(押したことは少しの間覚えておく)
-            if (!Arms.CanMelee(pressHand)) { lightPressedAt = -10f; return false; }   // 押した後に剣を持ち替えた(素手でもなくなった)
-            atkHand = pressHand;
-            if (CanDrop) { StartDrop(); return true; }   // 成功しているジャンプ中なら落下攻撃(△ を押していても。DuelPlayer.Jump.cs)
-            if (HeavyPressed) { StartHeavy(0); return true; }   // △+攻撃は回避の直後でも強攻撃
-            // 回避が終わってすぐなら回避斬り(素手は同じパンチ)
-            if (now - dodgeEndAt <= dodgeSlashWindow) { StartDodgeSlash(); return true; }
-            combo = 1;
-            StartLight(LightOf(atkHand)[0]);
+            if (!MeleeInputReady(now)) return false;
+            if (TryFatal(now)) return true;   // EN が 0 以下でも出る
+            if (Overheated) return false;
+            if (heavyPressed)
+            {
+                combo = 0;
+                var w = Arms.MeleeWeapon;
+                StartAttack(w.HeavyMove, w.MeleePower, true, w.HeavyEffect);
+            }
+            else if (CanDrop) StartDrop();
+            else if (now - dodgeEndAt <= dodgeSlashWindow) StartDodgeSlash();
+            else
+            {
+                var light = DuelMoveSet.Base.light;
+                combo = combo % light.Length + 1;
+                StartAttack(light[combo - 1], Arms.MeleeWeapon.MeleePower);
+            }
             return true;
-        }
-
-        void StartLight(DuelSwing m)
-        {
-            lightPressedAt = -10f;
-            StartAttack(m);
-        }
-
-        /// <summary>強攻撃の step 段目を始める(表の長さで回す)。この後の通常攻撃は連撃の1段目から。</summary>
-        void StartHeavy(int step)
-        {
-            lightPressedAt = -10f;
-            pressHeavy = false;
-            var h = HeavyOf(atkHand);
-            heavyStep = step % h.Length;
-            combo = 0;
-            StartAttack(h[heavyStep]);
         }
 
         void StartDodgeSlash()
         {
-            lightPressedAt = -10f;
             combo = 1;   // 次は連撃の2段目へつながる
-            StartAttack(DodgeOf(atkHand));
+            StartAttack(DuelMoveSet.Base.dodgeSlash, Arms.MeleeWeapon.MeleePower);
         }
 
-        /// <summary>
-        /// 同時押しのずれを許す:通常攻撃の振りかぶりの出だし(heavyChordWindow 秒)に△が押されたら、強攻撃の1段目に切り替える
-        /// (足りないENを足して払う)。
-        /// </summary>
-        bool TryChord()
+        void StartAttack(DuelSwing m, float power = 1f, bool strong = false, DuelHeavyEffect effect = DuelHeavyEffect.None)
         {
-            if (!cur.chargeable || stateT > heavyChordWindow || !ProtoInput.AimHeld || Overheated) return false;
-            if (Time.time - Arms.ReloadChordAt <= heavyChordWindow) return false;   // その△は銃のリロードに使った(△+撃つボタン)
-            if (SwordIn(atkHand) == null) return false;   // 振っている手に剣がない(素手のパンチも。素の剣の強攻撃に化けないように)
-            float poseNow = Mathf.Lerp(cur.pose0, cur.pose1, Mathf.Clamp01(stateT / cur.windup));
-            var h = Armed(HeavyOf(atkHand)[0], atkHand);
-            Energy -= h.cost - cur.cost;
-            energyUsedAt = Time.time;
-            h.pose0 = Mathf.Min(poseNow, h.pose1);
-            cur = h;
-            heavyStep = 0;
-            stateT = 0f;
-            combo = 0;
-            return true;
-        }
-
-        /// <summary>
-        /// その手の剣の倍率を掛けた技:威力・怯ませ・届く範囲・吹き飛ばし・扇の広さ(片側180°まで)、振りの速さ(振りかぶり・振り抜き・戻りが短くなる)。
-        /// 踏み込み・ENの量・姿勢は変えない(振り方の違いは技の表で出す)。
-        /// </summary>
-        DuelSwing Armed(DuelSwing m, int hand)
-        {
-            var w = SwordIn(hand);
-            if (w == null) return m;
-            m.damage *= w.damageMul;
-            m.stagger *= w.staggerMul;
-            m.reach *= w.reachMul;
-            m.knock *= w.knockMul;
-            m.arc = Mathf.Min(180f, m.arc + w.arcAdd);
-            float sp = Mathf.Max(0.3f, w.speedMul);
-            m.windup /= sp;
-            m.active /= sp;
-            m.recover /= sp;
-            return m;
-        }
-
-        void StartAttack(DuelSwing m)
-        {
-            // 左手の片手の剣・素手の左のパンチは左右反転して振る(両手の近接は L1 の技も右手のクリップのまま、両手で振る)
-            atkMirror = atkHand == 1 && SwordIn(1) is not { IsTwoHand: true };
+            meleePressedAt = -10f;
             dropping = false;   // 落下攻撃なら、この後で StartDrop が立てる
-            fatal = false;      // 致命攻撃なら、この後で StartFatal が立てる
-            m = Armed(m, atkHand);
-            if (m.cost > 0f)
-            {
-                Energy -= m.cost;   // 足りなければマイナスになり、その分だけ回復を待つ
-                energyUsedAt = Time.time;   // EN を使わない技(致命攻撃)は、回復も待たせない
-            }
+            fatal = false;      // 致命攻撃なら、この後で TryFatal が立てる
+            strongAttack = strong;
+            heavyEffect = effect;
+            m.damage *= power;
+            SpendEnergy(m.cost);
             cur = m;
             phase = 0;
             Enter(State.Attack);
@@ -178,11 +118,9 @@ namespace Prototype
                     var near = Target != null ? Target : SoftAim();
                     float lungeTime = cur.windup * LungePart;
                     if (stateT < lungeTime && (near == null || GapTo(near) > 1.5f)) vel = attackDir * (cur.lunge / Mathf.Max(0.05f, lungeTime));
-                    // 攻撃とほぼ同時に△を押していたら強攻撃へ
-                    TryChord();
                     // 振りかぶりの間は回避で取り消せる(当たり判定が出ている振り抜きの間だけは取り消せない)
                     if (TryDodge(now, worldMove)) return Vector3.zero;
-                    if (stateT >= cur.windup) { phase = 1; stateT = 0f; Strike(); }
+                    if (stateT >= cur.windup) { phase = 1; stateT = 0f; StrikeSwing(); }
                     break;
                 case 1:
                     if (stateT >= cur.active) { phase = 2; stateT = 0f; }
@@ -190,44 +128,92 @@ namespace Prototype
                 case 2:
                     // 戻り:振り抜いてから dodgeLockAfterSwing 秒たったら回避で取り消せる。少し戻ったら次の段・強攻撃へつなげる
                     if (stateT >= dodgeLockAfterSwing && TryDodge(now, worldMove)) return Vector3.zero;
-                    // 崩れた敵の近く(地上)なら、次の段の代わりに致命攻撃(EN が0以下でも出る)
-                    if (stateT >= cur.ChainAt && TryFatal(now)) return Vector3.zero;
-                    if (stateT >= cur.ChainAt && !Overheated && now - lightPressedAt <= attackBuffer && Arms.CanMelee(pressHand))
-                    {
-                        // 押した手で次を振る(両手に剣なら、R1/L1 を交互に押すと左右の剣で交互に振る。素手も R1/L1 で左右のパンチ)
-                        bool sameHand = pressHand == atkHand;
-                        // 両手の近接は R1/L1 で同じ武装(強攻撃の段は、ボタンが替わっても続ける)
-                        bool sameBlade = sameHand || (SwordIn(atkHand) is { IsTwoHand: true } tw && SwordIn(pressHand) == tw);
-                        atkHand = pressHand;
-                        // 空中で振っている間に成功した(当たる瞬間に跳んでいた):次の一振りは落下攻撃
-                        if (CanDrop) { StartDrop(); return Vector3.zero; }
-                        // △+攻撃:強攻撃。同じ剣の強攻撃の後なら次の段、それ以外は1段目
-                        if (HeavyPressed) { StartHeavy(cur.heavy && sameBlade ? heavyStep + 1 : 0); return Vector3.zero; }
-                        // 攻撃:連撃の表を順に(何回でも続く)。強攻撃の後・手が替わったら、その剣の1段目から
-                        // (両手の近接は R1 の連撃と L1 の技が別の表なので、ボタンが替われば替えた側の1段目から)
-                        var light = LightOf(atkHand);
-                        if (!sameHand) combo = 0;
-                        combo = combo % light.Length + 1;
-                        StartLight(light[combo - 1]);
-                        return Vector3.zero;
-                    }
-                    if (stateT >= cur.recover) { combo = 0; Enter(State.Free); }
+                    if (stateT >= DuelSwing.ChainAfter && TryAttack(now)) return Vector3.zero;
+                    if (stateT >= cur.recover) Enter(State.Free);
                     break;
             }
             return vel;
         }
 
+        void StrikeSwing()
+        {
+            if (heavyEffect != DuelHeavyEffect.Wave)
+            {
+                Strike();
+                return;
+            }
+            var hit = new HashSet<DuelEnemy>();
+            Strike(hit);
+            StartCoroutine(FlyWave(Chest, transform.forward, cur, hit));
+        }
+
+        /// <summary>光波は振り抜いた方向へ飛び、地形で止まる。直接斬った敵と、一度光波が当たった敵には重ねて当てない。</summary>
+        IEnumerator FlyWave(Vector3 origin, Vector3 dir, DuelSwing swing, HashSet<DuelEnemy> hit)
+        {
+            Color color = new(0.35f, 0.9f, 1f);
+            Vector3 side = Vector3.Cross(Vector3.up, dir);
+            const int CurvePoints = 9; // 仮
+            const float CurveDepth = 1.1f; // 仮
+            const float GlowWidth = 0.5f; // 仮
+            const float CleanupMargin = 0.1f; // 仮
+            const int ImpactSparks = 20; // 仮
+            const float SparkSize = 1.4f; // 仮
+            var wave = new GameObject("光波");
+            var line = wave.AddComponent<LineRenderer>();
+            line.sharedMaterial = ProtoFx.Unlit(color);
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            line.positionCount = CurvePoints;
+            line.widthMultiplier = GlowWidth;
+            Destroy(wave, WaveRange / WaveSpeed + CleanupMargin);
+
+            float distance = 0f;
+            while (distance < WaveRange && line != null)
+            {
+                Vector3 start = origin + dir * distance;
+                for (int i = 0; i < CurvePoints; i++)
+                {
+                    float across = 2f * i / (CurvePoints - 1) - 1f;
+                    line.SetPosition(i, start + side * (across * WaveHalfWidth) - dir * (across * across * Mathf.Min(distance, CurveDepth)));
+                }
+                yield return null;   // 斬撃の火花を出したフレームの仮コライダーを避け、次のフレームから飛ばす
+
+                float step = Mathf.Min(WaveSpeed * Time.deltaTime, WaveRange - distance);
+                if (step <= 0f) continue;
+                bool wall = Physics.Raycast(start, dir, out var wallHit, step, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+                if (wall) step = wallHit.distance;
+                float end = distance + step;
+                foreach (var e in game.Enemies)
+                {
+                    if (e == null || e.Dead || e.invulnerable || hit.Contains(e)) continue;
+                    Vector3 offset = e.Chest - origin;
+                    float height = origin.y - e.transform.position.y;
+                    if (height < -WaveHalfHeight || height > game.mechHeight * e.Size + WaveHalfHeight) continue;
+                    float along = Vector3.Dot(offset, dir);
+                    if (along < distance - e.Radius || along > end + (wall ? 0f : e.Radius)) continue;
+                    if (Mathf.Abs(Vector3.Dot(offset, side)) > WaveHalfWidth + e.Radius) continue;
+                    if (!DuelSenses.ClearSight(origin, e.Chest)) continue;
+                    hit.Add(e);
+                    e.TakeHit(swing.damage * WaveDamageMul, swing.stagger * WaveStaggerMul, dir * swing.knock, swing.flinch);
+                    DuelSpark.Burst(e.Chest, -dir, color, ImpactSparks, SparkSize);
+                }
+                if (wall) break;
+                distance = end;
+            }
+            Destroy(wave);
+        }
+
         /// <summary>
         /// 振り抜いた瞬間:扇の中の敵に当てる。当たった敵がいたかを返す。
-        /// 怯みゲージへの量には DuelGame.meleeStaggerMul が掛かる(ふつうの殴りではたまりにくい)。
+        /// 通常攻撃の怯みには DuelGame.meleeStaggerMul が掛かる。R2 の強攻撃は、技の値をそのまま足す。
         /// 落下攻撃を、このジャンプで攻撃を跳び越えた敵に当てたときだけ、倍率を掛けずに DuelJumpRules.dropSuccessStagger をためる。
         /// </summary>
-        bool Strike()
+        bool Strike(HashSet<DuelEnemy> hit = null)
         {
             bool any = false, big = false;
             foreach (var e in game.Enemies)
             {
-                if (e == null || e.Dead) continue;
+                if (e == null || e.Dead || e.invulnerable) continue;
                 if (TooFarVertically(e) && !DropOnTopOf(e)) continue;   // 上下に離れすぎていれば届かない(落下攻撃を敵の体の上で振ったときは別)
                 Vector3 to = e.transform.position - transform.position;
                 to.y = 0f;
@@ -235,8 +221,10 @@ namespace Prototype
                 if (to.magnitude > Radius + e.Radius + 0.5f && Vector3.Angle(transform.forward, to) > cur.arc) continue;
                 bool wasBroken = e.Flinching;   // 崩れた敵を斬る(大ダメージ)
                 bool jumped = dropping && JumpedOver(e);   // 攻撃を跳び越えた敵への落下攻撃(大きく崩す)
-                float stagger = jumped ? game.jump.dropSuccessStagger : cur.stagger * game.meleeStaggerMul;
-                e.TakeHit(cur.damage, stagger, Flat(to) * cur.knock, cur.flinch);
+                float stagger = jumped ? game.jump.dropSuccessStagger : cur.stagger * (strongAttack ? 1f : game.meleeStaggerMul);
+                Vector3 strikeDir = to == Vector3.zero ? transform.forward : Flat(to);
+                e.TakeHit(cur.damage, stagger, strikeDir * cur.knock, cur.flinch, forceKnock: heavyEffect == DuelHeavyEffect.Knockback);
+                hit?.Add(e);
                 bool broke = !wasBroken && e.Flinching;   // この一太刀で崩した
                 // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく。崩した・崩れた敵を斬った・跳び越えた敵への落下攻撃はさらに多く大きく
                 Vector3 hitAt = e.Chest - Flat(to) * e.Radius;
@@ -248,20 +236,12 @@ namespace Prototype
             }
             // ヒットストップ(画面は揺らさない)。崩した・崩れた敵を斬ったときは少し長く
             if (any) game.HitStop((cur.heavy ? 0.12f : 0.06f) + (big ? 0.04f : 0f));
-            // 素手のパンチ:当てるたびに自機の HP が減る(1振りにつき1回)
-            if (any && cur.selfDamage > 0f) TakeRecoil(cur.selfDamage);
             return any;
         }
 
         // ───────── 致命攻撃 ─────────
-        // 作者「致命攻撃も必要ですね」「崩れた敵の近くで R1」(試す版。数値は DuelGame の「致命攻撃」、技の時間・姿勢は DuelMoveSet.Fatal)。
-        //   崩れている敵(怯みゲージが満ちて怯んでいる敵。「崩れた敵への近接 2 倍」と同じ条件)の近くで、地上で近接のボタン(△+ でも・回避の直後でも)を押すと、
-        //   ふつうの振りの代わりに必ず出る。相手は、ロックオンの相手(崩れていて近ければ)→ 崩れている一番近い敵。
-        //   相手へ踏み込んで一撃:ダメージは max(fatalMinDamage, 相手の最大 HP × fatalHpPart)。武装の威力の倍率・崩れた敵への 2 倍は掛からない。
-        //   当てると相手の崩れは解ける(1 回の崩れに致命攻撃は 1 回)。EN は使わない(0 以下でも出る)。
-        //   踏み込み〜振り抜きの間は無敵で、回避・ジャンプで取り消せない。出したら相手の崩れは振り抜くまで続く(出したのに届く前に立ち直ることはない)。
-        //   戻りは、ふつうの近接と同じ(少し後から回避・ジャンプ・次の攻撃で取り消せる)。
-        //   空中では出ない(ジャンプ中・飛行中に崩れた敵の近くで押すと、成功していれば落下攻撃、していなければ空中のふつうの振り)。
+        // 崩れている敵の近くで、地上の近接 R1 を押すと致命攻撃が出る。ロックオン中の敵が先、次に近い敵。
+        // 当たると崩れが解け、共通の弾を得る。EN は使わず、踏み込みから振り抜きまでは無敵。
 
         /// <summary>今の攻撃が致命攻撃か(攻撃の状態を出たら false。Enter・StartAttack が戻す)と、その相手。</summary>
         bool fatal;
@@ -272,19 +252,19 @@ namespace Prototype
         const float FatalStopGap = 1.5f;
 
         /// <summary>致命攻撃を入れられる敵か:生きていて、崩れていて、近く(すき間が fatalRange 以内。上下に離れすぎていない)。</summary>
-        bool FatalOk(DuelEnemy e) =>
-            e != null && !e.Dead && e.Flinching && !e.invulnerable && !TooFarVertically(e) && GapTo(e) <= game.fatalRange;
+        bool FatalOk(DuelEnemy e, float reach) =>
+            e != null && !e.Dead && e.Flinching && !e.invulnerable && !TooFarVertically(e) && GapTo(e) <= reach;
 
         /// <summary>致命攻撃の相手:ロックオンの相手(入れられるなら)→ 入れられる一番近い敵。いなければ null。</summary>
         DuelEnemy FatalTarget()
         {
             if (game.fatalRange <= 0f) return null;
-            if (FatalOk(Target)) return Target;
+            if (FatalOk(Target, game.fatalRange)) return Target;
             DuelEnemy best = null;
             float bestD = float.MaxValue;
             foreach (var e in game.Enemies)
             {
-                if (!FatalOk(e)) continue;
+                if (!FatalOk(e, game.fatalRange)) continue;
                 float d = GapTo(e);
                 if (d < bestD) { bestD = d; best = e; }
             }
@@ -292,17 +272,13 @@ namespace Prototype
         }
 
         /// <summary>
-        /// 近接のボタンを押してあり(受付時間の内)、地上で、崩れた敵が近くにいれば、致命攻撃を始める。
-        /// 通常攻撃・強攻撃・回避斬り・次の段のどれよりも先に見る(EN が 0 以下でも出る)。
+        /// 地上で近接 R1 を先行入力してあり、崩れた敵が近くにいれば、致命攻撃を始める。
         /// </summary>
         bool TryFatal(float now)
         {
-            if (now - lightPressedAt > attackBuffer || jumping || Airborne || !Arms.CanMelee(pressHand)) return false;
+            if (!LightInputReady(now) || jumping || Airborne) return false;
             var e = FatalTarget();
             if (e == null) return false;
-            atkHand = pressHand;
-            lightPressedAt = -10f;
-            pressHeavy = false;
             combo = 0;
             StartAttack(DuelMoveSet.Fatal);
             fatal = true;
@@ -342,37 +318,16 @@ namespace Prototype
         void StrikeFatal()
         {
             var e = fatalAim;
-            if (e == null || e.Dead || !e.Flinching || TooFarVertically(e) || GapTo(e) > cur.reach) return;   // 相手が倒れた・届かなかった:空振り
+            if (!FatalOk(e, cur.reach)) return;   // 相手が倒れた・届かなかった:空振り
             Vector3 to = Flat(e.transform.position - transform.position);
             if (to == Vector3.zero) to = transform.forward;
             Vector3 hitAt = e.Chest - to * e.Radius;
             float dmg = Mathf.Max(game.fatalMinDamage, e.MaxHP * game.fatalHpPart);
-            bool killed = e.TakeFatal(dmg, to * cur.knock);
+            e.TakeFatal(dmg, to * cur.knock);
+            Arms.AddFatalAmmo();
             DuelSpark.Burst(hitAt, -to, new Color(1f, 0.82f, 0.4f), 44, 2f);
             ProtoFx.Blast(hitAt, 3.2f, Color.white, 0.12f);
             if (game.fatalHitStop > 0f) game.HitStop(game.fatalHitStop);
-            OnFatalHit(e, killed);
-        }
-
-        /// <summary>
-        /// 致命攻撃が当たった(1 回の致命攻撃につき 1 回。killed = この一撃で倒した)。
-        /// 今は何もしない。後で「致命攻撃で弾が手に入る」仕組みを足すなら、ここに足す(作者「致命攻撃で弾薬を入手して銃でド派手に決めたい」。今回は入れない)。
-        /// </summary>
-        void OnFatalHit(DuelEnemy e, bool killed)
-        {
-        }
-
-        /// <summary>
-        /// 自分の攻撃を当てた反動で自機の HP が減る(素手のパンチ。作者「ヒットでHPが2づつ減る」「HPが減るのは自機の話です」)。
-        /// 被弾ではないので、怯み・押し返し・赤い光・ヒットストップはなく、回避の無敵やガードも関係ない。数字だけ自機の胸に出す。
-        /// HP が 0 になれば、ふつうに撃墜される。
-        /// </summary>
-        void TakeRecoil(float dmg)
-        {
-            if (Dead) return;
-            HP -= dmg;
-            ProtoDamageText.Show(Chest, dmg);
-            if (HP <= 0f) Die();
         }
     }
 }

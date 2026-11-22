@@ -5,12 +5,12 @@ using UnityEngine;
 namespace Prototype
 {
     // DuelGame のメニュー:OPTIONS / I で開く項目のメニュー(開閉・ページの行き来)・操作方法のページ・左下の短い案内
-    // (partial。本体は DuelGame.cs。「装備・所持品」のページの中身は DuelGame.EquipView.cs)
+    // (partial。本体は DuelGame.cs。「装備」のページの中身は DuelGame.EquipView.cs)
     public partial class DuelGame
     {
         // ───────── メニュー(右のメニューボタン) ─────────
 
-        /// <summary>メニューの段階:閉じている / 項目のメニュー / 「装備・所持品」のページ(装備の確認)/ 「操作方法」のページ。</summary>
+        /// <summary>メニューの段階:閉じている / 項目のメニュー / 「装備」のページ(装備の確認)/ 「操作方法」のページ。</summary>
         enum MenuPage { Closed, Top, Equip, Help }
 
         MenuPage menuPage;
@@ -20,14 +20,14 @@ namespace Prototype
         public static bool Paused => I != null && I.MenuOpen;
 
         /// <summary>項目のメニューの並び(添字は menuSel)。装備へは OPTIONS → × の2押しで行けるよう、装備を一番上にする。</summary>
-        static readonly string[] MenuItems = { "装備・所持品", "操作方法", "閉じる" };
+        static readonly string[] MenuItems = { "装備", "操作方法", "閉じる" };
         int menuSel;
 
         /// <summary>
         /// 右のメニューボタン(OPTIONS・≡・+ / I)で項目のメニューを開く。操作方法を画面に出し続けるのをやめ、ここから見る形にした
         /// (作者「操作方法は常に出すのではなく、オプションにメニューを出してください」)。
         /// 項目のメニュー:↑↓(十字・左スティック・↑↓・W/S)で選び、×・A / Space・Enter で決定、○・B / Backspace で閉じる。
-        /// 「装備・所持品」「操作方法」のページ:○・B / Backspace で1つ前(項目のメニュー)へ戻る(装備の処分の確認の途中なら、確認だけ取り消す)。
+        /// 「装備」「操作方法」のページ:○・B / Backspace で1つ前(項目のメニュー)へ戻る。
         /// 右のメニューボタン / I は、どの段階からでも全部閉じてゲームに戻る(Esc はカメラのマウスの固定を外すので使わない)。
         /// 開いている間は、どの段階でも時間を止め、戦闘の入力を止める(Paused・ProtoInput.Paused)。
         /// 閉じたあとは、その時に押していたボタン(決定の × = 飛行、戻るの ○ = ブーストなど)を離すまで効かない(ProtoInput 側)。
@@ -63,12 +63,8 @@ namespace Prototype
                     break;
                 }
                 case MenuPage.Equip:
-                    if (ProtoInput.EquipViewBack)
-                    {
-                        if (dropArmed) dropArmed = false;   // 捨てる確認の途中なら、確認だけ取り消す
-                        else SetMenuPage(MenuPage.Top);
-                    }
-                    else EquipViewInput(player.Arms, up, down);
+                    if (ProtoInput.EquipViewBack) SetMenuPage(MenuPage.Top);
+                    else viewSel = (viewSel + (down ? 1 : 0) - (up ? 1 : 0) + ArmRows) % ArmRows;
                     break;
                 case MenuPage.Help:
                     if (ProtoInput.MenuBack) SetMenuPage(MenuPage.Top);
@@ -91,8 +87,7 @@ namespace Prototype
                 player.Arms.ClearBufferedInput();
                 menuSel = 0;
             }
-            if (page == MenuPage.Equip) PrepareEquipPage();
-            dropArmed = false;
+            if (page == MenuPage.Equip) viewSel = 0;
             menuPage = page;
             ProtoInput.Paused = MenuOpen;
         }
@@ -135,7 +130,7 @@ namespace Prototype
             {
                 case MenuPage.Top: DrawMenuTop(); break;
                 case MenuPage.Equip: DrawEquipView(arms); break;
-                case MenuPage.Help: DrawHelpPage(arms); break;
+                case MenuPage.Help: DrawHelpPage(); break;
             }
         }
 
@@ -173,7 +168,7 @@ namespace Prototype
             for (int i = 0; i < n; i++)
             {
                 bool sel = i == menuSel;
-                if (sel) SelectionBand(new Rect(bx + pad - 8f, y + 1f, wd - pad * 2f + 16f, rowH - 1f), false);
+                if (sel) SelectionBand(new Rect(bx + pad - 8f, y + 1f, wd - pad * 2f + 16f, rowH - 1f));
                 GUI.color = new Color(1f, 1f, 1f, 0.12f);
                 GUI.DrawTexture(new Rect(bx + pad, y, wd - pad * 2f, 1f), Texture2D.whiteTexture);
                 GUI.color = sel ? Color.white : new Color(1f, 1f, 1f, 0.7f);
@@ -193,8 +188,8 @@ namespace Prototype
 
         // ───────── 操作方法のページ ─────────
 
-        // 操作方法の行(ボタン・内容)は、中身(機器・両手持ちの武装・リロードの有無・照準を動かせる設定・素手か)が変わったときだけ作り直す
-        (ProtoInput.Device dev, DuelWeapon two, bool reload, bool aimMove, bool bare) helpKey;
+        // 操作方法の行は、使っている機器が変わったときだけ作り直す。
+        ProtoInput.Device helpDevice;
         bool helpBuilt;
         readonly List<string> helpBtn = new(), helpWhat = new();
         /// <summary>右の列が始まる行(左の列は動かす・戦う、右の列はロックオン・拾う・メニュー)。</summary>
@@ -209,82 +204,43 @@ namespace Prototype
             helpWhat.Add(what);
         }
 
-        /// <summary>
-        /// 操作方法の行を作る。ボタン名は使っているコントローラー(キーボード / PlayStation / Xbox)に合わせ、
-        /// 両手持ち・素手・リロードできる銃・照準を動かせる設定で出し分ける(前に左下へ出し続けていた操作説明と同じ出し分け)。
-        /// メニューの中の操作(↑↓・決定・戻る・装備の確認の △/□ など)は、各画面の下の案内に任せて、ここには入れない。
-        /// OnGUI の中から呼ぶ(幅を測るのにスタイルが要る)。
-        /// </summary>
-        void BuildHelpRows(DuelArms arms)
+        void BuildHelpRows()
         {
             var dev = ProtoInput.Current;
-            var two = arms.TwoHanded ? arms.Get(DuelSlot.RightHand) : null;
-            bool reload = arms.AnyReloadable;   // 弾倉のある銃を付けているときだけ「△+撃つボタン リロード」を出す
-            bool aimMove = DuelArmsRules.Current.cursorMovable;
-            bool bare = arms.Unarmed;   // 素手(右手・左手が両方とも空)
-            var key = (dev, two, reload, aimMove, bare);
-            if (helpBuilt && helpKey == key) return;
+            if (helpBuilt && helpDevice == dev) return;
             helpBuilt = true;
-            helpKey = key;
+            helpDevice = dev;
             helpBtn.Clear();
             helpWhat.Clear();
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
             bool kb = dev == ProtoInput.Device.Keyboard;
-            string r1 = B(ProtoInput.Btn.R1), l1 = B(ProtoInput.Btn.L1), aim = B(ProtoInput.Btn.Aim);
-
-            // 左の列:動かす・戦う
-            HelpRow(B(ProtoInput.Btn.Move), "移動");
-            // ロックオン中のカメラは敵を追い続け、右スティック・マウスでは回らない(狙う敵の切り替えになる。右の列)
-            HelpRow(kb ? "マウス" : "右スティック", kb ? "カメラ(クリックで固定・Esc で解除)" : "カメラ");
-            if (two != null)
-            {
-                // 両手持ち:R1 が主の技、L1 が別の技
-                HelpRow(r1, two.MainMoveName);
-                HelpRow(l1, two.altMove + (two.alt is { charge: > 0f } ? "(溜めて離す)" : ""));
-                if (two.IsBlade) HelpRow($"{aim}+{r1}/{l1}", "強攻撃");
-            }
-            else if (bare)
-            {
-                // 素手(両手とも空):R1 / L1 で右手・左手のパンチ。強攻撃はない(△+R1/L1 でも同じパンチ)
-                HelpRow($"{r1}/{l1}", "素手のパンチ(右手/左手)");
-            }
-            else
-            {
-                // 手のボタンはその手の武装(剣=攻撃 / 盾=ガード / 銃=射撃)
-                HelpRow($"{r1}/{l1}", "右手/左手の武装");
-                HelpRow($"{aim}+{r1}/{l1}", "強攻撃");
-                HelpRow($"{r1}/{l1}", "両手とも空のとき:素手のパンチ");
-            }
-            if (reload) HelpRow($"{aim}+撃つボタン", "リロード");
-            // 銃・砲のボタンを押している間(と撃ってから少しの間)は、右スティック・マウスで画面の上の照準を動かす(カメラは回さない)
-            if (aimMove) HelpRow(kb ? "マウス" : "右スティック", "撃つボタンを押している間:照準を動かす");
-            HelpRow($"{B(ProtoInput.Btn.R2)}/{B(ProtoInput.Btn.L2)}", "右肩/左肩の武装");
-            HelpRow(B(ProtoInput.Btn.Dodge), "回避");
-            // ジャンプ(地上で押した瞬間に跳ぶ)・落下攻撃・致命攻撃(試す版。DuelPlayer.Jump.cs / DuelPlayer.Attack.cs)。
-            // 近接のない両手の銃・砲には、落下攻撃・致命攻撃の行を出さない
+            string r1 = B(ProtoInput.Btn.R1), r2 = B(ProtoInput.Btn.R2), l2 = B(ProtoInput.Btn.L2);
             string fly = B(ProtoInput.Btn.Fly);
-            HelpRow(fly, "ジャンプ(地上で。敵の下段の攻撃が当たる瞬間に跳ぶと成功)");
-            if (two == null || two.IsBlade)
-            {
-                HelpRow($"成功したジャンプ中に {r1}/{l1}", "落下攻撃(跳び越えた敵を大きく崩す)");
-                HelpRow($"崩れた敵の近くで {r1}/{l1}", "致命攻撃(地上で。大ダメージ)");
-            }
-            HelpRow(fly + " 長押し", "飛行(空中で。ジャンプから押し続けても移る)");
-            HelpRow(B(ProtoInput.Btn.Boost), "ブースト");
 
-            // 右の列:ロックオン・落ちている武装・メニュー
+            // 左の列は移動と戦闘。
+            HelpRow(B(ProtoInput.Btn.Move), "移動");
+            HelpRow(kb ? "マウス" : "右スティック", kb ? "カメラ（クリックで固定・Esc で解除）" : "カメラ");
+            HelpRow(B(ProtoInput.Btn.Dodge), "回避");
+            HelpRow(fly, "ジャンプ（敵の下段攻撃が当たる瞬間に跳ぶと成功）");
+            HelpRow(fly + " 長押し", "飛行（ジャンプから押し続けても移る）");
+            HelpRow(B(ProtoInput.Btn.Boost), "ブースト");
+            HelpRow(r1, "近接の通常攻撃");
+            HelpRow(r2, "近接の強攻撃");
+            HelpRow($"成功したジャンプ中に {r1}", "近接の落下攻撃");
+            HelpRow($"崩れた敵の近くで {r1}", "地上の近接で致命攻撃。命中で共通の弾を補給");
+
+            // 右の列は射撃・ロックオン・落とし物・メニュー。
             helpSplit = helpBtn.Count;
-            // ロックオンのボタンはオン・オフの切り替え(電脳斬禅と同じ)。狙う敵の切り替えは R3 / Tab(オフのときに押すとオンに戻る)か、
-            // 撃っていないときに右スティック(マウスは左右に振る)を左右に弾く
+            HelpRow(l2 + " 長押し", "遠距離を構える。離すと近接に戻る");
+            HelpRow($"{l2} + {r1}", "通常射撃");
+            HelpRow($"{l2} + {r2}", "大技（共通の弾を消費）");
+            HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
-            HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "ロックオン中:狙う敵を変更");
-            HelpRow(B(ProtoInput.Btn.EquipNow), $"武装を付ける → 付ける所のボタン(背中は {B(ProtoInput.Btn.Fly)})");
-            HelpRow(B(ProtoInput.Btn.Stash), "武装を持つ(所持品へ)");
-            HelpRow(B(ProtoInput.Btn.Break), "武装を分解(弾か回復)");
-            // 付け先・分解を選ぶ表示の取り消し(入ったのと同じボタンでもやめられる。選んでいる間に効くのは移動とカメラだけ)
-            HelpRow(B(ProtoInput.Btn.Back), "付け先・分解を選んでいる間:やめる");
-            HelpRow(B(ProtoInput.Btn.EquipView), "メニュー(装備・所持品/操作方法)");
-            HelpRow(B(ProtoInput.Btn.Restart), "最初からやり直す");
+            HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "ロックオン中の相手を変更");
+            HelpRow(B(ProtoInput.Btn.EquipNow), "落とし物と比較。もう一度で入れ替え");
+            HelpRow(B(ProtoInput.Btn.Break), "落とし物を解体（弾か回復）");
+            HelpRow(B(ProtoInput.Btn.Back), "入れ替え・解体を取り消す");
+            HelpRow($"{B(ProtoInput.Btn.EquipView)} / {B(ProtoInput.Btn.Restart)}", "メニュー / 最初からやり直す");
 
             var gc = new GUIContent();
             helpBtnW[0] = helpBtnW[1] = helpWhatW[0] = helpWhatW[1] = 0f;
@@ -302,10 +258,10 @@ namespace Prototype
         /// 操作方法のページ:画面の中央のパネルに、見出しと「ボタン ― 内容」の行を2列で並べる(行が多いので1列では縦に収まりにくい)。
         /// パネルの幅は文字の幅から決める。帯・地の色・文字の大きさは装備の確認にそろえる。動かす演出は入れない。
         /// </summary>
-        void DrawHelpPage(DuelArms arms)
+        void DrawHelpPage()
         {
             BuildMenuText();
-            BuildHelpRows(arms);
+            BuildHelpRows();
             const float pad = 18f, titleH = 46f, rowH = 30f, footH = 34f, btnGap = 16f, colGap = 40f;
             int rows = Mathf.Max(helpSplit, helpBtn.Count - helpSplit);
             float colL = helpBtnW[0] + btnGap + helpWhatW[0], colR = helpBtnW[1] + btnGap + helpWhatW[1];

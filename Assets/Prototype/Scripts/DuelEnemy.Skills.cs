@@ -173,7 +173,7 @@ namespace Prototype
             DuelSpark.Burst(at + Vector3.up, Vector3.up, new Color(1f, 0.75f, 0.45f), 40, 1.6f * Size);
             var wave = new DuelHit
             {
-                damage = B.waveDamage * Kind.damageMul, guardable = true, guardCost = B.waveGuardCost,
+                damage = B.waveDamage * Kind.damageMul,
                 stagger = B.waveStagger * Kind.playerStaggerMul, hurtTime = 0.3f, knock = B.waveKnock, from = at,
             };
             DuelShockwave.Spawn(at, B.leapImpactRadius * Size, B.waveMaxRadius, B.waveSpeed, B.waveWidth, wave, impactInRange);   // 直撃の範囲にいた相手には衝撃波は当てない
@@ -273,12 +273,12 @@ namespace Prototype
                     Vector3 d = player.transform.position - c;
                     d.y = 0f;
                     inRange = d.magnitude - player.Radius <= SlamRadius;
-                    h.damage = 30f; h.guardable = false; h.stagger = 25f; h.hurtTime = 0.45f; h.knock = 22f;
+                    h.damage = 30f; h.stagger = 25f; h.hurtTime = 0.45f; h.knock = 22f;
                     ProtoFx.Blast(c + Vector3.up, SlamRadius, new Color(1f, 0.5f, 0.3f), 0.3f);
                     break;
                 case Skill.Thrust:
                     inRange = true;   // 触れた時点で呼ばれる
-                    h.damage = 20f; h.guardable = true; h.guardCost = 35f; h.stagger = 15f; h.hurtTime = 0.3f; h.knock = 18f;
+                    h.damage = 20f; h.stagger = 15f; h.hurtTime = 0.3f; h.knock = 18f;
                     break;
                 case Skill.Flurry:
                 {
@@ -286,8 +286,7 @@ namespace Prototype
                     tf.y = 0f;
                     inRange = GapTo(player) <= B.flurryReach * Size && (tf.magnitude < Radius + player.Radius + 1f || Vector3.Angle(commitDir, tf) <= B.flurryArc);
                     bool last = flurryIndex >= 2;
-                    h.damage = last ? B.flurryLastDamage : B.flurryDamage; h.guardable = true;
-                    h.guardCost = last ? B.flurryLastGuardCost : B.flurryGuardCost;
+                    h.damage = last ? B.flurryLastDamage : B.flurryDamage;
                     h.stagger = last ? B.flurryLastStagger : B.flurryStagger;
                     h.hurtTime = last ? 0.5f : 0.25f;
                     h.knock = last ? B.flurryLastKnock : B.flurryKnock;
@@ -295,28 +294,28 @@ namespace Prototype
                 }
                 case Skill.WideSweep:
                     inRange = GapTo(player) <= B.wideReach * Size;   // 全周
-                    h.damage = B.wideDamage; h.guardable = true; h.guardCost = B.wideGuardCost; h.stagger = B.wideStagger; h.hurtTime = 0.5f; h.knock = B.wideKnock;
+                    h.damage = B.wideDamage; h.stagger = B.wideStagger; h.hurtTime = 0.5f; h.knock = B.wideKnock;
                     break;
                 case Skill.Charge:
                     inRange = true;   // 触れた時点で呼ばれる
-                    h.damage = B.chargeDamage; h.guardable = true; h.guardCost = B.chargeGuardCost; h.stagger = B.chargeStagger; h.hurtTime = 0.5f; h.knock = B.chargeKnock;
+                    h.damage = B.chargeDamage; h.stagger = B.chargeStagger; h.hurtTime = 0.5f; h.knock = B.chargeKnock;
                     break;
                 case Skill.LeapSlam:
                     Vector3 dl = player.transform.position - transform.position;
                     dl.y = 0f;
                     inRange = dl.magnitude - player.Radius <= B.leapImpactRadius * Size;
                     impactInRange = inRange && !TooFarVertically(player);
-                    h.damage = B.leapDamage; h.guardable = false; h.stagger = B.leapStagger; h.hurtTime = 0.55f; h.knock = B.leapKnock;
+                    h.damage = B.leapDamage; h.stagger = B.leapStagger; h.hurtTime = 0.55f; h.knock = B.leapKnock;
                     break;
                 case Skill.AntiAir:
                     inRange = true;   // 跳んでいる間に近づいた時点で呼ばれる
-                    h.damage = 18f; h.guardable = true; h.guardCost = 30f; h.stagger = 18f; h.hurtTime = 0.35f; h.knock = 12f;
+                    h.damage = 18f; h.stagger = 18f; h.hurtTime = 0.35f; h.knock = 12f;
                     break;
                 default:
                     Vector3 to = player.transform.position - transform.position;
                     to.y = 0f;
                     inRange = GapTo(player) <= SweepReach && (to.magnitude < Radius + player.Radius + 1f || Vector3.Angle(commitDir, to) <= 90f);
-                    h.damage = 12f; h.guardable = true; h.guardCost = 25f; h.stagger = 10f; h.hurtTime = 0.2f; h.knock = 10f;
+                    h.damage = 12f; h.stagger = 10f; h.hurtTime = 0.2f; h.knock = 10f;
                     break;
             }
             h.damage *= Kind.damageMul;

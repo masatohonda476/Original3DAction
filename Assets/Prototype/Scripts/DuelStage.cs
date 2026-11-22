@@ -13,7 +13,7 @@ namespace Prototype
     ///   昇降機の竪穴(細く高い。足場と止まった昇降機の箱を上る)→ 船首の外板(開けた外の斜面)→ 艦橋の下(ボスの前の群れ)→
     ///   頭頂部の大ホール(天井が裂けている。ボス)。
     /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
-    /// セーブポイント(光る柱)に触れると再開地点が変わる(HP・ガードは回復しない。作者「セーブポイントでは回復できないようにしてください」)。
+    /// セーブポイント(光る柱)に触れると再開地点が変わる(HPは回復しない。作者「セーブポイントでは回復できないようにしてください」)。
     /// 撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// ボス戦(作者「ボス戦に入ったら入口を閉じ、死亡したら入る前の弾薬の状態で復活するようにしてください」):自機が大ホールに入りきったら入口の扉が閉じ、
@@ -22,9 +22,9 @@ namespace Prototype
     /// ボス以外の敵は大ホールへ入れず、入口の手前で止まる(作者「敵はボス部屋に入れないようにしてください」。DuelFighter.maxZ)。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
     /// 「重厚→無双」のサイクルひとつ分:倒した敵がときどき武装を落とし(上ほどレア度の高い武装)、十字右で付け替えながら強くなる(DuelArms)。
-    /// 撃墜されても武装・所持品・共通の弾は残る。ただしボス戦の間にやられて再開したときは、共通の弾と弾倉の残りだけを扉が閉じたときに戻し、
-    /// 付けている銃を共通の弾でリロード済みにする(武装・所持品はやられた時点のまま。ボス戦の間に分解した武装は戻らず、分解で得た弾も残らない)。
-    /// ボスを倒すと爆発で武装も所持品も全部消し飛び、弾も0になってクリア。
+    /// 撃墜されても武装・共通の弾は残る。ただしボス戦の間にやられて再開したときは、共通の弾と弾倉の残りだけを扉が閉じたときに戻し、
+    /// 装填は近接に戻ってから進む(装備はやられた時点のまま)。
+    /// ボスを倒すと爆発で武装は全部消し飛び、弾も0になってクリア。
     /// 地形と敵の配置(Define)とシーンビューのギズモは DuelStage.Layout.cs。
     /// </summary>
     public partial class DuelStage : MonoBehaviour
@@ -55,30 +55,26 @@ namespace Prototype
 
         /// <summary>
         /// 落ちる武装の一覧(付ける所・レア度・性能)。シリアライズせず、いつも DuelWeapon.Defaults() から作る(数値はコードで直す)。
-        /// シリアライズすると、シーンを開いたまま DuelWeapon の形が変わったときにメモリ上の古い一覧が残り、
-        /// 新しい項目が既定値のまま(例:kind が 0=剣)になって、スラスターや肩の銃が剣として落ちたため。
         /// </summary>
         [System.NonSerialized] public List<DuelWeapon> arsenal = DuelWeapon.Defaults();
         [Header("武装の落とし物(サイクルひとつ分の試作)")]
         [Tooltip("倒した敵が武装を落とす確率(兵卒も剣士も同じ。続けて落ちなかったときの救済はなし。ボスは落とさない)")]
         [Range(0f, 1f)] public float dropChance = 0.3f;
-        [Tooltip("空いている所(最初は左手・背中・両肩)に付けられる武装の出やすさ(倍)。最初は左手が空なので、盾・手の銃・剣が出やすい")]
-        public float emptySlotWeight = 2f;
         [Tooltip("今付けているのと同じ武装の出やすさ(倍)")]
         public float sameWeaponWeight = 0.3f;
         [Tooltip("兵卒が落とす武装のレア度の重み(コモン / レア / エピック。倒した所の高さは見ない)")]
         public DuelRarityWeights gruntRarity = new(0.5f, 0.4f, 0.1f);
         [Tooltip("剣士が落とす武装のレア度の重み(コモン / レア / エピック)")]
         public DuelRarityWeights duelistRarity = new(0.1f, 0.45f, 0.45f);
-        [Tooltip("照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)")]
+        [Tooltip("照準・装備の重量・弾と装填・解体の決まり(数値は仮)")]
         public DuelArmsRules armsRules = new();
-        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装(所持品も)が全部消し飛び、共通の弾も0になる(画面は揺らさない)")]
+        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装が全部消し飛び、共通の弾も0になる(画面は揺らさない)")]
         public float bossBlastRadius = 45f;
 
         [Header("ボス(大剣士)")]
         [Tooltip("武装で強くなった自機と渡り合える硬さ(仮。武装なしの頃は182)")]
         public float bossHP = 480f;
-        [Tooltip("射撃(肩の武装)でボスが受けるダメージと怯みの倍率(厚い装甲。1なら減らない)。ミサイル・銃が全部ボスに集まって溶けないように")]
+        [Tooltip("射撃でボスが受けるダメージと怯みの倍率(厚い装甲。1なら減らない)")]
         [Range(0f, 1f)] public float bossRangedTaken = 0.4f;
         [Tooltip("機体の大きさの倍率(剣士は1.5)")]
         public float bossSize = 2.5f;
@@ -555,7 +551,7 @@ namespace Prototype
             if (!bossFight && p.z >= bossGate.max.z + player.Radius + gateClearance) BeginBossFight();
         }
 
-        /// <summary>セーブポイントに触れた:再開地点を変えて知らせる(HP・ガードは回復しない)。</summary>
+        /// <summary>セーブポイントに触れた:再開地点を変えて知らせる(HPは回復しない)。</summary>
         void Touch(SavePoint sp)
         {
             SetCurrentSave(sp);
@@ -580,8 +576,8 @@ namespace Prototype
         /// <summary>
         /// 最後に触れたセーブポイントから再開する。倒した敵はそのまま。生きている敵は HP を戻して持ち場へ帰し、発覚・警戒を切る
         /// (ボス戦の途中でも、ボスは HP 満タンで持ち場へ戻る)。
-        /// ボス戦の間(入口の扉が閉じている間)の再開なら、扉を開け(再開地点は扉の外)、共通の弾と弾倉の残りを扉が閉じたときに戻して、
-        /// 付けている銃をリロード済みにする(DuelArms.RestoreKeptAmmo。落下での再開も同じ)。ボス戦でなければ、弾はやられた時点のまま。
+        /// ボス戦の間(入口の扉が閉じている間)の再開なら、扉を開け(再開地点は扉の外)、共通の弾と弾倉の残りを扉が閉じたときに戻す。
+        /// 弾倉は再開後も近接に戻っている間に詰まる。ボス戦でなければ、弾はやられた時点のまま。
         /// </summary>
         void Respawn()
         {
@@ -630,11 +626,11 @@ namespace Prototype
             ProtoFx.Blast(at, bossBlastRadius * 0.45f, new Color(1f, 0.95f, 0.75f), 0.4f);
             DuelSpark.Burst(at, Vector3.zero, new Color(1f, 0.7f, 0.3f), 80, 2.5f * size);
             game.HitStop(0.15f);
-            bool hadAmmo = player != null && player.Arms.Ammo > 0f;
-            int lost = player != null ? player.Arms.LoseAll() : 0;   // 所持品も消し飛び、共通の弾も0に戻る
+            bool hadAmmo = player != null && (player.Arms.Ammo > 0f || player.Arms.Magazine > 0);
+            int lost = player != null ? player.Arms.LoseAll() : 0;   // 共通の弾と弾倉も空に戻る
             if (lost > 0 || hadAmmo)
             {
-                ClearNote = "ボスの爆発に巻き込まれ、武装も所持品も弾も、すべて消し飛んだ";
+                ClearNote = "ボスの爆発に巻き込まれ、拾った武装と弾が消し飛んだ";
                 game.Log(ClearNote);
             }
         }
@@ -658,10 +654,7 @@ namespace Prototype
             if (w.rarity >= 1) game.Log($"{w.RarityName}の武装が落ちた:{w.name}");
         }
 
-        /// <summary>
-        /// そのレア度の武装から1つ選ぶ(なければ近いレア度から)。空いている所に付けられる武装を出やすく(emptySlotWeight 倍)、
-        /// 今付けているのと同じ武装は出にくく(sameWeaponWeight 倍)する。武装ごとの出やすさ(DuelWeapon.dropWeight。両手持ちは少なめ)も掛ける。
-        /// </summary>
+        /// <summary>そのレア度から一つ選ぶ。今付けている武装は出にくくする。</summary>
         DuelWeapon PickWeapon(int rarity)
         {
             var arms = player != null ? player.Arms : null;
@@ -684,21 +677,8 @@ namespace Prototype
             return null;
         }
 
-        float Weight(DuelWeapon w, DuelArms arms) => Mathf.Max(0f, w.dropWeight) * SlotWeight(w, arms);
-
-        /// <summary>空いている所に付けられるなら出やすく、今付けているのと同じなら出にくく(両手持ちは、どちらかの手が空いていれば空きとみなす)。</summary>
-        float SlotWeight(DuelWeapon w, DuelArms arms)
-        {
-            if (arms == null) return 1f;
-            bool empty = false, same = false;
-            foreach (var s in DuelWeapon.SlotsFor(w.kind))
-            {
-                var cur = arms.Get(s);
-                if (cur == null) empty = true;
-                else if (cur == w) same = true;
-            }
-            return empty ? emptySlotWeight : same ? sameWeaponWeight : 1f;
-        }
+        float Weight(DuelWeapon w, DuelArms arms) =>
+            Mathf.Max(0f, w.dropWeight) * (arms != null && arms.Get(w.Slot) == w ? sameWeaponWeight : 1f);
 
         // ───────── 画面に出す情報 ─────────
 

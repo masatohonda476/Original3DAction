@@ -285,14 +285,10 @@ namespace Prototype
         IEnumerator Fly(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet, float speed, bool mark)
         {
             var r = Rules;
-            // 撃った自機の速度を弾が受け継ぐ(作者「弾は、停止中を狙うより、相対速度を合わせる方が楽しそうです」):
-            // 敵と同じ向き・速さで動きながら撃てば、狙った所へ当たる。止まって動く敵を撃つと外れる。先読みの自動補正はしない
-            if (player != null && r.inheritShooterVelocity > 0f)
-            {
-                Vector3 v = dir * speed + inheritVel * r.inheritShooterVelocity;
-                float m = v.magnitude;
-                if (m > 1f) { dir = v / m; speed = m; }
-            }
+            // サイト内への補正と弾道表示も、発射時に自機から受け継ぐ速度を使っている。
+            Vector3 velocity = ShotVelocity(dir, speed);
+            speed = velocity.magnitude;
+            dir = velocity.normalized;
             const float ShellSize = 1.1f; // 仮
             float size = w.blastRadius > 0f ? ShellSize : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
             float trail = Mathf.Max(0.01f, r.bulletTrail);

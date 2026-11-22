@@ -23,7 +23,7 @@ namespace Prototype
         [Header("弾の速さ(武装ごとの値は DuelWeapon.Catalog.cs)")]
         [Tooltip("全部の武装の弾の速さに掛ける倍率(1 で武装ごとの値のまま。0 にするとすぐ届く光線)")]
         public float shotSpeedMul = 1f;
-        [Tooltip("撃った自機の速度を弾が受け継ぐ割合(1 で全部、0 で受け継がない)。敵と相対速度を合わせて動きながら撃つと当たる。速さを持つ弾(実弾・ビームの弾)だけで、すぐ届く光線には効かない")]
+        [Tooltip("撃った自機の速度を弾が受け継ぐ割合(1 で全部、0 で受け継がない)。サイト内では受け継ぐ速度を見込んで狙いを補正する。速さを持つ弾(実弾・ビームの弾)に適用")]
         [Range(0f, 1f)] public float inheritShooterVelocity = 1f;
         [Tooltip("弾が受け継ぐ自機の速度が、今の速度へ追いつくまでの秒数(だいたい)。動き始め・止まり・回避で十字と弾の流れが跳ばないように(作者「1: なめらかにするだけ」)。0 で今の速度そのまま")]
         public float inheritSmoothTime = 0.2f;

@@ -126,13 +126,12 @@ namespace Prototype
                     dir = Quaternion.AngleAxis(angle, Vector3.up) * direction;
                 }
                 else dir = Jitter(direction, shot.spread + (special ? 0f : bloom));
-                if (speed > 0f) StartCoroutine(Fly(from, dir, shot, color, spread, speed, CursorInView));
+                if (speed > 0f) StartCoroutine(Fly(from, dir, shot, color, spread, speed, ShotInView));
                 else Shot(from, dir, shot, color, spread);
             }
             float recoil = Mathf.Max(0f, Rules.recoilMul);
             if (shot.recoilPerShot > 0f)
                 bloom = Mathf.Min(shot.recoilMax * recoil, bloom + shot.recoilPerShot * recoil);
-            Kick(shot);
         }
 
         /// <summary>銃の弾が敵 e の at に当たった:当てて、当たった所から火花を出し、ヒットマーカー(Shot・Fly で同じ。mark は NoteHit)。</summary>
@@ -154,7 +153,7 @@ namespace Prototype
         /// <summary>
         /// 遠距離武器が敵 e に当たった:照準の真ん中のヒットマーカーを出す。同じ瞬間に何発も当たったら(拡散・貫通)強い方の印。
         /// TakeRangedHit の後に呼ぶ(倒した・崩れている・崩せるを見分ける)。
-        /// mark は、その弾を撃ったときに照準の先が視界の中だったか(CursorInView)。視界の外へ撃った弾は、当たっても印を出さない
+        /// mark は、その弾を撃ったときに予測した弾道の先が視界の中だったか(ShotInView)。視界の外へ撃った弾は、当たっても印を出さない
         /// (撃ったあと向きを変えて照準の先が画面に戻っても、敵のいない所に印が出ないように。作者が 2 案から「撃ったときに視界外だった弾では出さない」)。
         /// </summary>
         void NoteHit(DuelEnemy e, bool mark)
@@ -224,9 +223,9 @@ namespace Prototype
             bool hitEnemy = FindProjectileTarget(from, dir, len, w, out var enemy, out float distance);
             if (hitEnemy) end = from + dir * distance;
             if (w.blastRadius > 0f && (hitEnemy || wall || w.blastAtEnd))
-                Explode(wall && distance >= len ? BlastCenter(hit) : end, dir, w, CursorInView);
+                Explode(wall && distance >= len ? BlastCenter(hit) : end, dir, w, ShotInView);
             else if (hitEnemy)
-                BulletHit(enemy, end, dir, w, c, pellet, CursorInView);
+                BulletHit(enemy, end, dir, w, c, pellet, ShotInView);
             else if (wall)
                 DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);
             Tracer(from, end, c, pellet ? 0.15f : 0.25f, !hitEnemy);
@@ -244,7 +243,7 @@ namespace Prototype
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
                 Vector3 at = from + dir * (s * len);
                 if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
-                PierceHit(e, at, dir, w, c, CursorInView);
+                PierceHit(e, at, dir, w, c, ShotInView);
                 any = true;
             }
             if (!any && wall is { } wh) DuelSpark.Burst(wh.point, wh.normal, c, 1, 0.45f);   // 外れて地形に当たった:小さな火花

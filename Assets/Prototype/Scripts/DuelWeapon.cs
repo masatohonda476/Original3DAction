@@ -11,7 +11,7 @@ namespace Prototype
     public class DuelShot
     {
         public float damage, range, interval, stagger, knock, shotSpeed, spread, beamWidth;
-        public float recoilPerShot, recoilMax, recoilRecover, aimKick, aimKickSide;
+        public float recoilPerShot, recoilMax, recoilRecover;
         /// <summary>一度の発射で同時に飛ぶ弾の数。散弾や拡散爆発に使う。</summary>
         public int pellets = 1;
         /// <summary>一度の入力で時間差を付けて撃つ回数と間隔(秒)。interval は最初の発射から次の入力で撃てるまで。</summary>

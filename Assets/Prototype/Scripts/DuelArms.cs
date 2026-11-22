@@ -8,7 +8,6 @@ namespace Prototype
     public partial class DuelArms : MonoBehaviour
     {
         const float PressBuffer = 0.2f;
-        const float KeepAimAfterShot = 0.6f;
         DuelPlayer player;
         DuelGame game;
         MechRig rig;
@@ -40,11 +39,7 @@ namespace Prototype
         public bool RangedHeld => RangedInputHeld ||
             (roundsPending > 0 && !DuelGame.Paused && !ChoiceLocksInput && RawRangedHeld);
         public bool Aiming => RangedHeld && player != null && !player.Dead && !player.MeleeCommitted;
-        public bool CursorActive => Aiming && Rules.cursorMovable;
-        // 固定照準では射撃入力と撃った直後だけ自動選択を待つ。L2 だけなら従来どおり敵を探す。
-        public bool BlocksAutoLock => Aiming && (CursorActive ||
-            (!blockR1 && ProtoInput.RightHandHeld) || (!blockR2 && ProtoInput.RightShoulderHeld) ||
-            Time.time - lastFire < KeepAimAfterShot);
+        public bool BlocksAutoLock => Aiming;
         public bool FlyBlocked => ChoiceLocksInput || blockFly;
         public bool LightPressed => !ChoiceLocksInput && !blockR1 && ProtoInput.Attack;
         public bool HeavyPressed => !ChoiceLocksInput && !blockR2 && ProtoInput.RightShoulderPressed;
@@ -141,7 +136,6 @@ namespace Prototype
 
             float now = Time.time;
             bool special = roundsPending > 0 ? burstSpecial : now - specialPressedAt <= PressBuffer;
-            UpdateCursor();
             bool aimReady = UpdateFrame(special, out Vector3 from, out Vector3 aim);
             if (!canShoot || (!aimReady && !ChoiceLocksInput))
             {

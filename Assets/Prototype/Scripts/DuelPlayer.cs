@@ -229,10 +229,10 @@ namespace Prototype
             Arms.Tick();   // 持ち替え・弾倉・落とし物を、自機のボタン入力より先に更新する
             if (Current == State.Dead) { flying = false; Move(Vector3.zero, dt); Arms.UpdateWeaponVisibility(); return; }   // 構えたまま撃墜されても剣の見た目に戻す
 
-            UpdateLock();
-            ReadButtons(now);
             // 振り抜き・落下攻撃・致命攻撃は、取り消せる区間まで待ってから持ち替える。
             if (Arms.RangedHeld && Current == State.Attack && !MeleeCommitted) Enter(State.Free);
+            UpdateLock();
+            ReadButtons(now);
             // 落とし物の選択中と閉じたフレームは、ブーストを切り替えない(○ は選ぶ表示の取り消し。DuelArms.ChoiceLocksInput)。
             // オンのまま選ぶ表示に入ったら、オンのまま(速い移動はそのまま効く)
             if (!Arms.ChoiceLocksInput && ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
@@ -289,19 +289,13 @@ namespace Prototype
                         Energy -= dashCost * (Airborne ? airDashCostMul : 1f) * EnCostMul * dt;
                         if (Energy <= 0f) energyUsedAt = now;   // 使い切ったときだけ回復を待たせる(飛ぶのと同じ)
                     }
-                    // 向き:ロックオン中は敵を向いたまま(ブーストで動くときは進む方向へ傾くだけ)。していなければ進む向きを向く(止まっていれば今の向きのまま)。
-                    // 既定の形(弾は自機の向いている方へ飛ぶ。DuelArmsRules.FacingAim)では、射撃の構えで向き直らない
-                    // (作者「ノーロック射撃時自機とカメラの向きを変えないようにしたいです」→ 動いたときは「撃たないときと同じ」。
-                    //  前は、ロックオンしていない構えの間はカメラの向きへ向き直っていた。カメラは射撃では回さない)。
-                    // 照準を動かせる形だけ、構えの間は照準の先(画面の上の照準を通る向き。DuelArms.AimFacing)を向く(銃口と弾の向きがずれないように)
-                    if (Arms.Aiming && !DuelArmsRules.Current.FacingAim)
+                    // 遠距離を構えていれば、LateUpdate でこのフレームのカメラに向きを合わせる。
+                    if (!Arms.Aiming)
                     {
-                        Vector3 af = Arms.AimFacing;
-                        Face(af != Vector3.zero ? af : camFwd, 14f, dt);
+                        if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
+                        else if (Dashing) Face(worldMove, 14f, dt);
+                        else if (worldMove.sqrMagnitude > 0.01f) Face(worldMove, 12f, dt);
                     }
-                    else if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
-                    else if (Dashing) Face(worldMove, 14f, dt);
-                    else if (worldMove.sqrMagnitude > 0.01f) Face(worldMove, 12f, dt);
                     break;
 
                 case State.Attack:
@@ -350,6 +344,18 @@ namespace Prototype
             Move(vel, dt);
             RecordFootsteps(before, dt, worldMove.sqrMagnitude > 0.02f);
             Animate(dt, vel);
+        }
+
+        void LateUpdate()
+        {
+            if (DuelGame.Paused || Dead) return;
+            // 表示に使うカメラの向きが決まってから、機体の向き・銃口・射撃方向をそろえる。
+            var cam = Camera.main;
+            if (Arms.Aiming && cam != null)
+            {
+                Vector3 facing = Flat(cam.transform.forward);
+                if (facing != Vector3.zero) transform.rotation = Quaternion.LookRotation(facing);
+            }
             Arms.UpdateCombat(CanShoot);
         }
 

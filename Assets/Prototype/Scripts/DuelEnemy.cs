@@ -11,6 +11,10 @@ namespace Prototype
     ///   突き:低く前かがみに構え、少し後ろへ下がって溜める /
     ///   跳び上がり斬り(対空):自機が頭上を飛んでいると、深く沈み込んで上を見上げるようにのけぞって溜め、自機へ跳び上がる
     /// 怯みゲージが攻撃でたまり、満タンになると怯む(技の途中でも止まる)。攻撃の後の隙に当てると多くたまる。
+    /// ジャンプ(試す版。DuelJumpRules = DuelGame.jump):技は「跳べる(下段)」と「跳べない(上段)」に分かれる。跳べる技は、当たりが出る瞬間に自機が跳んだところ
+    ///   (踏み切ってから justWindow 秒以内)なら当たらず、自機の成功。それより前から跳んでいた自機には、足もとが clearHeight 以上高ければ外れるだけ(成功ではない)。
+    ///   跳べない技は highReach まで届く(DoHit)。ジャンプ中の自機には、飛び上がって高さを合わせない(UpdateFlight)。
+    /// 致命攻撃(試す版):崩れている(怯んでいる)間に自機の致命攻撃を受けると、大ダメージを受けて崩れが解ける(TakeFatal)。
     /// 1発ごとには怯まない。射撃では上限の手前までしかたまらず、最後に崩す(怯ませる)のは近接だけ。崩れた敵を斬ると大ダメージ(DuelGame の「崩し」)。
     /// 種類(Spec)で性格を変える:剣士(中型・1.5倍の大きさ・地上の技3つ・ブースト飛行)/ 兵卒(雑魚・地上の技2つ・すぐ怯む・攻めがゆっくり)。
     /// どちらも自機が頭上を飛ぶと跳び上がり斬りを使う(確率 Spec.antiAirChance。飛べる剣士は先に飛び上がって高さを合わせる)。
@@ -197,6 +201,7 @@ namespace Prototype
         /// <summary>
         /// 自機が頭上を飛んでいれば、同じ高さまで飛び上がって留まる。自機が降りたら飛ぶのをやめて落ちる。
         /// 続けて飛べるのは maxFlyTime 秒まで(使い切ったら flyCooldown 秒は飛べない)。怯み・跳び上がり斬りの間は飛ばない。
+        /// 自機がジャンプ中(DuelPlayer.Jumping。すぐ降りてくる)の間は、飛び上がらない(高さを合わせると、跳べる技がジャンプの高さで外れなくなる)。
         /// </summary>
         void UpdateFlight(float dt)
         {
@@ -206,7 +211,7 @@ namespace Prototype
             {
                 float above = player.transform.position.y - transform.position.y;
                 // 自機が高く飛んだら飛び上がる。すでに飛んでいれば、自機が空中にいる間は高さを合わせ続ける
-                if (player.Airborne && (above > game.mechHeight * Size * 0.6f || (flying && Airborne)))
+                if (player.Airborne && !player.Jumping && (above > game.mechHeight * Size * 0.6f || (flying && Airborne)))
                 {
                     want = true;
                     riseSpeed = Mathf.Clamp(above * 1.5f, -12f, Kind.flyRiseSpeed);   // 近づくほどゆっくり、上なら下りる
@@ -426,6 +431,38 @@ namespace Prototype
             Knockback(knock * 1.5f * Kind.knockMul);
             StopRising();   // 空中で怯んだら上昇が止まり、怯んでいる間は落ちる
             Enter(State.Flinch, ranged ? flinchTime : Mathf.Max(flinchTime, game.breakFlinchMin));
+        }
+
+        /// <summary>
+        /// 崩れている(怯んでいる)なら、今から少なくとも seconds 秒は崩れたままにする(自機が致命攻撃を出した。振り抜くまでに立ち直らないように)。
+        /// </summary>
+        public void HoldBroken(float seconds)
+        {
+            if (Current == State.Flinch) stateDur = Mathf.Max(stateDur, stateT + seconds);
+        }
+
+        /// <summary>
+        /// 自機の致命攻撃が当たった(崩れている間だけ呼ばれる。DuelPlayer.StrikeFatal)。dmg をそのまま受ける(崩れた敵への近接の倍率は掛けない。数字は橙)。
+        /// 倒れなければ、崩れが解ける:怯みゲージは空のまま、押し返されて間合いを測る動きへ戻り、fatalEnemyWait 秒は技を出さない。倒したら true。
+        /// </summary>
+        public bool TakeFatal(float dmg, Vector3 knock)
+        {
+            if (Dead) return false;
+            Engage();
+            if (senses != null) holdEngagedUntil = Time.time + senses.holdAfterHit;
+            if (invulnerable) return false;
+            HP -= dmg;
+            ProtoDamageText.Show(Chest, dmg, true);
+            Flash(Color.white, 0.14f);
+            Jolt(-12f);
+            if (HP <= 0f) { Die(); return true; }
+            Stagger = 0f;
+            chain = 0;
+            lastStaggerHitAt = Time.time;
+            Knockback(knock * Kind.knockMul);
+            Enter(State.Strafe);
+            thinkAt = Mathf.Max(thinkAt, Time.time + game.fatalEnemyWait);
+            return false;
         }
 
         void Die()

@@ -20,6 +20,11 @@ namespace Prototype
     ///     ロックオンしていないときだけ、照準を可動範囲の端へ押し付けている間、その方向へゆっくり回す(edgeYawSpeed / edgePitchSpeed)。
     ///     ロックオン中は端でも回さない。撃っても(反動でも)カメラは動かない。
     /// 前の形(撃っている間ロックオンのカメラを止める「構え」・終わったら戻る回転・ロックオン中のずらし・距離と画面の端で速さを変える)は外した。
+    /// ジャンプで敵の攻撃を跳び越えた間(DuelPlayer.JumpCameraHold。成功した瞬間から着地・被弾・飛行に移るまで)は、ロックオンのカメラの向きを固定する
+    ///   (holdOnJumpSuccess。作者「成功したら専用のカメラ演出などを入れればカメラ問題も解決しそうです」の、一番軽い形。専用の画角は作っていない)。
+    ///   相手を追って回るのを止め(左右の角速度は上限つきで 0 へ落とす)、上下は固定し始めたときに見えていた角度のまま動かさない(LateUpdate の heldPitch。
+    ///   上下を決める値を止めるだけでは、注視点の補間の残りで少しずつ動いた)。位置は今までどおり自機に付いていく。
+    ///   解けたら、いつもの上限つきの追従(lockTurnRate・lockMaxTurnSpeed・lockTurnAccel・lockLookSmooth・lockViewMaxSpeed)で相手へ戻る(止まった状態から回り始める)。
     /// </summary>
     public class DuelCamera : MonoBehaviour
     {
@@ -77,6 +82,9 @@ namespace Prototype
         public float lockLookSmooth = 4f;
         [Tooltip("見える向きが回る速さの上限(度/秒。左右・上下とも)。ロックオンの付け始め・自機の素早い動きでも、これより速くは回らない")]
         public float lockViewMaxSpeed = 120f;
+        [Tooltip("オンなら、ジャンプで敵の攻撃を跳び越えた瞬間から着地(被弾・飛行に移る)まで、ロックオンのカメラが相手を追って回るのを止めて向きを固定する。" +
+                 "解けたら上の上限つきの追従で相手へ戻る。オフなら、その間も今までどおり相手を追う")]
+        public bool holdOnJumpSuccess = true;
 
         [Header("ロックオンしていないカメラ")]
         [Tooltip("見上げられる角度(度。マイナスが上)。作者「もっとカメラは上を向けられるようにしてください」")]
@@ -101,6 +109,9 @@ namespace Prototype
         Vector2 edgeVel;
         bool wasLocked;
         Quaternion lastRot;
+        // ジャンプで攻撃を跳び越えた間の固定:固定しているか・固定し始めたときに見えていた上下の角度(度。Quaternion.Euler の x)
+        bool pitchHeld;
+        float heldPitch;
 
         const float Distance = 5.4f, Height = 2.9f, Shoulder = 1.2f, Smooth = 7f, FreeSmooth = 16f;
         const float StickYawSpeed = 320f, StickPitchSpeed = 190f, MouseSens = 0.24f;
@@ -120,6 +131,7 @@ namespace Prototype
             initialized = false;
             wallDist = -1f;
             wasLocked = false;
+            pitchHeld = false;
             lockYawVel = 0f;
             edgeVel = Vector2.zero;
             var p = DuelPlayer.I;
@@ -213,8 +225,18 @@ namespace Prototype
             // 壁よけで寄っても向きは変えない(寄る前の位置から見た向き。寄った位置から見直すと、狭い所で向きまで回って酔う)
             Vector3 lookDir = lookPoint - (wallKeepRotation ? pos : shown);
             Quaternion rot = lookDir.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(lookDir) : transform.rotation;
+            // ジャンプで攻撃を跳び越えた間(UpdateLockTurn が相手を追うのを止めている間)は、上下を固定し始めたときの角度のまま動かさない。
+            // 左右は UpdateLockTurn が角速度を落として止める分だけ。解けたら、すぐ下の上限つきの回り方で、いつもの向きへ戻る
+            bool hold = enemy != null && initialized && wasLocked && holdOnJumpSuccess && p.JumpCameraHold;
+            if (hold)
+            {
+                if (!pitchHeld) heldPitch = lastRot.eulerAngles.x;
+                rot = Quaternion.Euler(heldPitch, rot.eulerAngles.y, 0f);
+            }
+            pitchHeld = hold;
             // ロックオン中は、見える向きの回り方に上限(付け始め・自機の素早い動きでも急に回らない)
             if (enemy != null && initialized && wasLocked) rot = Quaternion.RotateTowards(lastRot, rot, Mathf.Max(1f, lockViewMaxSpeed) * dt);
+            if (hold) rot = Quaternion.Euler(heldPitch, rot.eulerAngles.y, 0f);   // 回る途中でも上下は動かさない
             transform.rotation = rot;
             lastRot = rot;
             // 透かす:自機の体の数点からカメラまでの間に入った壁・柱を半透明にする(外れたら少し待ってから戻す)。
@@ -243,6 +265,14 @@ namespace Prototype
                 lockYawVel = 0f;
                 lookDh = dh;
                 lookDy = dy;
+            }
+            if (holdOnJumpSuccess && p.JumpCameraHold)
+            {
+                // 攻撃を跳び越えた間は向きを固定:相手を追わない。回っている途中だったら、角速度を上限つきで 0 へ落として止める(急に止めない)。
+                // 上下を決める値(lookDh / lookDy)も今のまま。解けたら、下のいつもの追従が止まった状態から回り始める
+                lockYawVel = Mathf.MoveTowards(lockYawVel, 0f, Mathf.Max(1f, lockTurnAccel) * 2f * dt);
+                if (lockYawVel != 0f) fwd = (Quaternion.AngleAxis(lockYawVel * dt, Vector3.up) * fwd).normalized;
+                return;
             }
             float lk = 1f - Mathf.Exp(-Mathf.Max(0.1f, lockLookSmooth) * dt);
             lookDh = Mathf.Lerp(lookDh, dh, lk);

@@ -48,6 +48,27 @@ namespace Prototype
         public float rangedPushMul = 1f;
         [Tooltip("武装の knock がこれ以上の射撃だけ1発ごとに押し返す(連射の銃で、寄ってくる敵を引き止め続けないように)")]
         public float rangedPushMin = 8f;
+        [Tooltip("自機の近接(通常攻撃・強攻撃・回避斬り・素手・成功していない落下攻撃)が、敵の怯みゲージへためる量に掛ける倍率。" +
+                 "ふつうに殴るだけでは崩しにくくする(1 で前と同じ)。攻撃の後の隙に当てると 1.6 倍・射撃の上限・崩れた敵への近接 2 倍はそのまま。" +
+                 "攻撃を跳び越えた敵への落下攻撃には掛からない(下の jump.dropSuccessStagger)")]
+        public float meleeStaggerMul = 0.3f;
+
+        [Header("致命攻撃(試す版。崩れた敵の近くで、地上で近接のボタン。技の時間・姿勢は DuelMoveSet.Fatal。値は仮)")]
+        [Tooltip("崩れた敵とのすき間がこれ(m)以内なら、近接のボタンが致命攻撃になる(相手へ踏み込む)。0 で致命攻撃なし")]
+        public float fatalRange = 12f;
+        [Tooltip("致命攻撃のダメージの下限(兵卒の HP 28・剣士 47 を 1 発で倒す量)。武装の威力の倍率・崩れた敵への近接の倍率は掛からない")]
+        public float fatalMinDamage = 60f;
+        [Tooltip("致命攻撃のダメージ = 相手の最大 HP × これ(上の下限より大きいほう)。ボス(HP 480)なら 0.25 で 120")]
+        [Range(0f, 1f)] public float fatalHpPart = 0.25f;
+        [Tooltip("致命攻撃の踏み込みの速さの上限(m/s)")]
+        public float fatalLungeSpeed = 60f;
+        [Tooltip("致命攻撃を当てた瞬間のヒットストップ(秒)。0 で止めない")]
+        public float fatalHitStop = 0.2f;
+        [Tooltip("致命攻撃を受けて崩れが解けた敵が、次の技を出すまでの最短の秒数")]
+        public float fatalEnemyWait = 1f;
+
+        [Header("ジャンプで越えて落下攻撃で崩す(試す版。数値・技の区分は仮)")]
+        public DuelJumpRules jump = new();
 
         /// <summary>怯みのバーを白く点滅させ始める割合(8割か、射撃の上限の少し手前の低いほう)。射撃で止まった所が「斬りにいけ」の合図になる。</summary>
         public float StaggerBlinkFrom => Mathf.Min(0.8f, rangedStaggerCap - 0.02f);
@@ -83,6 +104,7 @@ namespace Prototype
         void Awake()
         {
             I = this;
+            jump ??= new DuelJumpRules();
             Time.timeScale = 1f;
             ProtoInput.Paused = false;
             DuelRadar.ClearCache();   // 前のシーンの武装の組をためこまない

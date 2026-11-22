@@ -57,6 +57,8 @@ namespace Prototype
         protected float riseSpeed = 20f, riseAccel = 80f;
         /// <summary>上下の速さを直接決める(跳び上がる)。</summary>
         protected void SetVerticalSpeed(float v) => vy = v;
+        /// <summary>今の上下の速さ(上が正。m/s)。自機のジャンプが、上がっている途中か・頂点を過ぎたかを見るのに使う。</summary>
+        protected float VerticalSpeed => vy;
         /// <summary>上昇の勢いだけを止める(下へ押しつけはしない)。空中で怯んだときに使う。</summary>
         protected void StopRising() => vy = Mathf.Min(vy, 0f);
         /// <summary>重力の強さ(m/s毎秒)。</summary>

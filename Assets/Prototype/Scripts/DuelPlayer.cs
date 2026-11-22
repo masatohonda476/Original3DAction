@@ -5,7 +5,10 @@ namespace Prototype
 {
     /// <summary>
     /// 自機:移動・ロックオン・通常攻撃(2つの振りを交互にくり返す)・強攻撃(△+R1。右→左と左→右の薙ぎ払いを交互に)・
-    /// 回避・回避斬り・ブースト(○で切り替え)・ブースト飛行(✗長押し。押すと自動でブーストオン)・ガード。
+    /// 回避・回避斬り・ブースト(○で切り替え)・ジャンプ(地上で ✗)・ブースト飛行(空中で ✗ 長押し。ジャンプから押し続けても jumpToFlyHold 秒で移る。押すと自動でブーストオン)・ガード。
+    /// ジャンプと落下攻撃(試す版):地上で ✗ を押すとすぐ跳ぶ。敵の跳べる技(下段)が当たる瞬間に跳ぶ(踏み切ってから justWindow 秒以内)と成功で、
+    ///   成功している間だけ、R1 / L1 が落下攻撃になる(跳び越えた敵の怯みを大きくためる)。ふつうの殴りは怯みがたまりにくい(DuelGame.meleeStaggerMul)。DuelPlayer.Jump.cs
+    /// 致命攻撃(試す版):崩れた敵の近くで、地上で R1 / L1 を押すと、ふつうの振りの代わりに出る大ダメージの一撃(DuelPlayer.Attack.cs)。
     /// 守りは回避が軸。回避は出だしが無敵で、避けた後もすぐ動ける(敵の隙に差し込める)。
     /// ガードは押している間ダメージを大きく減らすが、受けるたびに押し戻されて少し固まり、ゲージが尽きると崩れる。
     /// 敵の叩きつけ・跳躍叩きつけの直撃はガードできない(DuelHit.guardable)。回避と攻撃はENを使う。ENが少しでもあれば出せ、足りない分はマイナスになり、
@@ -18,7 +21,7 @@ namespace Prototype
     ///   △+R1/L1・回避の直後でも同じパンチ(強攻撃・回避斬りはない)。技は DuelMoveSet.Bare。パンチの間も撃てない・ガードはできない。
     ///   両手の近接:R1 で連撃、L1 で別の技(回避の後も R1 は回避斬り、L1 は別の技)、△+R1/L1 で強攻撃。右手のクリップで振り、左右反転しない。
     ///   両手の銃・砲は DuelArms が撃つ(R1 が主の撃ち方、L1 が別の撃ち方)。両手持ちには盾がないのでガードできない。
-    /// ファイルは役割ごとに分けている:DuelPlayer.LockOn.cs(ロックオン)/ DuelPlayer.Attack.cs(回避・攻撃)。
+    /// ファイルは役割ごとに分けている:DuelPlayer.LockOn.cs(ロックオン)/ DuelPlayer.Attack.cs(回避・攻撃)/ DuelPlayer.Jump.cs(ジャンプ・落下攻撃)。
     /// </summary>
     public partial class DuelPlayer : DuelFighter
     {
@@ -114,8 +117,8 @@ namespace Prototype
         public bool BoostOn { get; private set; }
         /// <summary>このフレームはブーストで移動している(見た目用)。</summary>
         public bool Dashing { get; private set; }
-        /// <summary>噴射炎:飛行中・ブースト移動中・回避中。</summary>
-        public override bool Thrusting => flying || Dashing || Current == State.Dodge;
+        /// <summary>噴射炎:飛行中・ブースト移動中・回避中・ジャンプで上がっている間・落下攻撃で降りている間。</summary>
+        public override bool Thrusting => flying || Dashing || Current == State.Dodge || JumpRising || DropDiving;
         /// <summary>武装(Init で必ず付く。null にはならない)。強くなるのは武装だけで、素の性能(HP・EN・怯み)は変えない。</summary>
         public DuelArms Arms { get; private set; }
         /// <summary>手の銃・肩の武装を撃てる状態か(近接攻撃の振りかぶり〜戻り・回避・怯み・ガード崩れ・撃墜の間は撃てない)。</summary>
@@ -155,6 +158,8 @@ namespace Prototype
         /// <summary>空中の横の速さ(慣性)。地上では毎フレームの速さと同じ。</summary>
         Vector3 airVel;
         bool flyHeldPrev;
+        /// <summary>落下攻撃の間に押していた ✗ は、一度離すまで飛行にもジャンプにも使わない(着地の隙の後、押したままで浮き上がらないように)。</summary>
+        bool flyNeedRelease;
         /// <summary>R1を押したときに△も押されていたか(強攻撃)。</summary>
         bool pressHeavy;
         /// <summary>今の強攻撃が何段目か(素の剣は 0=右→左 / 1=左→右)。</summary>
@@ -222,10 +227,13 @@ namespace Prototype
             BoostOn = false;
             combo = 0;
             airVel = Vector3.zero;
+            flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
+            slideOff = Vector3.zero;
             Target = null;   // ロックオンのオン・オフはそのまま(オンなら、出し直した所で次の敵を探す)
             lockLostFor = 0f;
             stepTravel = 0f;
             FootstepRadius = 0f;
+            EndJump();
             Enter(State.Free);
         }
 
@@ -300,12 +308,18 @@ namespace Prototype
             // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ブーストを切り替えない(○ は選ぶ表示の取り消し。DuelArms.ChoiceLocksInput)。
             // オンのまま選ぶ表示に入ったら、オンのまま(速い移動はそのまま効く)
             if (!Arms.ChoiceLocksInput && ProtoInput.BoostToggle) BoostOn = !BoostOn && Energy > 0f;
-            // ✗:押したら自動でブーストオン。押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
-            // 選ぶ表示(付け先・分解)の間と、それを終えた時に押していた ✗ を離すまでは飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
-            bool flyHeld = ProtoInput.FlyHeld && !Arms.FlyBlocked;
-            if (flyHeld && !flyHeldPrev && Energy > 0f) BoostOn = true;
-            flyHeldPrev = flyHeld;
-            flying = flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;
+            // ✗:押したら自動でブーストオン。地上で押していればジャンプ(UpdateJump。地上では飛ばない・上がっている間は飛行にしない)。
+            // 空中で押している間・ジャンプの頂点を過ぎても押している間は飛ぶ(ENを使い続け、0以下なら落ちる)
+            // 選ぶ表示(付け先・分解)の間と、それを終えた時に押していた ✗ を離すまでは跳ばない・飛ばない(✗ は背中に付けるボタンでもある。DuelArms.FlyBlocked)
+            bool flyRaw = ProtoInput.FlyHeld && !Arms.FlyBlocked;
+            if (flyRaw && !flyHeldPrev && Energy > 0f) BoostOn = true;
+            flyHeldPrev = flyRaw;
+            // 落下攻撃の間(降下・振り・着地の隙)に押していた ✗ は、一度離すまで効かない(着地の隙の後に、押したままで跳んだり浮いたりしない)
+            if (!flyRaw) flyNeedRelease = false;
+            else if (dropping) flyNeedRelease = true;
+            bool flyHeld = flyRaw && !flyNeedRelease;
+            bool mayFly = UpdateJump(now, flyHeld);
+            flying = mayFly && flyHeld && Energy > 0f && Current is State.Free or State.Guard or State.Attack or State.Dodge;
             riseSpeed = flyRiseSpeed * DashMul;
             riseAccel = flyRiseAccel;
             if (flying)
@@ -379,12 +393,19 @@ namespace Prototype
                 {
                     float t = Mathf.Clamp01(stateT / dodgeDuration);
                     vel = dodgeDir * (3f * DodgeDistance / dodgeDuration) * (1f - t) * (1f - t);
+                    // 回避の後半に、崩れた敵の近く(地上)で攻撃を押したら、致命攻撃へ(回避斬りより先。EN が0以下でも出る)
+                    if (stateT >= dodgeDuration * dodgeSlashFrom && TryFatal(now))
+                    {
+                        dodgeEndAt = now;
+                        break;
+                    }
                     // 回避の後半に攻撃を押したら、回避斬りへ
                     if (stateT >= dodgeDuration * dodgeSlashFrom && now - lightPressedAt <= attackBuffer && !HeavyPressed && !Overheated && Arms.CanMelee(pressHand))
                     {
                         dodgeEndAt = now;
                         atkHand = pressHand;   // 押したボタンの手の剣で斬る(素手ならその手のパンチ)
-                        StartDodgeSlash();
+                        if (CanDrop) StartDrop();   // 成功しているジャンプ中なら落下攻撃
+                        else StartDodgeSlash();
                         break;
                     }
                     if (stateT >= dodgeDuration) { dodgeEndAt = now; Enter(State.Free); }
@@ -404,13 +425,14 @@ namespace Prototype
             // 空中の慣性:横の速さは少しずつしか変わらない(地上はすぐ止まり、すぐ曲がる)
             if (Airborne)
             {
-                if (Current == State.Dodge) airVel = vel;   // 回避はすぐその向きへ
+                if (Current == State.Dodge || DropDiving) airVel = vel;   // 回避・落下攻撃の降下はすぐその向きへ
                 else if (Current is State.Free or State.Guard) airVel = Vector3.MoveTowards(airVel, vel, airAccel * dt);
                 else airVel = Vector3.MoveTowards(airVel, vel, airDrag * dt);   // 攻撃・怯みの間は勢いがゆるやかに抜ける
                 vel = airVel;
             }
             else airVel = vel;
 
+            vel = WithSlideOff(vel);   // ジャンプ中に敵の体の上に乗ったら、水平に押し出して滑り落とす(UpdateJump。慣性には入れない)
             Vector3 before = transform.position;
             Move(vel, dt);
             RecordFootsteps(before, dt, worldMove.sqrMagnitude > 0.02f);
@@ -468,6 +490,7 @@ namespace Prototype
         void Enter(State s, float dur = 0f)
         {
             if (s is State.Attack or State.Dodge) MeleeOrDodgeAt = Time.time;
+            if (s != State.Attack) dropping = fatal = false;
             Current = s;
             stateT = 0f;
             stateDur = dur;
@@ -479,6 +502,8 @@ namespace Prototype
         public void ReceiveHit(DuelHit h)
         {
             if (Dead || Invincible) return;
+            EndJump();   // 被弾(ガードで受けても)で「ジャンプ中」は終わる。成功も消える
+            if (DropDiving) airVel = Vector3.zero;   // 落下攻撃で降りている途中に受けたら、降りる勢いで流れ続けない(怯まなければ、そのまま降りて振る)
             Vector3 away = Flat(transform.position - h.from);
             if (away == Vector3.zero) away = -transform.forward;
             bool front = Vector3.Angle(transform.forward, -away) < 110f;
@@ -536,6 +561,7 @@ namespace Prototype
         void Die()
         {
             HP = 0f;
+            EndJump();
             // 空中で撃墜されたら、飛行と上昇の勢いを止めて落ちる
             flying = false;
             StopRising();

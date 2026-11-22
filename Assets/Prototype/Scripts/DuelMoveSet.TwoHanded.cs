@@ -9,7 +9,7 @@ namespace Prototype
         {
             windup = windup, active = active, recover = recover, damage = damage, stagger = stagger,
             flinch = flinch, reach = reach, arc = arc, lunge = lunge, knock = knock, cost = cost,
-            heavy = heavy,
+            heavy = heavy, gripMotion = DuelGripMotion.Thrust,
             pose0 = R * 0.5f, pose1 = R * 0.75f, pose2 = R * 0.8f, pose3 = R * 0.6f,
             twist0 = -twist * 0.8f, twist1 = -twist, twist2 = twist * 0.4f,
             lean0 = -lean * 0.3f, lean1 = -lean * 0.4f, lean2 = lean, drop = drop,
@@ -44,7 +44,7 @@ namespace Prototype
                 },
                 dodgeSlash = Thrust(0.12f, 0.1f, 0.45f, 15f, 10f, 0.55f, 13.1f, 35f, 10f, 10f, 9f, 25f, 24f, 0.2f),
             },
-            new DuelSwing() { windup = 0.4f, active = 0.24f, recover = 0.7f, damage = 16f, stagger = 19f, flinch = 0.7f, reach = 12.1f, arc = 170f, lunge = 2f, knock = 14f, cost = 21f, heavy = true,
+            new DuelSwing() { windup = 0.4f, active = 0.24f, recover = 0.7f, damage = 16f, stagger = 19f, flinch = 0.7f, reach = 12.1f, arc = 170f, lunge = 2f, knock = 14f, cost = 21f, heavy = true, gripMotion = DuelGripMotion.Sweep,
                 pose0 = 0.1f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist0 = 50f, twist1 = 90f, twist2 = -110f, lean1 = -4f, lean2 = 10f, drop = 0.5f });
 
         public static (DuelMoveSet moves, DuelSwing heavy) Glaive() => (
@@ -79,7 +79,7 @@ namespace Prototype
                 dodgeSlash = new() { windup = 0.26f, active = 0.2f, recover = 0.7f, damage = 22f, stagger = 15f, flinch = 0.8f, reach = 10.7f, arc = 120f, lunge = 8f, knock = 16f, cost = 16f,
                     pose0 = R * 0.4f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist0 = -20f, twist1 = -40f, twist2 = 45f, lean2 = 16f, drop = 0.7f },
             },
-            new DuelSwing() { windup = 0.6f, active = 0.2f, recover = 0.85f, damage = 26f, stagger = 28f, flinch = 0.9f, reach = 10.2f, arc = 180f, lunge = 2f, knock = 26f, cost = 30f, heavy = true,
+            new DuelSwing() { windup = 0.6f, active = 0.2f, recover = 0.85f, damage = 26f, stagger = 28f, flinch = 0.9f, reach = 10.2f, arc = 180f, lunge = 2f, knock = 26f, cost = 30f, heavy = true, gripMotion = DuelGripMotion.Slam,
                 pose0 = 0f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist1 = -5f, twist2 = 5f, lean0 = -18f, lean1 = -22f, lean2 = 32f, drop = 1.6f });
 
         public static (DuelMoveSet moves, DuelSwing heavy) GreatTachi() => (
@@ -97,7 +97,7 @@ namespace Prototype
                 dodgeSlash = new() { windup = 0.24f, active = 0.26f, recover = 0.7f, damage = 24f, stagger = 15f, flinch = 0.8f, reach = 13.2f, arc = 170f, lunge = 9f, knock = 16f, cost = 16f,
                     pose0 = R * 0.4f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist0 = 50f, twist1 = 90f, twist2 = -100f, lean2 = 12f, drop = 0.7f },
             },
-            new DuelSwing() { windup = 0.5f, active = 0.3f, recover = 0.8f, damage = 22f, stagger = 27f, flinch = 0.85f, reach = 12.7f, arc = 180f, lunge = 4f, knock = 18f, cost = 34f, heavy = true,
+            new DuelSwing() { windup = 0.5f, active = 0.3f, recover = 0.8f, damage = 22f, stagger = 27f, flinch = 0.85f, reach = 12.7f, arc = 180f, lunge = 4f, knock = 18f, cost = 34f, heavy = true, gripMotion = DuelGripMotion.Sweep,
                 pose0 = R * 0.3f, pose1 = R, pose2 = F, pose3 = Mid(0.7f), twist0 = 70f, twist1 = 130f, twist2 = -170f, lean2 = 10f, drop = 0.8f });
 
         public static (DuelMoveSet moves, DuelSwing heavy) Lance() => (

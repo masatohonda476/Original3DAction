@@ -76,8 +76,17 @@ namespace Prototype
 
         internal void ResetMeleeCombo() => combo = 0;
 
+        internal bool TryGetGripMotion(out DuelSwing swing, out int attackPhase, out float progress)
+        {
+            swing = cur;
+            attackPhase = phase;
+            progress = Mathf.Clamp01(stateT / Mathf.Max(0.001f, phase == 0 ? cur.windup : phase == 1 ? cur.active : cur.recover));
+            return Current == State.Attack;
+        }
+
         void StartAttack(DuelSwing m, float power = 1f, bool strong = false, DuelHeavyEffect effect = DuelHeavyEffect.None)
         {
+            Arms.RememberGripForSwing();
             meleePressedAt = -10f;
             dropping = false;   // 落下攻撃なら、この後で StartDrop が立てる
             fatal = false;      // 致命攻撃なら、この後で TryFatal が立てる

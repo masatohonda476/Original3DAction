@@ -634,7 +634,7 @@ namespace Prototype
             for (int i = 0; i < StateCount; i++) ResetState(i);
             if (ChoiceOpen) EndChoice();
             player.OnShieldsChanged(false);
-            // 所持品も消し飛び、共通の弾も0に戻る(弧の終わりに全部失う。仮置き)
+            // 所持品も消し飛び、共通の弾も0に戻る(サイクルの終わりに全部失う。仮置き)
             n += stash.Count;
             stash.Clear();
             Ammo = 0f;

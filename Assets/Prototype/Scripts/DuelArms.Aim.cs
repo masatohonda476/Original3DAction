@@ -38,17 +38,17 @@ namespace Prototype
         public DuelEnemy MarkedEnemy { get; private set; }
         public bool ShotInView { get; private set; }
         /// <summary>
-        /// 弾が飛んでいく所(遠距離武器。撃つときと同じ狙いの先へ向けた弾が、自機の速度を受け継いで流れた先。PredictShot)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
+        /// 弾が飛んでいく所(遠距離武器。補正できたときは着弾予測点。ほかは自機から受け継ぐ速度を含めた弾道の先)。真ん中の十字をここに出す(作者「敵のちょうどいい位置に十字も出したい」→「弾が飛んでいく所」)。
         /// 遠距離を構えていない間は null。
         /// </summary>
         public Vector3? ShotPoint { get; private set; }
         /// <summary>
-        /// ShotPoint へ飛ぶ弾が敵の体に当たる(銃口から ShotPoint への線が、敵の体のカプセルを通る)。真ん中の十字が敵に重なっているときで、十字を橙にする
+        /// ShotPoint へ飛ぶ弾が敵の体に当たる見込み。真ん中の十字が敵に重なっているときで、十字を橙にする
         /// (作者「ロックオン中の弾道を示す十字は、敵と重なったらオレンジとかになるようにしてください」)。ばらつきは入れない。毎フレーム UpdateFrame で求める。
         /// </summary>
         public bool ShotOnEnemy => ShotEnemy != null;
         /// <summary>
-        /// ShotPoint へ飛ぶ弾が当たる敵(線が体を通る敵のうち、いちばん手前。いなければ null)。ロックオンの相手なら、相手を囲む角を濃い橙にする
+        /// ShotPoint へ飛ぶ弾が当たると見込む敵(いなければ null)。ロックオンの相手なら、相手を囲む角を濃い橙にする
         /// (作者「敵の囲みは枠と同じ青のままで、弾が当たるタイミングで今より濃いオレンジにしてほしいです」。DuelGame.DrawLockCorners)。
         /// </summary>
         public DuelEnemy ShotEnemy { get; private set; }
@@ -156,18 +156,54 @@ namespace Prototype
             return best;
         }
 
-        /// <summary>弾が飛ぶ所の見込み。自機から受け継いだ速度も照準の十字に反映する。</summary>
+        Vector3 InheritedShotVelocity => inheritVel * Mathf.Max(0f, Rules.inheritShooterVelocity);
+
+        Vector3 ShotVelocity(Vector3 direction, float speed)
+        {
+            Vector3 muzzleVelocity = direction * speed;
+            Vector3 velocity = muzzleVelocity + InheritedShotVelocity;
+            return velocity.sqrMagnitude > 1f ? velocity : muzzleVelocity;
+        }
+
+        /// <summary>今の速度で動く敵に届く最初の時刻を求め、速度を受け継ぐ分も引いて発射方向を決める。</summary>
+        bool TryLeadShot(DuelShot shot, Vector3 from, Vector3 target, Vector3 targetVelocity,
+            out Vector3 launchAim, out Vector3 impact)
+        {
+            launchAim = impact = target;
+            float speed = SpeedOf(shot);
+            if (speed <= 0f) return false;
+
+            Vector3 offset = target - from;
+            Vector3 relativeVelocity = targetVelocity - InheritedShotVelocity;
+            // |offset + relativeVelocity * t| = speed * t の最初の交点。
+            float distance2 = offset.sqrMagnitude;
+            float speedGap = speed * speed - relativeVelocity.sqrMagnitude;
+            float along = Vector3.Dot(offset, relativeVelocity);
+            float discriminant = along * along + speedGap * distance2;
+            if (discriminant < 0f) return false;
+            float denominator = Mathf.Sqrt(discriminant) - along;
+            if (denominator <= 0f) return false;
+            float time = distance2 / denominator;
+
+            Vector3 travel = offset + targetVelocity * time;
+            if (travel.sqrMagnitude > shot.range * shot.range || travel.sqrMagnitude <= time * time) return false;
+            Vector3 intercept = from + travel;
+            if (targetVelocity != Vector3.zero && !DuelSenses.ClearSight(from, intercept)) return false;
+
+            launchAim = target + relativeVelocity * time;
+            impact = intercept;
+            return true;
+        }
+
+        /// <summary>補正先がない射撃の弾道を、受け継ぐ速度を含めて予測する。</summary>
         Vector3 PredictShot(DuelShot shot, Vector3 from, Vector3 aim)
         {
             Vector3 to = aim - from;
             float dist = to.magnitude;
             float speed = SpeedOf(shot);
-            float inherit = Rules.inheritShooterVelocity;
-            if (dist < 0.01f || speed <= 0f || inherit <= 0f) return aim;
+            if (dist < 0.01f || speed <= 0f) return aim;
             Vector3 dir = to / dist;
-            Vector3 velocity = dir * speed + inheritVel * inherit;
-            if (velocity.sqrMagnitude <= 1f) return aim;
-            Vector3 flightDir = velocity.normalized;
+            Vector3 flightDir = ShotVelocity(dir, speed).normalized;
             float along = dist / Mathf.Max(0.05f, Vector3.Dot(flightDir, dir));
             return from + flightDir * Mathf.Min(along, shot.range);
         }
@@ -200,11 +236,14 @@ namespace Prototype
                 Vector3 point = AimPointAlong(cam.transform.position, cam.transform.forward, out _);
                 aim = from + Vector3.ClampMagnitude(point - from, shot.range);
             }
-            Vector3 predicted = PredictShot(shot, from, aim);
+            Vector3 predicted = default;
+            bool led = MarkedEnemy != null &&
+                TryLeadShot(shot, from, aim, MarkedEnemy.Velocity, out aim, out predicted);
+            if (!led) predicted = PredictShot(shot, from, aim);
             ShotPoint = predicted;
             Vector3 vp = cam.WorldToViewportPoint(predicted);
             ShotInView = vp.z > 0f && vp.x >= 0f && vp.x <= 1f && vp.y >= 0f && vp.y <= 1f;
-            ShotEnemy = PathEnemy(from, predicted, shot);
+            ShotEnemy = led ? MarkedEnemy : PathEnemy(from, predicted, shot);
             ShotFrame = new AimFrame
             {
                 halfW = halfW, halfH = halfH, hot = Cooling > 0f, locked = MarkedEnemy != null,

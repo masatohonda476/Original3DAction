@@ -3,6 +3,8 @@ using UnityEngine;
 
 namespace Prototype
 {
+    public enum DuelGripMotion { Swing, Thrust, Sweep, Slam }
+
     /// <summary>
     /// 剣の技1つの中身(自機の通常攻撃・強攻撃・回避斬り)。stagger は敵の怯みゲージへの量。
     /// pose0〜3 は斬撃クリップの再生位置(振りかぶりの始め / 振り抜きの始め / 振り抜きの終わり / 戻りの終わり)。
@@ -15,6 +17,7 @@ namespace Prototype
     {
         public float windup, active, recover, damage, stagger, flinch, reach, arc, lunge, knock, cost;
         public bool heavy;
+        public DuelGripMotion gripMotion;
         public float pose0, pose1, pose2, pose3;
         /// <summary>機体全体の横のひねり(右が正):振りかぶりの始め / 振り抜きの始め / 振り抜きの終わり。</summary>
         public float twist0, twist1, twist2;

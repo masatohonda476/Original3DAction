@@ -52,7 +52,69 @@ namespace Prototype
         }
 
         GripArm rightArm, leftArm;
-        const float SupportGripSpacing = 0.85f;
+        GripPose? lastGripPose, swingStartGrip;
+
+        internal void RememberGripForSwing() => swingStartGrip = lastGripPose;
+
+        readonly struct GripPose
+        {
+            public readonly Vector3 hand, axis;
+            public GripPose(Vector3 hand, Vector3 axis)
+            {
+                this.hand = hand;
+                this.axis = axis.normalized;
+            }
+
+            public static GripPose Blend(GripPose from, GripPose to, float t)
+            {
+                t = Mathf.SmoothStep(0f, 1f, t);
+                return new GripPose(Vector3.Lerp(from.hand, to.hand, t), Vector3.Slerp(from.axis, to.axis, t));
+            }
+        }
+
+        static float SupportGripOffset(DuelMeleeShape shape) => shape switch
+        {
+            DuelMeleeShape.Spear => 1.25f,
+            DuelMeleeShape.Glaive => 1.05f,
+            DuelMeleeShape.Hammer => -1.15f,
+            _ => -0.88f,
+        };
+
+        // 機体の胴を基準に、右手の位置と柄から先端への向きを指定する。
+        GripPose TwoHandPose(DuelMeleeShape shape)
+        {
+            GripPose ready = shape switch
+            {
+                DuelMeleeShape.Spear => new(new(1.20f, 5.45f, 1.48f), new(-0.48f, 0.14f, 0.91f)),
+                DuelMeleeShape.Glaive => new(new(0.76f, 5.12f, 1.74f), new(-0.53f, 0.62f, 0.64f)),
+                DuelMeleeShape.Hammer => new(new(0.55f, 5.75f, 1.90f), new(0.58f, 0.75f, 0.26f)),
+                _ => new(new(0.44f, 5.63f, 2.02f), new(0.43f, 0.85f, 0.36f)),
+            };
+            if (!player.TryGetGripMotion(out var swing, out int phase, out float progress)) return ready;
+
+            var motion = swing.gripMotion;
+            if (motion == DuelGripMotion.Swing && shape == DuelMeleeShape.Glaive) motion = DuelGripMotion.Sweep;
+            bool backhand = swing.twist2 < -10f;
+            float side = backhand ? -1f : 1f;
+            (GripPose raised, GripPose struck) attack = motion switch
+            {
+                DuelGripMotion.Thrust => (
+                    new(new(1.16f, 5.35f, 1.25f), new(-0.40f, 0.11f, 0.91f)),
+                    new(new(0.68f, 5.64f, 2.55f), new(-0.28f, 0.02f, 0.96f))),
+                DuelGripMotion.Sweep => (
+                    new(new(0.65f, 5.62f, 1.86f), new(0.56f * side, 0.38f, 0.72f)),
+                    new(new(0.45f, 5.56f, 2.14f), new(-0.85f * side, 0.08f, 0.52f))),
+                DuelGripMotion.Slam => (
+                    new(new(0.72f, 7.30f, 1.70f), new(0.35f, 0.82f, -0.45f)),
+                    new(new(0.51f, 4.95f, 2.40f), new(0.12f, -0.89f, 0.45f))),
+                _ => (
+                    new(new(0.84f * side, 7.15f, 1.63f), new(0.47f * side, 0.64f, -0.61f)),
+                    new(new(0.24f, 5.56f, 2.25f), new(-0.57f * side, -0.34f, 0.75f))),
+            };
+            return phase == 0 ? GripPose.Blend(swingStartGrip ?? ready, attack.raised, progress)
+                : phase == 1 ? GripPose.Blend(attack.raised, attack.struck, progress)
+                : GripPose.Blend(attack.struck, ready, progress);
+        }
 
         // クリップにキーがない関節にも、前フレームの補正が積み重ならないようにする。
         internal void ReleaseSupportGrip()
@@ -63,21 +125,29 @@ namespace Prototype
 
         void LateUpdate()
         {
-            if (!MeleeWeapon.UsesTwoHands || Aiming || player.Dead || rig == null) return;
+            if (!MeleeWeapon.UsesTwoHands || Aiming || player.Dead || rig == null)
+            {
+                lastGripPose = null;
+                return;
+            }
             rightArm ??= GripArm.Find(rig.mountRightArm, rig.sword);
             leftArm ??= GripArm.Find(rig.mountLeftArm, rig.swordL);
             if (rightArm == null || leftArm == null) return;
 
-            var grip = rig.sword;
-            Quaternion rightFacing = grip.rotation;
+            var shape = MeleeWeapon.MeleeShape;
+            var pose = TwoHandPose(shape);
+            lastGripPose = pose;
+            var body = rig.transform;
+            Vector3 axis = body.TransformDirection(pose.axis);
+            Quaternion rightFacing = Quaternion.LookRotation(Vector3.Cross(body.right, axis), axis);
             Quaternion leftFacing = rightFacing * Quaternion.AngleAxis(180f, Vector3.up);
-            Vector3 supportOffset = grip.TransformVector(Vector3.down * SupportGripSpacing);
+            Vector3 supportOffset = axis * (SupportGripOffset(shape) * rig.sword.TransformVector(Vector3.up).magnitude);
             Vector3 rightCenter = rightArm.GripCenter(rightFacing);
             Vector3 leftCenter = leftArm.GripCenter(leftFacing) - supportOffset;
             float rightReach = rightArm.Reach, leftReach = leftArm.Reach;
 
-            // 片手斬りのクリップで柄が左手の届かない位置に来たら、右手ごと両腕の届く範囲に寄せる。
-            Vector3 rightTarget = Vector3.MoveTowards(leftCenter, grip.position, leftReach);
+            // 体のひねりや足の動きに合わせて、柄を両腕が届く範囲に収める。
+            Vector3 rightTarget = Vector3.MoveTowards(leftCenter, body.TransformPoint(pose.hand), leftReach);
             rightTarget = Vector3.MoveTowards(rightCenter, rightTarget, rightReach);
             if ((rightTarget - leftCenter).sqrMagnitude > leftReach * leftReach)
             {
@@ -91,8 +161,8 @@ namespace Prototype
                 }
                 rightTarget = inside;
             }
-            rightArm.Apply(rightTarget, rightFacing, -transform.up);
-            leftArm.Apply(grip.position + supportOffset, leftFacing, -transform.up);
+            rightArm.Apply(rightTarget, rightFacing, body.TransformDirection(new Vector3(0.7f, -1f, 0f)));
+            leftArm.Apply(rig.sword.position + supportOffset, leftFacing, body.TransformDirection(new Vector3(-0.7f, -1f, 0f)));
         }
 
         /// <summary>機体の肩・肘の長さを保ち、手首を回して握り点を柄に合わせる。</summary>
@@ -125,7 +195,7 @@ namespace Prototype
             public Vector3 GripCenter(Quaternion facing) =>
                 shoulder.position + facing * (Quaternion.Inverse(grip.rotation) * (grip.position - wrist.position));
 
-            public void Apply(Vector3 target, Quaternion facing, Vector3 bendFallback)
+            public void Apply(Vector3 target, Quaternion facing, Vector3 elbowPole)
             {
                 Vector3 root = shoulder.position;
                 Vector3 upper = elbow.position - root;
@@ -136,8 +206,8 @@ namespace Prototype
                 Vector3 direction = toWrist.normalized;
                 if (direction == Vector3.zero) return;
                 float length = Mathf.Clamp(toWrist.magnitude, Mathf.Abs(a - b) + 0.001f, a + b - 0.001f);
-                Vector3 bend = Vector3.ProjectOnPlane(upper, direction);
-                if (bend.sqrMagnitude < 0.0001f) bend = Vector3.ProjectOnPlane(bendFallback, direction);
+                Vector3 bend = Vector3.ProjectOnPlane(elbowPole, direction);
+                if (bend.sqrMagnitude < 0.0001f) bend = Vector3.ProjectOnPlane(upper, direction);
                 if (bend.sqrMagnitude < 0.0001f) bend = Vector3.Cross(direction, Vector3.forward);
                 float along = (a * a + length * length - b * b) / (2f * length);
                 Vector3 nextUpper = direction * along + bend.normalized * Mathf.Sqrt(Mathf.Max(0f, a * a - along * along));

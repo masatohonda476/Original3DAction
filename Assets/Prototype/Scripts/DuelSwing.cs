@@ -27,9 +27,9 @@ namespace Prototype
         public const float ChainAfter = 0.08f;
     }
 
-    /// <summary>全近接武器で共用する通常攻撃と回避斬り。R2 の強攻撃は各武器が技を選ぶ。</summary>
+    /// <summary>近接武器の通常攻撃と回避斬り。R2 の強攻撃は各武器が技を選ぶ。</summary>
     [System.Serializable]
-    public class DuelMoveSet
+    public partial class DuelMoveSet
     {
         [Tooltip("連撃(攻撃ボタンを続けて押すと順にくり返す)")]
         public DuelSwing[] light;
@@ -42,7 +42,7 @@ namespace Prototype
         /// <summary>戻りの途中(S から E へ t の割合)。</summary>
         static float Mid(float t) => S + (E - S) * t;
 
-        /// <summary>素の剣の表(どの近接武器でも共通の振り)。書き換えないこと。</summary>
+        /// <summary>素の剣と片手武器で共用する表。</summary>
         public static readonly DuelMoveSet Base = Standard();
 
         /// <summary>

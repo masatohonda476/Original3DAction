@@ -5,6 +5,7 @@ namespace Prototype
 {
     public enum DuelSlot { Melee, Ranged, Back }
     public enum DuelHeavyEffect { None, Knockback, GuardPoint, Wave }
+    public enum DuelMeleeShape { OneHandSword, TwoHandSword, Spear, Glaive, Hammer }
 
     /// <summary>銃の一つの撃ち方。照準の枠は通常射撃と大技で共通。</summary>
     public class DuelShot
@@ -35,8 +36,11 @@ namespace Prototype
 
         [Header("近接")]
         public float MeleePower { get; private set; } = 1f;
+        public DuelMoveSet MeleeMoves { get; private set; }
         public DuelSwing HeavyMove { get; private set; }
         public DuelHeavyEffect HeavyEffect { get; private set; }
+        public DuelMeleeShape MeleeShape { get; private set; }
+        public float HaftLength { get; private set; }
 
         [Header("遠距離")]
         public int magazine;
@@ -58,6 +62,7 @@ namespace Prototype
         public string RarityName => RarityNames[Mathf.Clamp(rarity, 0, 2)];
         public Color Color => RarityColors[Mathf.Clamp(rarity, 0, 2)];
         public bool IsBlade => Slot == DuelSlot.Melee;
+        public bool UsesTwoHands => MeleeShape != DuelMeleeShape.OneHandSword;
         public bool IsGun => Slot == DuelSlot.Ranged;
         public bool HasMagazine => IsGun && magazine > 0;
 

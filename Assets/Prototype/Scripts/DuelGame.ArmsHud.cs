@@ -72,6 +72,8 @@ namespace Prototype
             if (!ranged)
             {
                 GUI.Label(new Rect(r.x + 8f, r.y + 42f, r.width - 16f, 20f), $"{attack} 通常攻撃   {heavy} 強攻撃", cellTiny);
+                if (w.UsesTwoHands)
+                    GUI.Label(new Rect(r.x + 8f, r.y + 59f, r.width - 16f, 20f), $"両手持ち　{w.HeavyName}", cellTiny);
                 return;
             }
 

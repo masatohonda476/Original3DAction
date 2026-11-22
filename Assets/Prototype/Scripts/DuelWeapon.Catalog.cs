@@ -9,7 +9,15 @@ namespace Prototype
             DuelSwing heavy, DuelHeavyEffect effect = DuelHeavyEffect.None) => new()
         {
             name = name, Slot = DuelSlot.Melee, rarity = rarity, HeavyName = heavyName, feel = feel,
-            MeleePower = power, weight = weight, HeavyMove = heavy, HeavyEffect = effect,
+            MeleeMoves = DuelMoveSet.Base, MeleePower = power, weight = weight, HeavyMove = heavy, HeavyEffect = effect,
+        };
+
+        static DuelWeapon TwoHandBlade(string name, int rarity, string heavyName, string feel, float power, float weight,
+            (DuelMoveSet moves, DuelSwing heavy) attacks, DuelMeleeShape shape, Vector3 headSize, float haftLength) => new()
+        {
+            name = name, Slot = DuelSlot.Melee, rarity = rarity, HeavyName = heavyName, feel = feel,
+            MeleeMoves = attacks.moves, HeavyMove = attacks.heavy, MeleePower = power, weight = weight,
+            MeleeShape = shape, scale = headSize, HaftLength = haftLength, dropWeight = 0.6f,
         };
 
         static DuelWeapon Gun(string name, string typeName, int rarity, string heavyName, float weight, Vector3 scale,
@@ -44,11 +52,24 @@ namespace Prototype
 
         static readonly DuelWeapon[] DropCatalog =
         {
-            // 仮。近接の通常威力倍率。違いは主に強攻撃へ。
+            // 片手武器は通常の振り方を共用し、強攻撃が異なる。
             Blade("ブロードソード", 0, "振り下ろし", "上から強く振り下ろす", 1.05f, 4.5f, DuelMoveSet.CommonHeavy),
             Blade("電磁ブレード", 1, "吹き飛ばし斬り", "強攻撃で敵を押し飛ばす", 1.08f, 4f, DuelMoveSet.KnockbackHeavy, DuelHeavyEffect.Knockback),
             Blade("重斬刀", 1, "踏ん張り斬り", "強攻撃の出始めは傷を抑えて怯まない", 1.10f, 6f, DuelMoveSet.GuardPointHeavy, DuelHeavyEffect.GuardPoint),
             Blade("光波刀", 2, "光波斬り", "強攻撃で光波を飛ばす", 1.14f, 5f, DuelMoveSet.WaveHeavy, DuelHeavyEffect.Wave),
+
+            TwoHandBlade("両手剣", 0, "突進斬り", "重い3段斬り。強攻撃で大きく踏み込む", 1.15f, 12f,
+                DuelMoveSet.TwoHandSword(), DuelMeleeShape.TwoHandSword, new Vector3(0.9f, 5.5f, 0.32f), 1.7f),
+            TwoHandBlade("長槍", 0, "薙ぎ払い", "間合いの長い突き。強攻撃は周囲を払う", 1.1f, 9f,
+                DuelMoveSet.Spear(), DuelMeleeShape.Spear, new Vector3(0.62f, 1.65f, 0.35f), 4.5f),
+            TwoHandBlade("薙刀", 1, "踏み込み突き", "弧の広い4段斬り。強攻撃は長い突き", 1.25f, 11f,
+                DuelMoveSet.Glaive(), DuelMeleeShape.Glaive, new Vector3(0.85f, 2.55f, 0.34f), 3.7f),
+            TwoHandBlade("戦鎚", 1, "叩きつけ", "発生は遅いが、強攻撃で周囲を大きく崩す", 1.28f, 16f,
+                DuelMoveSet.Hammer(), DuelMeleeShape.Hammer, new Vector3(2.55f, 1.38f, 1.4f), 3.3f),
+            TwoHandBlade("斬機大太刀", 2, "大回転", "長い刃で広く斬る3段連撃。強攻撃は全周斬り", 1.38f, 15f,
+                DuelMoveSet.GreatTachi(), DuelMeleeShape.TwoHandSword, new Vector3(1.08f, 7.5f, 0.3f), 2.15f),
+            TwoHandBlade("突撃槍", 2, "突撃", "長い間合いの突き。強攻撃で真っすぐ突進する", 1.35f, 14f,
+                DuelMoveSet.Lance(), DuelMeleeShape.Spear, new Vector3(0.9f, 3.15f, 0.65f), 5.3f),
 
             // 仮。通常射撃の性能・大技の性能・大技の共通弾の消費。
             BaseGun,

@@ -175,8 +175,6 @@ namespace Prototype
 
         public void ClearBufferedInput() => shotPressedAt = specialPressedAt = float.NegativeInfinity;
 
-        internal void StopBurst() => roundsPending = 0;
-
         internal void CheckPausedBurstRelease()
         {
             if (roundsPending > 0 && !RawRangedHeld) StopBurst();

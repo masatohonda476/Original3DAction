@@ -128,7 +128,8 @@ namespace Prototype
         public void KeepAmmo()
         {
             ammoKept = true;
-            keptAmmo = Ammo;
+            // 再開時に連射は引き継がないので、入口時点の未発射分は弾として控える。
+            keptAmmo = Mathf.Min(Rules.ammoMax, Ammo + RefundableBurstAmmo());
             keptMags.Clear();
             if (RangedWeapon.HasMagazine) keptMags[rangedMemo] = Magazine;
             foreach (var loot in DuelLoot.All)

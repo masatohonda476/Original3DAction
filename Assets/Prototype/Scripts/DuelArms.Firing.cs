@@ -22,7 +22,18 @@ namespace Prototype
 
         int roundsPending;
         bool burstSpecial;
+        int burstAmmoPaid, burstRoundCount;
         float nextRoundAt;
+
+        int RefundableBurstAmmo() => burstSpecial && roundsPending > 0
+            ? burstAmmoPaid * roundsPending / burstRoundCount : 0; // 仮。未発射分の端数は切り捨てる。
+
+        internal void StopBurst()
+        {
+            int refund = RefundableBurstAmmo();
+            roundsPending = 0;
+            if (refund > 0) AddAmmo(refund);
+        }
 
         bool CanPayPrimary(DuelWeapon weapon) =>
             weapon.HasMagazine ? Magazine > 0 : weapon.enCost <= 0f || !player.Overheated;
@@ -71,6 +82,8 @@ namespace Prototype
             burstSpecial = special;
             // 残弾が少ないときも、弾倉から出せる分だけ点射する。
             int count = !special && weapon.HasMagazine ? Mathf.Min(shot.burstCount, Magazine + 1) : shot.burstCount;
+            burstAmmoPaid = special ? weapon.SpecialAmmo : 0;
+            burstRoundCount = count;
             roundsPending = count - 1;
             nextRoundAt = now + shot.burstInterval;
             FireRound(weapon, shot, special, from, aim);

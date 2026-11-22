@@ -156,7 +156,7 @@ MonoBehaviour:
   wakeNear: 20
   respawnDelay: 2.5
   respawnGrace: 1.2
-  bossHP: 480
+  bossHP: 700
   bossSize: 2.5
   bossMaxStagger: 70
   bossMoves:

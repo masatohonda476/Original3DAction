@@ -376,8 +376,8 @@ namespace Prototype
 
         // ───────── 被弾 ─────────
 
-        /// <summary>自機の射撃で受けるダメージと怯みの倍率(ボスの厚い装甲。1 なら減らない)。ステージが置くときに決める。</summary>
-        [HideInInspector] public float rangedTakenMul = 1f;
+        /// <summary>自機の射撃でたまる怯みゲージの倍率。ステージが敵を置くときに決める。</summary>
+        [HideInInspector] public float rangedStaggerMul = 1f;
 
         /// <summary>
         /// 攻撃(近接・射撃・ミサイル)が当たっても、ダメージ・怯み・押し返しを受けない。気づきはする(TakeHit)。
@@ -385,9 +385,9 @@ namespace Prototype
         /// </summary>
         [HideInInspector] public bool invulnerable;
 
-        /// <summary>射撃が当たった(rangedTakenMul を掛けてから TakeHit)。</summary>
+        /// <summary>射撃が当たった。怯みゲージの蓄積に射撃用の倍率を掛ける。</summary>
         public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
-            TakeHit(dmg * rangedTakenMul, stagger * rangedTakenMul, knock, flinchTime, true);
+            TakeHit(dmg, stagger * rangedStaggerMul, knock, flinchTime, ranged: true);
 
         /// <summary>
         /// 自機の攻撃が当たった。怯みゲージをため、満タンになったら怯む(技の予備動作・出ている途中でも止まる)。

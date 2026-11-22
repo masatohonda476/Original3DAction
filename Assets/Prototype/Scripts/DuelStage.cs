@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using HuntProto;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Prototype
 {
@@ -72,10 +73,11 @@ namespace Prototype
         public float bossBlastRadius = 45f;
 
         [Header("ボス(大剣士)")]
-        [Tooltip("武装で強くなった自機と渡り合える硬さ(仮。武装なしの頃は182)")]
-        public float bossHP = 480f;
-        [Tooltip("射撃でボスが受けるダメージと怯みの倍率(厚い装甲。1なら減らない)")]
-        [Range(0f, 1f)] public float bossRangedTaken = 0.4f;
+        [Tooltip("ボスの最大HP")]
+        public float bossHP = 700f;
+        [Tooltip("射撃でボスの怯みゲージがたまる量の倍率")]
+        [FormerlySerializedAs("bossRangedTaken")]
+        [Range(0f, 1f)] public float bossRangedStaggerMul = 0.4f;
         [Tooltip("機体の大きさの倍率(剣士は1.5)")]
         public float bossSize = 2.5f;
         [Tooltip("怯みゲージの最大(剣士は25)。大きいほど怯みにくい")]
@@ -489,7 +491,7 @@ namespace Prototype
             e.ignoreLeashRange = s.kind == Kind.Boss;   // ボスは持ち場から離れすぎで発覚を切らない(見失いだけで切る)
             if (s.kind == Kind.Boss)
             {
-                e.rangedTakenMul = bossRangedTaken;
+                e.rangedStaggerMul = bossRangedStaggerMul;
                 e.invulnerable = true;   // 入口の扉が閉じる(ボス戦が始まる)まではダメージを受けない(SetBossInvulnerable)
             }
             // ボス以外の敵は、大ホールの入口(扉の手前の面)より奥へ入れない(作者「敵はボス部屋に入れないようにしてください」。扉が開いていても)

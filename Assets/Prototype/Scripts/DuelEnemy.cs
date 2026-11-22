@@ -114,10 +114,10 @@ namespace Prototype
             dashSpeed = 30f, sideDashRate = 0.08f, antiAirChance = 0.6f, antiAirHeight = 40f, knockMul = 0.25f, boss = moves ?? new BossMoves(),
         };
 
-        /// <summary>兵卒(雑魚):複数で来る前提。地上の技は横薙ぎと突きだけ(叩きつけはない)、2発で怯み、攻めはゆっくり。</summary>
+        /// <summary>兵卒(雑魚):複数で来る前提。地上の技は横薙ぎと突きだけ(叩きつけはない)、攻めはゆっくり。</summary>
         public static Spec Grunt(float hp) => new()
         {
-            name = "兵卒", size = 1f, hp = hp, maxStagger = 10f, damageMul = 0.65f, playerStaggerMul = 0.7f, windupMul = 1.15f,
+            name = "兵卒", size = 1f, hp = hp, maxStagger = 23f, damageMul = 0.65f, playerStaggerMul = 0.7f, windupMul = 1.15f,
             thinkMin = 1.5f, thinkMax = 2.8f, approachSpeed = 12f, strafeSpeed = 6f, keepDistance = 14f, sweepChain = 0f, canSlam = false,
             dashSpeed = 26f, sideDashRate = 0.1f, antiAirChance = 0.35f, antiAirHeight = 30f,
         };
@@ -376,8 +376,8 @@ namespace Prototype
 
         // ───────── 被弾 ─────────
 
-        /// <summary>自機の射撃で受けるダメージと怯みの倍率(ボスの厚い装甲。1 なら減らない)。ステージが置くときに決める。</summary>
-        [HideInInspector] public float rangedTakenMul = 1f;
+        /// <summary>自機の射撃でたまる怯みゲージの倍率。ステージが敵を置くときに決める。</summary>
+        [HideInInspector] public float rangedStaggerMul = 1f;
 
         /// <summary>
         /// 攻撃(近接・射撃・ミサイル)が当たっても、ダメージ・怯み・押し返しを受けない。気づきはする(TakeHit)。
@@ -385,9 +385,9 @@ namespace Prototype
         /// </summary>
         [HideInInspector] public bool invulnerable;
 
-        /// <summary>射撃が当たった(rangedTakenMul を掛けてから TakeHit)。</summary>
+        /// <summary>射撃が当たった。怯みゲージの蓄積に射撃用の倍率を掛ける。</summary>
         public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
-            TakeHit(dmg * rangedTakenMul, stagger * rangedTakenMul, knock, flinchTime, true);
+            TakeHit(dmg, stagger * rangedStaggerMul, knock, flinchTime, ranged: true);
 
         /// <summary>
         /// 自機の攻撃が当たった。怯みゲージをため、満タンになったら怯む(技の予備動作・出ている途中でも止まる)。

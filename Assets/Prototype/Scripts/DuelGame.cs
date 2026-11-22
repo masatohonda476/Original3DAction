@@ -58,7 +58,7 @@ namespace Prototype
         public float fatalRange = 12f;
         [Tooltip("致命攻撃のダメージの下限(兵卒の HP 28・剣士 47 を 1 発で倒す量)。武装の威力の倍率・崩れた敵への近接の倍率は掛からない")]
         public float fatalMinDamage = 60f;
-        [Tooltip("致命攻撃のダメージ = 相手の最大 HP × これ(上の下限より大きいほう)。ボス(HP 480)なら 0.25 で 120")]
+        [Tooltip("致命攻撃のダメージ = 相手の最大 HP × これ(上の下限より大きいほう)。ボス(HP 700)なら 0.25 で 175")]
         [Range(0f, 1f)] public float fatalHpPart = 0.25f;
         [Tooltip("致命攻撃の踏み込みの速さの上限(m/s)")]
         public float fatalLungeSpeed = 60f;

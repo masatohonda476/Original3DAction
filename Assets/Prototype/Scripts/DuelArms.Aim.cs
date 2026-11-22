@@ -458,7 +458,7 @@ namespace Prototype
             aim = AssistedAimPoint(target, assist, from, shot.range);
             Vector3 predicted = PredictShot(shot, from, aim);
             ShotPoint = predicted;
-            ShotEnemy = PathEnemy(from, predicted);
+            ShotEnemy = PathEnemy(from, predicted, shot);
             ShotFrame = new AimFrame
             {
                 drawW = drawW, drawH = drawW * Rules.frameAspect, hot = Cooling > 0f, locked = locked,
@@ -520,12 +520,21 @@ namespace Prototype
         /// from から p へ飛ぶ弾が、p のあたりまでに体(縦長のカプセル)を通る敵のうち、いちばん手前の敵(十字と、ロックオンの角の色。ShotEnemy)。いなければ null。
         /// p は狙いの先と同じ奥行き(体の手前の面のあたり)に置かれるので、体の太さの分(半径の2倍)だけ先まで見る(p が体の面の少し手前で止まっても、そのまま当たる弾を拾う)。
         /// </summary>
-        DuelEnemy PathEnemy(Vector3 from, Vector3 p)
+        DuelEnemy PathEnemy(Vector3 from, Vector3 p, DuelShot shot)
         {
             Vector3 d = p - from;
             float len = d.magnitude;
             if (len < 0.01f) return null;
             d /= len;
+            if (shot.blastRadius > 0f)
+            {
+                // 信管の範囲を含め、地形までに起爆できる相手を十字に反映する。
+                float reach = Mathf.Min(shot.range, len + shot.proximityRadius);
+                if (Physics.Raycast(from, d, out var wall, reach, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                    reach = wall.distance;
+                FindProjectileTarget(from, d, reach, shot, out var fuseTarget, out _);
+                return fuseTarget;
+            }
             DuelEnemy hit = null;
             float best = float.MaxValue;
             foreach (var e in game.Enemies)

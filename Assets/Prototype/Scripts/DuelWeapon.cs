@@ -11,8 +11,17 @@ namespace Prototype
     {
         public float damage, range, interval, stagger, knock, shotSpeed, spread, beamWidth;
         public float recoilPerShot, recoilMax, recoilRecover, aimKick, aimKickSide;
+        /// <summary>一度の発射で同時に飛ぶ弾の数。散弾や拡散爆発に使う。</summary>
         public int pellets = 1;
+        /// <summary>一度の入力で時間差を付けて撃つ回数と間隔(秒)。interval は最初の発射から次の入力で撃てるまで。</summary>
+        public int burstCount = 1;
+        public float burstInterval;
+        /// <summary>通常射撃を押し続けていると次の発射を受け付ける。</summary>
+        public bool autoFire;
         public bool pierce;
+        /// <summary>爆発の半径と、至近弾で起爆する距離(m)。blastAtEnd は射程の端で起爆する弾。</summary>
+        public float blastRadius, proximityRadius;
+        public bool blastAtEnd;
     }
 
     [Serializable]
@@ -35,6 +44,7 @@ namespace Prototype
         public DuelShot Primary { get; private set; }
         public DuelShot Special { get; private set; }
         public int SpecialAmmo { get; private set; }
+        public string GunTypeName { get; private set; }
 
         [Header("背中")]
         public float runMul = 1f, dashMul = 1f, dodgeMul = 1f, enCostMul = 1f;
@@ -50,8 +60,6 @@ namespace Prototype
         public bool IsBlade => Slot == DuelSlot.Melee;
         public bool IsGun => Slot == DuelSlot.Ranged;
         public bool HasMagazine => IsGun && magazine > 0;
-        public float damage => Primary.damage;
-        public float range => Primary.range;
 
         public static string SlotName(DuelSlot slot) => slot switch
         {

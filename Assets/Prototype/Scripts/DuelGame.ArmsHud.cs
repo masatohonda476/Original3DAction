@@ -6,7 +6,7 @@ namespace Prototype
     // 武装の構え・弾と、落ちている武装の比較・入れ替え・解体の案内。
     public partial class DuelGame
     {
-        const float CellW = 232f, CellH = 66f, CellGap = 8f, ArmsMargin = 20f, AmmoGaugeW = 24f;
+        const float CellW = 232f, CellH = 84f, CellGap = 8f, ArmsMargin = 20f, AmmoGaugeW = 24f;
         // ロックオンの枠が武装欄に重ならないよう、上端の位置は従来の武装欄とそろえる。
         float ArmsTop => SH - 166f;
         float ArmsLeft => SW - ArmsMargin - CellW * 2f - CellGap * 2f - AmmoGaugeW;
@@ -69,10 +69,15 @@ namespace Prototype
             Chip(new Rect(r.x + 8f, r.y + 27f, 10f, 10f), w.Color);
             GUI.Label(new Rect(r.x + 22f, r.y + 19f, r.width - 30f, 25f), w.name, cellNameStyle);
             string attack = ProtoInput.L(ProtoInput.Btn.R1), heavy = ProtoInput.L(ProtoInput.Btn.R2);
-            string moves = ranged ? $"{attack} 射撃   {heavy} 大技（弾 {w.SpecialAmmo}）" : $"{attack} 通常攻撃   {heavy} 強攻撃";
-            GUI.Label(new Rect(r.x + 8f, r.y + 42f, r.width - 16f, 20f), moves, cellTiny);
+            if (!ranged)
+            {
+                GUI.Label(new Rect(r.x + 8f, r.y + 42f, r.width - 16f, 20f), $"{attack} 通常攻撃   {heavy} 強攻撃", cellTiny);
+                return;
+            }
 
-            if (!ranged) return;
+            string fireButton = w.Primary.autoFire ? $"{attack} 長押し" : attack;
+            GUI.Label(new Rect(r.x + 8f, r.y + 42f, r.width - 16f, 20f), $"{fireButton}　{w.GunTypeName}", cellTiny);
+            GUI.Label(new Rect(r.x + 8f, r.y + 59f, r.width - 16f, 20f), $"{heavy}　{w.HeavyName}（弾 {w.SpecialAmmo}）", cellTiny);
             float reload = arms.ReloadProgress;
             bool loading = reload > 0f;
             bool cooling = arms.Aiming && arms.Cooling > 0f;
@@ -131,12 +136,35 @@ namespace Prototype
             }
 
             var current = arms.Get(w.Slot);
-            GUI.Label(Row(36f), $"装備中　{WeaponName(current)}", small);
+            string currentTechnique = current is { IsGun: true } ? $"　{current.GunTypeName} / {current.HeavyName}" : "";
+            GUI.Label(Row(36f), $"装備中　{WeaponName(current)}{currentTechnique}", small);
             GUI.Label(Row(59f), WeaponStats(w, current), cellNameSmall);
             GUI.Label(Row(79f), WeaponTechnique(w), cellNameSmall);
             GUI.Label(Row(101f), arms.Choosing != null
                 ? $"{equip} {DuelWeapon.SlotName(w.Slot)}を入れ替える　　{cancel} 取り消す"
                 : $"{equip} 入れ替えの確認　　{salvage} 解体する", small);
+            if (arms.Choosing != null) DrawPickupChart(w, current, y);
+        }
+
+        void DrawPickupChart(DuelWeapon weapon, DuelWeapon current, float cardY)
+        {
+            const float width = 508f, height = 194f, margin = 16f, gap = 8f;
+            // 比較は機体を隠さないよう右寄せ。背中の比較は従来どおり画面上部の中央。
+            bool back = weapon.Slot == DuelSlot.Back;
+            float x = back ? (SW - width) * 0.5f : SW - margin - width;
+            float y = back ? 82f : cardY - gap - height;
+            MenuPanel(new Rect(x, y, width, height));
+
+            var pair = DuelRadar.Get(weapon, current);
+            Chip(new Rect(x + 15f, y + 11f, 12f, 3f), DuelRadar.MainColor);
+            GUI.Label(new Rect(x + 32f, y + 3f, 74f, 23f), "落とし物", cellNameSmall);
+            if (pair.Compared)
+            {
+                Chip(new Rect(x + 110f, y + 11f, 12f, 3f), DuelRadar.OtherColor);
+                GUI.Label(new Rect(x + 127f, y + 3f, 72f, 23f), "装備中", cellNameSmall);
+                GUI.Label(new Rect(x + 206f, y + 3f, width - 220f, 23f), "数値は装備中 → 落とし物", cellTinyRight);
+            }
+            DrawWeaponChart(new Rect(x + 10f, y + 27f, width - 20f, height - 31f), pair);
         }
     }
 }

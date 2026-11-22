@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HuntProto;
 using UnityEngine;
 
@@ -7,11 +8,12 @@ namespace Prototype
     public partial class DuelGame
     {
         int viewSel;
+        readonly Dictionary<(DuelWeapon, DuelWeapon), string> weaponStatsText = new();
 
         void DrawEquipView(DuelArms arms)
         {
             BuildMenuText();
-            const float width = 680f, height = 370f, pad = 18f, rowH = 49f;
+            const float width = 680f, height = 554f, pad = 18f, rowH = 49f;
             float x = (SW - width) * 0.5f, y = (SH - height) * 0.5f;
             float rowW = width - pad * 2f;
             MenuBackdrop();
@@ -39,14 +41,23 @@ namespace Prototype
                 GUI.Label(Detail(215f), WeaponTechnique(selected), small);
                 GUI.Label(Detail(240f), WeaponStats(selected), small);
                 GUI.Label(Detail(265f), selected.feel, small);
+                DrawWeaponChart(new Rect(x + pad, y + 292f, rowW, 176f), DuelRadar.Get(selected));
             }
-            GUI.Label(Detail(296f), $"共通の弾 {arms.Ammo:0.#}/{arms.Rules.ammoMax:0}　装備重量 {arms.EquippedWeight:0.#}　推力 ×{arms.Mobility:0.00}", small);
+            GUI.Label(Detail(478f), $"共通の弾 {arms.Ammo:0.#}/{arms.Rules.ammoMax:0}　装備重量 {arms.EquippedWeight:0.#}　推力 ×{arms.Mobility:0.00}", small);
 
             bool kb = ProtoInput.Current == ProtoInput.Device.Keyboard;
             string back = ProtoInput.L(ProtoInput.Btn.Back), menu = ProtoInput.L(ProtoInput.Btn.EquipView);
             GUI.color = new Color(1f, 1f, 1f, 0.7f);
-            GUI.Label(new Rect(x, y + 335f, width, 23f), $"一時停止中 ― {(kb ? "↑↓/W・S" : "↑↓")} 選ぶ  {back} 戻る  {menu} 閉じる", center);
+            GUI.Label(new Rect(x, y + 518f, width, 23f), $"一時停止中 ― {(kb ? "↑↓/W・S" : "↑↓")} 選ぶ  {back} 戻る  {menu} 閉じる", center);
             GUI.color = Color.white;
+        }
+
+        void DrawWeaponChart(Rect area, DuelRadar.Pair pair)
+        {
+            const float radarWidth = 162f, gap = 18f;
+            DuelRadar.DrawRadar(new Rect(area.x, area.y, radarWidth, area.height), uiScale, pair);
+            DuelRadar.DrawBars(new Rect(area.x + radarWidth + gap, area.y + 5f, area.width - radarWidth - gap, area.height - 10f),
+                pair, 80f, 144f);
         }
 
         static void SelectionBand(Rect row)
@@ -60,12 +71,23 @@ namespace Prototype
         static string WeaponTechnique(DuelWeapon w) => w.Slot switch
         {
             DuelSlot.Melee => $"強攻撃　{w.HeavyName}（EN {w.HeavyMove.cost:0.#}）",
-            DuelSlot.Ranged => $"大技　{w.HeavyName}（共通の弾 {w.SpecialAmmo}）",
+            DuelSlot.Ranged => $"通常　{w.GunTypeName}　　大技　{w.HeavyName}（共通の弾 {w.SpecialAmmo}）",
             _ => "走り・回避・ブースト・飛行の性能を変える",
         };
 
         // 同じ枠の武装を比較するときは、項目ごとに「装備中 → 落とし物」の順に並べる。
-        static string WeaponStats(DuelWeapon w, DuelWeapon current = null)
+        string WeaponStats(DuelWeapon w, DuelWeapon current = null)
+        {
+            var key = (w, current);
+            if (!weaponStatsText.TryGetValue(key, out var text))
+            {
+                text = BuildWeaponStats(w, current);
+                weaponStatsText.Add(key, text);
+            }
+            return text;
+        }
+
+        static string BuildWeaponStats(DuelWeapon w, DuelWeapon current)
         {
             static string Value(float next, float? before, string format) =>
                 before.HasValue && !Mathf.Approximately(next, before.Value)
@@ -80,7 +102,8 @@ namespace Prototype
                 string fuel = Fuel(w);
                 string previous = current != null ? Fuel(current) : fuel;
                 if (previous != fuel) fuel = $"{previous} → {fuel}";
-                return $"通常威力 {Value(w.damage, current?.damage, "0.#")}　射程 {Value(w.range, current?.range, "0.#")} m　{fuel}";
+                float? previousDamage = current != null ? DuelRadar.VolleyDamage(current) : null;
+                return $"通常最大威力 {Value(DuelRadar.VolleyDamage(w), previousDamage, "0.#")}　射程 {Value(w.Primary.range, current?.Primary.range, "0.#")} m　{fuel}";
             }
             return $"走り ×{Value(w.runMul, current?.runMul, "0.00")}　ブースト ×{Value(w.dashMul, current?.dashMul, "0.00")}　回避 ×{Value(w.dodgeMul, current?.dodgeMul, "0.00")}　消費 EN ×{Value(w.enCostMul, current?.enCostMul, "0.00")}";
         }

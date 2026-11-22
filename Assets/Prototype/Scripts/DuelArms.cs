@@ -76,6 +76,7 @@ namespace Prototype
             {
                 Nearby = null;
                 CancelChoice();
+                ClearBufferedInput();
                 return;
             }
 
@@ -127,16 +128,34 @@ namespace Prototype
             if (Time.time - lastFire > Rules.recoilDelay)
                 bloom = Mathf.MoveTowards(bloom, 0f, RangedWeapon.Primary.recoilRecover * Time.deltaTime);
 
-            bool special = Time.time - specialPressedAt <= PressBuffer;
+            float now = Time.time;
+            bool special = roundsPending > 0 ? burstSpecial : now - specialPressedAt <= PressBuffer;
             UpdateCursor();
-            if (!UpdateFrame(special, out Vector3 from, out Vector3 aim)) return;
-            if (!canShoot || Time.deltaTime <= 0f || Time.time < rangedMemo.ready) return;
-            if (!special && Time.time - shotPressedAt > PressBuffer) return;
+            if (!UpdateFrame(special, out Vector3 from, out Vector3 aim) || !canShoot)
+            {
+                roundsPending = 0;   // 構えを解く・回避に入るなどで残りの発射を止める。
+                return;
+            }
+            if (Time.deltaTime <= 0f || game.stage == null || game.stage.Cleared) return;
+            if (roundsPending > 0)
+            {
+                FirePendingRounds(now, from, aim);
+                return;
+            }
+            if (now < rangedMemo.ready) return;
+            var primary = RangedWeapon.Primary;
+            bool auto = primary.autoFire && !blockR1 && ProtoInput.RightHandHeld && CanPayPrimary(RangedWeapon);
+            if (!special && !auto && now - shotPressedAt > PressBuffer) return;
+
             ClearBufferedInput();
-            Fire(special, from, aim);
+            StartFiring(special, from, aim);
         }
 
-        public void ClearBufferedInput() => shotPressedAt = specialPressedAt = float.NegativeInfinity;
+        public void ClearBufferedInput()
+        {
+            shotPressedAt = specialPressedAt = float.NegativeInfinity;
+            roundsPending = 0;
+        }
 
         public void AddFatalAmmo()
         {

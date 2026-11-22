@@ -5,48 +5,110 @@ using UnityEngine;
 
 namespace Prototype
 {
-    // DuelArms の撃つ処理:遠距離武器・ミサイル(partial。本体と全体の説明は DuelArms.cs)
+    // 通常射撃・大技。時間差の連射、複数の弾、貫通、爆発で撃ち方を分ける。
     public partial class DuelArms
     {
         static readonly Color BulletColor = new(1f, 0.85f, 0.35f), BeamColor = new(1f, 0.45f, 0.95f);
+        static readonly Color ShellColor = new(1f, 0.6f, 0.25f);
+        const float BlastWallOffset = 0.08f; // 仮。爆心を着弾面から発射側へずらす距離。
+        const float BlastEdgePower = 0.35f; // 仮。爆風の端で残る威力・崩し・押し出しの割合。
+        const float BlastLife = 0.30f; // 仮
+        const int BlastSparks = 14; // 仮
 
-        void Fire(bool special, Vector3 from, Vector3 aim)
+        int roundsPending;
+        bool burstSpecial;
+        float nextRoundAt;
+
+        bool CanPayPrimary(DuelWeapon weapon) =>
+            weapon.HasMagazine ? Magazine > 0 : weapon.enCost <= 0f || !player.Overheated;
+
+        bool PayPrimary(DuelWeapon weapon)
+        {
+            if (!CanPayPrimary(weapon))
+            {
+                if (weapon.HasMagazine)
+                {
+                    NoAmmoAt = Time.time;
+                    game.Log("弾倉が空。近接に戻ると弾を詰められる");
+                }
+                else
+                {
+                    NoEnergyAt = Time.time;
+                    game.Log("射撃に必要な EN が足りない");
+                }
+                return false;
+            }
+
+            if (weapon.HasMagazine) rangedMemo.mag--;
+            else if (weapon.enCost > 0f) player.SpendEnergy(weapon.enCost);
+            return true;
+        }
+
+        void StartFiring(bool special, Vector3 from, Vector3 aim)
         {
             var weapon = RangedWeapon;
             var shot = special ? weapon.Special : weapon.Primary;
-            if (special ? Ammo < weapon.SpecialAmmo : weapon.HasMagazine && Magazine == 0)
+            if (special)
             {
-                NoAmmoAt = Time.time;
-                game.Log(special ? "大技に必要な共通の弾が足りない" : "弾倉が空。近接に戻ると弾を詰められる");
-                return;
+                if (Ammo < weapon.SpecialAmmo)
+                {
+                    NoAmmoAt = Time.time;
+                    game.Log("大技に必要な共通の弾が足りない");
+                    return;
+                }
+                Ammo -= weapon.SpecialAmmo;
             }
-            if (!special && weapon.enCost > 0f && player.Overheated)
-            {
-                NoEnergyAt = Time.time;
-                game.Log("射撃に必要な EN が足りない");
-                return;
-            }
+            else if (!PayPrimary(weapon)) return;
 
-            if (special) Ammo -= weapon.SpecialAmmo;
-            else if (weapon.HasMagazine) rangedMemo.mag--;
-            else if (weapon.enCost > 0f) player.SpendEnergy(weapon.enCost);
-
+            float now = Time.time;
             rangedMemo.cooldown = shot.interval;
-            rangedMemo.ready = Time.time + shot.interval;
-            lastFire = Time.time;
+            rangedMemo.ready = now + shot.interval;
+            burstSpecial = special;
+            // 残弾が少ないときも、弾倉から出せる分だけ点射する。
+            int count = !special && weapon.HasMagazine ? Mathf.Min(shot.burstCount, Magazine + 1) : shot.burstCount;
+            roundsPending = count - 1;
+            nextRoundAt = now + shot.burstInterval;
+            FireRound(weapon, shot, special, from, aim);
+        }
 
+        void FirePendingRounds(float now, Vector3 from, Vector3 aim)
+        {
+            var weapon = RangedWeapon;
+            var shot = burstSpecial ? weapon.Special : weapon.Primary;
+            // 長いフレームでも発射間隔を持ち越す。1 回の点射に含まれる発射数が上限。
+            while (roundsPending > 0 && now >= nextRoundAt)
+            {
+                if (!burstSpecial && !PayPrimary(weapon))
+                {
+                    roundsPending = 0;
+                    break;
+                }
+                roundsPending--;
+                nextRoundAt += shot.burstInterval;
+                FireRound(weapon, shot, burstSpecial, from, aim);
+            }
+        }
+
+        void FireRound(DuelWeapon weapon, DuelShot shot, bool special, Vector3 from, Vector3 aim)
+        {
+            lastFire = Time.time;
             Vector3 direction = (aim - from).normalized;
             if (direction == Vector3.zero) direction = player.transform.forward;
-            Color color = weapon.HasMagazine ? BulletColor : BeamColor;
+            Color color = shot.blastRadius > 0f ? ShellColor : !special && weapon.enCost > 0f ? BeamColor : BulletColor;
             float speed = SpeedOf(shot);
-            // 拡散の大技は中央と左右へ一度に発射する。
+            bool spread = shot.pellets > 1;
             for (int i = 0; i < shot.pellets; i++)
             {
-                float angle = shot.pellets > 1 ? Mathf.Lerp(-shot.spread, shot.spread, (float)i / (shot.pellets - 1)) : 0f;
-                Vector3 dir = Quaternion.AngleAxis(angle, Vector3.up) * direction;
-                if (!special) dir = Jitter(dir, bloom);
-                if (speed > 0f) StartCoroutine(Fly(from, dir, shot, color, shot.pellets > 1, speed, CursorInView));
-                else Shot(from, dir, shot, color, shot.pellets > 1);
+                Vector3 dir = direction;
+                if (special && spread)
+                {
+                    // 拡散爆発は横へ等間隔に撃ち分ける。通常の散弾は立体的に散る。
+                    float angle = Mathf.Lerp(-shot.spread, shot.spread, (float)i / (shot.pellets - 1));
+                    dir = Quaternion.AngleAxis(angle, Vector3.up) * direction;
+                }
+                else dir = Jitter(direction, shot.spread + (special ? 0f : bloom));
+                if (speed > 0f) StartCoroutine(Fly(from, dir, shot, color, spread, speed, CursorInView));
+                else Shot(from, dir, shot, color, spread);
             }
             float recoil = Mathf.Max(0f, Rules.recoilMul);
             if (shot.recoilPerShot > 0f)
@@ -140,13 +202,14 @@ namespace Prototype
                 PierceShot(from, dir, len, w, c, wall ? hit : (RaycastHit?)null);
                 return;
             }
-            bool hitEnemy = RayHitsEnemy(from, dir, len, out var e, out float d);
-            if (hitEnemy)
-            {
-                end = from + dir * d;
-                BulletHit(e, end, dir, w, c, pellet, CursorInView);   // すぐ届く光線は、撃ったフレームに当たる(今の照準の先 = 撃ったときの照準の先)
-            }
-            else if (wall) DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
+            bool hitEnemy = FindProjectileTarget(from, dir, len, w, out var enemy, out float distance);
+            if (hitEnemy) end = from + dir * distance;
+            if (w.blastRadius > 0f && (hitEnemy || wall || w.blastAtEnd))
+                Explode(wall && distance >= len ? BlastCenter(hit) : end, dir, w, CursorInView);
+            else if (hitEnemy)
+                BulletHit(enemy, end, dir, w, c, pellet, CursorInView);
+            else if (wall)
+                DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);
             Tracer(from, end, c, pellet ? 0.15f : 0.25f, !hitEnemy);
         }
 
@@ -160,14 +223,13 @@ namespace Prototype
                 if (e == null || e.Dead) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
-                if (wall.HasValue && !DuelSenses.ClearSight(from, e.Chest)) continue;
-                PierceHit(e, from + dir * (s * len), dir, w, c, CursorInView);
+                Vector3 at = from + dir * (s * len);
+                if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
+                PierceHit(e, at, dir, w, c, CursorInView);
                 any = true;
             }
             if (!any && wall is { } wh) DuelSpark.Burst(wh.point, wh.normal, c, 1, 0.45f);   // 外れて地形に当たった:小さな火花
-            // 太い光線は今までどおり長めに残す。細い光線は弾の筋と同じ(外れたら長めに)
-            if (w.beamWidth >= 1f) ProtoFx.Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, 0.18f);
-            else Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, !any);
+            Tracer(from, to, c, 0.25f + w.beamWidth * 0.5f, !any);
         }
 
         // ───────── 飛ぶ弾 ─────────
@@ -204,7 +266,8 @@ namespace Prototype
                 float m = v.magnitude;
                 if (m > 1f) { dir = v / m; speed = m; }
             }
-            float size = (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
+            const float ShellSize = 1.1f; // 仮
+            float size = w.blastRadius > 0f ? ShellSize : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
             float trail = Mathf.Max(0.01f, r.bulletTrail);
             var p = Projectile(from, c, size, trail);
             Destroy(p.gameObject, w.range / Mathf.Max(1f, speed) + trail + 1f);   // 念のため(コルーチンが止まっても残らない)
@@ -222,31 +285,78 @@ namespace Prototype
                 bool wall = Physics.Raycast(pos, dir, out var hit, step, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 float len = wall ? hit.distance : step;
                 if (pierced != null)
-                {
                     PierceSegment(pos, dir, len, w, c, pierced, mark);
-                }
-                else if (RayHitsEnemy(pos, dir, len, out var e, out float d))
+                else if (FindProjectileTarget(pos, dir, len, w, out var enemy, out float distance))
                 {
-                    Vector3 at = pos + dir * d;
-                    BulletHit(e, at, dir, w, c, pellet, mark);
+                    Vector3 at = pos + dir * distance;
+                    if (w.blastRadius > 0f) Explode(wall && distance >= len ? BlastCenter(hit) : at, dir, w, mark);
+                    else BulletHit(enemy, at, dir, w, c, pellet, mark);
                     EndProjectile(p, at, trail);
                     yield break;
                 }
-                pos += dir * len;
+
+                Vector3 end = pos + dir * len;
+                if (wall || last)
+                {
+                    if (w.blastRadius > 0f && (wall || w.blastAtEnd))
+                        Explode(wall ? BlastCenter(hit) : end, dir, w, mark);
+                    else if (wall)
+                        DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);
+                    EndProjectile(p, end, trail);
+                    yield break;
+                }
+                pos = end;
                 flown += len;
                 p.position = pos;
-                if (wall)
-                {
-                    DuelSpark.Burst(hit.point, hit.normal, c, 1, pellet ? 0.3f : 0.45f);   // 地形に当たった:小さな火花
-                    EndProjectile(p, hit.point, trail);
-                    yield break;
-                }
-                if (last)
-                {
-                    EndProjectile(p, pos, trail);
-                    yield break;
-                }
             }
+        }
+
+        // 直撃と近接信管を同じフレームの線分で調べる。len は地形に当たる所まで。
+        bool FindProjectileTarget(Vector3 from, Vector3 dir, float len, DuelShot shot, out DuelEnemy hit, out float distance)
+        {
+            if (shot.blastRadius <= 0f) return RayHitsEnemy(from, dir, len, out hit, out distance);
+
+            // 信管のない弾は敵の体に触れたとき、近接信管弾は体の近くを通ったときにも起爆する。
+            hit = null;
+            distance = len;
+            Vector3 end = from + dir * len;
+            foreach (var enemy in game.Enemies)
+            {
+                if (enemy == null || enemy.Dead) continue;
+                float radius = BodyAxis(enemy, out Vector3 a, out Vector3 b);
+                if (SegSegDistance(from, end, a, b, out float s) > radius + shot.proximityRadius) continue;
+                float along = s * len;
+                if (hit != null && along >= distance) continue;
+                Vector3 at = from + dir * along;
+                if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
+                distance = along;
+                hit = enemy;
+            }
+            return hit != null;
+        }
+
+        static Vector3 ClosestBodyPoint(Vector3 point, Vector3 bottom, Vector3 top) =>
+            new(bottom.x, Mathf.Clamp(point.y, bottom.y, top.y), bottom.z);
+
+        static Vector3 BlastCenter(RaycastHit wall) => wall.point + wall.normal * BlastWallOffset;
+
+        void Explode(Vector3 at, Vector3 dir, DuelShot shot, bool mark)
+        {
+            foreach (var enemy in game.Enemies)
+            {
+                if (enemy == null || enemy.Dead) continue;
+                float bodyRadius = BodyAxis(enemy, out Vector3 a, out Vector3 b);
+                Vector3 nearest = ClosestBodyPoint(at, a, b);
+                float gap = Mathf.Max(0f, Vector3.Distance(at, nearest) - bodyRadius);
+                if (gap > shot.blastRadius || !DuelSenses.ClearSight(at, nearest)) continue;
+                float power = Mathf.Lerp(1f, BlastEdgePower, gap / shot.blastRadius);
+                Vector3 away = DuelFighter.Flat(enemy.Chest - at);
+                if (away == Vector3.zero) away = DuelFighter.Flat(dir);
+                enemy.TakeRangedHit(shot.damage * power, shot.stagger * power, away * (shot.knock * power), 0.3f);
+                NoteHit(enemy, mark);
+            }
+            ProtoFx.Blast(at, shot.blastRadius, ShellColor, BlastLife);
+            DuelSpark.Burst(at, Vector3.zero, ShellColor, BlastSparks);
         }
 
         /// <summary>弾が止まった:その所まで動かしてから球を隠し、尾が消えるのを待って消す(当たった所まで筋が届いて見えるように)。</summary>
@@ -273,8 +383,10 @@ namespace Prototype
                 if (e == null || e.Dead || pierced.Contains(e)) continue;
                 float r = BodyAxis(e, out Vector3 a, out Vector3 b);
                 if (SegSegDistance(from, to, a, b, out float s) > r + w.beamWidth) continue;
+                Vector3 at = from + dir * (s * len);
+                if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
                 pierced.Add(e);
-                PierceHit(e, from + dir * (s * len), dir, w, c, mark);
+                PierceHit(e, at, dir, w, c, mark);
             }
         }
 

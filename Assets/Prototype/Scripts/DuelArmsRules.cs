@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Prototype
 {
     /// <summary>
-    /// 弧の試作の、照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)。ステージ(DuelStage.armsRules)のインスペクターで直せる。
+    /// サイクルの試作の、照準の枠・重さと所持・共通の弾・分解の決まり(数値は仮)。ステージ(DuelStage.armsRules)のインスペクターで直せる。
     /// 武装ごとの値(重さ・弾の使う量・枠の大きさ・ENの使う量)は DuelWeapon.Defaults() の .Spec(...)。
     /// </summary>
     [System.Serializable]
@@ -108,7 +108,7 @@ namespace Prototype
 
         [Header("共通の弾(実弾の銃・砲・ミサイルが使う。エネルギー武器は弾の代わりにENを使う)")]
         public float ammoMax = 500f;
-        [Tooltip("弧の始め(最初から・F1)の弾")]
+        [Tooltip("サイクルの始め(最初から・F1)の弾")]
         public float ammoStart = 30f;
 
         [Header("分解(落ちている武装・所持品・装備を壊して、弾か回復にする)")]

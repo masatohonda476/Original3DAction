@@ -15,17 +15,15 @@ namespace Prototype
     ///     向き直る速さは間合いで変えず一定(lockTurnRate)。角速度に上限(lockMaxTurnSpeed)と、速さの変わり方に上限(lockTurnAccel)を付け、
     ///     相手を切り替えたときも急に振られない。上下(敵の高さ)もゆっくり追い、見える向きの回り方にも上限(lockViewMaxSpeed)を付ける。
     ///   ロックオンしていない:右スティック・マウスで今までどおり回す。
-    ///   照準を動かせるとき(DuelArmsRules.cursorMovable。既定はオフ)の、遠距離を構えている間(DuelArms.CursorActive):
-    ///     右スティック・マウスは画面の上の照準を動かし(DuelArms)、カメラは回さない。
-    ///     ロックオンしていないときだけ、照準を可動範囲の端へ押し付けている間、その方向へゆっくり回す(edgeYawSpeed / edgePitchSpeed)。
-    ///     ロックオン中は端でも回さない。撃っても(反動でも)カメラは動かない。
-    /// 前の形(撃っている間ロックオンのカメラを止める「構え」・終わったら戻る回転・ロックオン中のずらし・距離と画面の端で速さを変える)は外した。
+    ///   遠距離を構えている間は、ロックオンの相手を保持したまま右スティック・マウスで自由に回す。
+    ///   構えを解くと、今の向きから相手への追従に戻る。
     /// ジャンプで敵の攻撃を跳び越えた間(DuelPlayer.JumpCameraHold。成功した瞬間から着地・被弾・飛行に移るまで)は、ロックオンのカメラの向きを固定する
     ///   (holdOnJumpSuccess。作者「成功したら専用のカメラ演出などを入れればカメラ問題も解決しそうです」の、一番軽い形。専用の画角は作っていない)。
     ///   相手を追って回るのを止め(左右の角速度は上限つきで 0 へ落とす)、上下は固定し始めたときに見えていた角度のまま動かさない(LateUpdate の heldPitch。
     ///   上下を決める値を止めるだけでは、注視点の補間の残りで少しずつ動いた)。位置は今までどおり自機に付いていく。
     ///   解けたら、いつもの上限つきの追従(lockTurnRate・lockMaxTurnSpeed・lockTurnAccel・lockLookSmooth・lockViewMaxSpeed)で相手へ戻る(止まった状態から回り始める)。
     /// </summary>
+    [DefaultExecutionOrder(-10)] // DuelPlayer.LateUpdate の射撃より先に、そのフレームのカメラを決める。
     public class DuelCamera : MonoBehaviour
     {
         /// <summary>自機とカメラの間に入った壁・柱の扱い。</summary>
@@ -90,14 +88,6 @@ namespace Prototype
         [Tooltip("見上げられる角度(度。マイナスが上)。作者「もっとカメラは上を向けられるようにしてください」")]
         public float freeMinPitch = -55f;
 
-        [Header("遠距離を構えている間、照準を画面の端へ押し付けたとき(ロックオンしていないときだけ)")]
-        [Tooltip("左右へ回る速さの上限(度/秒)。照準の動きは DuelArmsRules(ステージのインスペクター)")]
-        public float edgeYawSpeed = 60f;
-        [Tooltip("上下へ回る速さの上限(度/秒)")]
-        public float edgePitchSpeed = 35f;
-        [Tooltip("回り始め・止まりのなめらかさ(大きいほどすぐ応える)")]
-        public float edgeSmooth = 6f;
-
         float wallDist = -1f, wallClearFor;
         // MaterialPropertyBlock を持つので、フィールドの初期化では作らない(MonoBehaviour の構築中は作れない)。最初に使うときに作る
         DuelWallFader fader;
@@ -105,9 +95,7 @@ namespace Prototype
         readonly RaycastHit[] pullHits = new RaycastHit[16];
         // ロックオン中の左右の角速度(度/秒)と、上下を決める敵までの水平距離・高さの差(ゆっくり追う)
         float lockYawVel, lookDh, lookDy;
-        // 照準を端へ押し付けているときの回る速さ(度/秒。x=左右 y=上下。上が+)
-        Vector2 edgeVel;
-        bool wasLocked;
+        bool wasLocked, wasAiming;
         Quaternion lastRot;
         // ジャンプで攻撃を跳び越えた間の固定:固定しているか・固定し始めたときに見えていた上下の角度(度。Quaternion.Euler の x)
         bool pitchHeld;
@@ -130,10 +118,9 @@ namespace Prototype
         {
             initialized = false;
             wallDist = -1f;
-            wasLocked = false;
+            wasLocked = wasAiming = false;
             pitchHeld = false;
             lockYawVel = 0f;
-            edgeVel = Vector2.zero;
             var p = DuelPlayer.I;
             if (p == null) return;
             Vector3 f = p.transform.forward;
@@ -163,47 +150,33 @@ namespace Prototype
             float s = scale;
             Vector3 chest = p.LockPoint;   // 注視点の高さはロックオンの印と同じ(機体の高さの7割)
             var enemy = p.Target;
-            // 照準を動かせるときの、遠距離を構えている間:右スティック・マウスは照準を動かす(DuelArms)。カメラは回さない
-            bool aiming = p.Arms.CursorActive;
+            bool aiming = p.Arms.Aiming;
+            bool tracking = enemy != null && !aiming;
 
             Vector3 desired, look;
             float follow;
-            if (enemy != null)
+            if (tracking)
             {
                 UpdateLockTurn(p, enemy, chest, dt);
                 Vector3 right = Vector3.Cross(Vector3.up, fwd);
                 desired = p.transform.position - fwd * Distance * s + Vector3.up * Height * s + right * Shoulder * s;
-                // 注視点:左右はカメラの向き(上限つきで回る fwd)の先、上下は敵の高さをゆっくり追う(相手を切り替えても注視点が飛ばない)
+                // 左右は上限つきで回る fwd の先、上下は敵の高さをゆっくり追う。
                 look = chest + fwd * (lookDh * 0.6f) + Vector3.up * (lookDy * 0.6f) + Vector3.down * 0.35f * s;
-                edgeVel = Vector2.zero;
                 follow = Smooth;
             }
             else
             {
                 if (wasLocked && initialized)
                 {
-                    // ロックオンが外れたとき:今見えている向きのまま自由なカメラへ引き継ぐ(画面が飛ばないように)
+                    // 構え始めやロック解除では、その瞬間に映っていた向きから操作を引き継ぐ。
                     Vector3 e = transform.rotation.eulerAngles;
                     yaw = e.y;
                     pitch = Mathf.Clamp(Mathf.DeltaAngle(0f, e.x), MinPitch, MaxPitch);
                 }
-                Vector2 wantEdge = Vector2.zero;
-                if (!aiming)
-                {
-                    Vector2 stick = ProtoInput.RightStick;
-                    Vector2 m = ProtoInput.MouseDelta;
-                    yaw += stick.x * StickYawSpeed * dt + m.x * MouseSens;
-                    pitch = Mathf.Clamp(pitch - stick.y * StickPitchSpeed * dt - m.y * MouseSens, MinPitch, MaxPitch);
-                }
-                else
-                {
-                    // 照準を可動範囲の端へ押し付けている間だけ、その方向へゆっくり回る(上限つき)
-                    Vector2 push = p.Arms.EdgePush;
-                    wantEdge = new Vector2(push.x * edgeYawSpeed, push.y * edgePitchSpeed);
-                }
-                edgeVel = Vector2.Lerp(edgeVel, wantEdge, 1f - Mathf.Exp(-Mathf.Max(0.1f, edgeSmooth) * dt));
-                yaw += edgeVel.x * dt;
-                pitch = Mathf.Clamp(pitch - edgeVel.y * dt, MinPitch, MaxPitch);
+                Vector2 stick = ProtoInput.RightStick;
+                Vector2 m = ProtoInput.MouseDelta;
+                yaw += stick.x * StickYawSpeed * dt + m.x * MouseSens;
+                pitch = Mathf.Clamp(pitch - stick.y * StickPitchSpeed * dt - m.y * MouseSens, MinPitch, MaxPitch);
                 Vector3 dir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
                 fwd = new Vector3(dir.x, 0f, dir.z).normalized;
                 Vector3 right = Vector3.Cross(Vector3.up, fwd);
@@ -227,7 +200,7 @@ namespace Prototype
             Quaternion rot = lookDir.sqrMagnitude > 0.0001f ? Quaternion.LookRotation(lookDir) : transform.rotation;
             // ジャンプで攻撃を跳び越えた間(UpdateLockTurn が相手を追うのを止めている間)は、上下を固定し始めたときの角度のまま動かさない。
             // 左右は UpdateLockTurn が角速度を落として止める分だけ。解けたら、すぐ下の上限つきの回り方で、いつもの向きへ戻る
-            bool hold = enemy != null && initialized && wasLocked && holdOnJumpSuccess && p.JumpCameraHold;
+            bool hold = tracking && initialized && wasLocked && holdOnJumpSuccess && p.JumpCameraHold;
             if (hold)
             {
                 if (!pitchHeld) heldPitch = lastRot.eulerAngles.x;
@@ -235,7 +208,7 @@ namespace Prototype
             }
             pitchHeld = hold;
             // ロックオン中は、見える向きの回り方に上限(付け始め・自機の素早い動きでも急に回らない)
-            if (enemy != null && initialized && wasLocked) rot = Quaternion.RotateTowards(lastRot, rot, Mathf.Max(1f, lockViewMaxSpeed) * dt);
+            if (tracking && initialized && (wasLocked || wasAiming)) rot = Quaternion.RotateTowards(lastRot, rot, Mathf.Max(1f, lockViewMaxSpeed) * dt);
             if (hold) rot = Quaternion.Euler(heldPitch, rot.eulerAngles.y, 0f);   // 回る途中でも上下は動かさない
             transform.rotation = rot;
             lastRot = rot;
@@ -243,7 +216,8 @@ namespace Prototype
             // 切ったとき・寄せるモードのときは新しく薄くせず、薄くしていた物はいつもの速さで戻す
             if (fade) Fader.Mark(p, shown, transform.right, fadeBodyWidth, floorNormalY, !pullOnCeilings);
             Fader.Tick(dt, fadeAlpha, fadeInTime, fadeOutTime, fadeHoldTime);
-            wasLocked = enemy != null;
+            wasLocked = tracking;
+            wasAiming = aiming;
             initialized = true;
         }
 

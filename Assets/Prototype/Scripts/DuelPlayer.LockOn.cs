@@ -13,7 +13,7 @@ namespace Prototype
         //     狙っている敵を倒したら、爆発するまでは付けたままにし、爆発したら次へ(下の「倒した敵」)。遮られる・遠ざかるが lockLoseAfter 秒続いたら外して選び直す。
         //   オフの間:敵を狙わない(自動でも付かない)。切り替えのボタン(Tab / R3)を押すとオンに戻る。
         //   オン・オフの合図は DuelGame の照準枠(画面の縁寄りの四つの角。オンで外から締まり、オフで広がって消える)。
-        // この試作で残したもの:銃の構えの間は自動で選ばない、ロックオン中の右スティック・マウスの左右の弾きでの切り替え(SwitchSide。照準を動かしている間は除く)。
+        // この試作で残したもの:銃の構えの間は自動で選ばない、ロックオン中の右スティック・マウスの左右の弾きでの切り替え(SwitchSide。遠距離を構えている間は除く)。
         //
         // 付け始めは照準枠の中だけ(2026-11-21。作者「ロックオンで出てくるサイトの枠内に入った場合のみロックオン開始するようにする」
         //   「擬似的にエイムを表現するために追加します」→ 選んだのは「1-A,2-A」):
@@ -138,7 +138,7 @@ namespace Prototype
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
             // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。
-            // 射撃入力中・発射直後・照準操作中は自動では選ばない。オンにしたフレームと切り替えのボタンを押したフレームは、その間も選ぶ。選ぶのは1フレームに1回だけ(PickBest)。
+            // 遠距離を構えている間は自動では選ばない。オンにしたフレームと切り替えのボタンを押したフレームは、その間も選ぶ。選ぶのは1フレームに1回だけ(PickBest)。
             // 狙う敵がいて切り替えのボタンを押したら、画面の中のほかの敵へ(枠は使わない。オンにしたフレーム・このフレームに付いた相手からは切り替えない)
             DuelEnemy candidate = null;
             float candidateDist = 0f;
@@ -152,10 +152,9 @@ namespace Prototype
             LockCandidateDistance = LockCandidate != null ? candidateDist : 0f;
             // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
-            // 照準を動かしている間(DuelArms.CursorActive。DuelArmsRules.cursorMovable がオンの構えの間)は、右スティック・マウスが
-            // 画面の上の照準を動かす(カメラは回さない)ので切り替えない。照準を動かせない既定では、構えの間も切り替えられる。
-            // 落ちている武装の選ぶ表示の間と閉じたフレーム(choice)も切り替えない。倒したまま閉じても、一度戻すまで切り替わらない(stickArmed)
-            if (Target == null || Arms.CursorActive || choice) { stickArmed = false; mouseFlick = 0f; return; }
+            // 遠距離を構えている間は右スティック・マウスをカメラに使う。
+            // 落ちている武装の選ぶ表示の間と閉じたフレーム(choice)も切り替えない。
+            if (Target == null || Arms.Aiming || choice) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }
@@ -164,7 +163,7 @@ namespace Prototype
             if (Mathf.Abs(mouseFlick) > 160f) { SwitchSide(Mathf.Sign(mouseFlick)); mouseFlick = 0f; }
         }
 
-        // 照準を動かす構え・ロックオンの始まりでスティックが倒れたままなら、一度戻すまで切り替えない(構えの終わりに勝手に切り替わらないように)
+        // 遠距離の構え・ロックオンの始まりでスティックが倒れたままなら、一度戻すまで切り替えない(構えの終わりに勝手に切り替わらないように)
         bool stickArmed;
         float mouseFlick;
 

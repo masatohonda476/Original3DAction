@@ -231,12 +231,12 @@ namespace Prototype
 
             // 右の列は射撃・ロックオン・落とし物・メニュー。
             helpSplit = helpBtn.Count;
-            HelpRow(l2 + " 長押し", "遠距離を構える。離すと近接に戻る");
+            HelpRow(l2 + " 長押し", "遠距離を構える。ロックオン中もカメラで狙う");
             HelpRow($"{l2} + {r1}", "通常射撃");
             HelpRow($"{l2} + {r2}", "大技（共通の弾を消費）");
             HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
-            HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "ロックオン中の相手を変更");
+            HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "相手を変更（構え中は Tab / R3 のみ）");
             HelpRow(B(ProtoInput.Btn.EquipNow), "落とし物と比較。もう一度で入れ替え");
             HelpRow(B(ProtoInput.Btn.Break), "落とし物を解体（弾か回復）");
             HelpRow(B(ProtoInput.Btn.Back), "入れ替え・解体を取り消す");

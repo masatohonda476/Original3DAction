@@ -131,36 +131,19 @@ namespace Prototype
         /// </summary>
         static readonly Color FrameHit = new(1f, 0.45f, 0.05f);
 
-        /// <summary>画面の上の照準の位置(GUI の座標。y は下向き)。</summary>
-        Vector2 CursorScreen(DuelArms arms)
-        {
-            Vector2 c = arms != null ? arms.Cursor : Vector2.zero;
-            return new Vector2(SW * (0.5f + c.x), SH * (0.5f - c.y));
-        }
-
-        /// <summary>
-        /// 照準の位置(DuelArms.Cursor。構えていない間は画面の中央へ戻る)に、撃つ武装の照準の枠を角の鉤(かぎ)だけで出す(アーマード・コアの FCS の枠)。
-        /// 枠の中に当てる相手がいれば枠を橙にし、相手の胸に小さな橙の鉤の印を出す。
-        /// 構えている間は、照準が動ける範囲の縁を薄い点で出す。画面は揺らさない。
-        /// </summary>
+        /// <summary>画面中央に武器のサイトを描く。補正する敵が入ると橙になり、十字は弾道を示す。</summary>
         void DrawAimFrames(DuelArms arms, Camera cam)
         {
-            if (Event.current.type != EventType.Repaint || cam == null || player.Dead || !arms.Aiming) return;
+            if (Event.current.type != EventType.Repaint || cam == null || !arms.Aiming) return;
             if (arms.ShotFrame is not { } frame) return;
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
-            Vector2 cur = CursorScreen(arms);
-            float cx = cur.x, cy = cur.y;
-            if (arms.CursorActive) DrawCursorRange(arms);
-            if (arms.Rules.showAimFrame)
-            {
-                float hw = Mathf.Min(frame.drawW * k, SW * 0.48f), hh = Mathf.Min(frame.drawH * k, SH * 0.45f);
-                var color = frame.locked ? FrameLocked : FrameIdle;
-                color.a = frame.hot ? 0.9f : 0.38f;
-                Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, color);
-            }
-            // 真ん中の十字:弾が飛んでいく所(吸い付きを入れた狙いの先。DuelArms.ShotPoint)に出す。4本の短い線の開きが、今のばらつき(spread + 反動の広がり)。連射すると開き、やめると閉じる
-            // 弾が飛んでいく所がカメラの後ろ(自機がカメラの方を向いている。射撃では向き直らない)なら、十字は出さない
-            // (作者「視界外に十字がいくと画面中央に十字が表示されるのをやめてください」。前は画面の中央に出ていた)。カメラの前で画面の外なら、画面の外に描かれて見えない
+            float cx = SW * 0.5f, cy = SH * 0.5f;
+            float hw = frame.halfW * k, hh = frame.halfH * k;
+            var color = frame.locked ? FrameLocked : FrameIdle;
+            color.a = frame.locked || frame.hot ? 0.9f : 0.6f;
+            Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, color);
+
+            // 弾道の十字は補正と反動を反映する。カメラの後ろに来たら隠す。
             Vector3 shotSp = arms.ShotPoint is Vector3 shot ? cam.WorldToScreenPoint(shot) : Vector3.forward;
             if (shotSp.z > 0f)
             {
@@ -227,28 +210,6 @@ namespace Prototype
             GUI.color = Color.white;
         }
 
-        /// <summary>照準が動ける範囲(楕円)の縁を、薄い小さな点で出す(構えている間だけ)。</summary>
-        void DrawCursorRange(DuelArms arms)
-        {
-            var r = arms.Rules;
-            float rx = SW * Mathf.Clamp(r.cursorRangeX, 0.001f, 0.49f), ry = SH * Mathf.Clamp(r.cursorRangeY, 0.001f, 0.49f);
-            float ox = SW * 0.5f, oy = SH * 0.5f;
-            const int n = 48;
-            const float dot = 2f;
-            var push = arms.EdgePush;
-            var t = Texture2D.whiteTexture;
-            for (int i = 0; i < n; i++)
-            {
-                float a = i * Mathf.PI * 2f / n;
-                Vector2 d = new(Mathf.Cos(a), Mathf.Sin(a));
-                // 押し付けている側は少し濃く(カメラがそちらへゆっくり回っている合図。ロックオンしていないときだけ回る)
-                float lit = player.Target == null ? Mathf.Clamp01(Vector2.Dot(d, push)) : 0f;
-                GUI.color = new Color(0.85f, 0.92f, 1f, 0.16f + 0.5f * lit);
-                GUI.DrawTexture(new Rect(ox + d.x * rx - dot / 2f, oy - d.y * ry - dot / 2f, dot, dot), t);
-            }
-            GUI.color = Color.white;
-        }
-
         // ヒットマーカーの色:当たった / 崩せる(怯みが射撃の上限まで。斬りにいけ)/ 崩れている敵に当たった / 倒した
         static readonly Color[] HitMarkColors =
         {
@@ -265,7 +226,7 @@ namespace Prototype
         /// </summary>
         void DrawHitMark(DuelArms arms)
         {
-            if (Event.current.type != EventType.Repaint || player.Dead || !arms.CursorInView) return;
+            if (Event.current.type != EventType.Repaint || player.Dead || (arms.Aiming && !arms.ShotInView)) return;
             float life = Mathf.Max(0.02f, arms.Rules.hitMarkTime);
             float age = Time.unscaledTime - arms.HitMarkAt;
             if (age < 0f || age > life) return;
@@ -274,7 +235,7 @@ namespace Prototype
             var c = HitMarkColors[kind];
             c.a = Mathf.Clamp01(a * 1.5f);
             float len = HitMarkSizes[kind] * (1f + 0.35f * a * a), th = kind >= 1 ? 3f : 2f, gap = 4f;
-            Vector2 center = CursorScreen(arms);
+            Vector2 center = new(SW * 0.5f, SH * 0.5f);
             var saved = GUI.matrix;
             GUIUtility.RotateAroundPivot(45f, center * uiScale);   // 回す中心は画面の画素で渡す(GUI.matrix の拡大の外側で回るため)
             GUI.color = c;
@@ -412,9 +373,8 @@ namespace Prototype
             if (!hold) lockFollow = Mathf.MoveTowards(lockFollow, onEnemy ? 1f : 0f, dt / LockFollowTime);
             float e = Mathf.SmoothStep(0f, 1f, lockFollow);
             // 角は枠と同じ水色のまま。弾が囲んでいる相手に当たるとき(真ん中の十字が相手に重なって橙になるのと同じ条件。DuelArms.ShotEnemy)だけ、濃い橙にする。
-            // 銃・砲を付けていない(十字を出す弾がない)ときは、ミサイルが狙う相手なら橙(当てる相手の印を角に重ねないので、角の色で示す)
             var arms = player.Arms;
-            bool hit = onEnemy && (arms.ShotPoint != null ? arms.ShotEnemy == target : arms.MarkedEnemy == target);
+            bool hit = onEnemy && arms.ShotEnemy == target;
             lockHit = Mathf.MoveTowards(lockHit, hit ? 1f : 0f, dt / LockHitTime);
 
             // 画面の縁寄りの枠(待機中に止まっている大きさは LockRestHalf。付け始めの判定と同じ値):縦が変わるときはなめらかに
@@ -426,11 +386,13 @@ namespace Prototype
             // 右辺の距離の目盛り:待機中の枠(敵を囲みに縮む前の大きさ。オン・オフの出入りには付いていく)の右辺に出す。
             // 出すのは、オンで狙う敵がいない(付く相手を探している)間だけ。付いている間は、相手が遮られた・画面の外に出たときも出さない
             // (枠を出し始めたフレーム=オンにした瞬間・メニューを閉じた直後に、もう付いていれば最初から出さない)。枠が敵から戻る途中は、戻るのに合わせて濃くなる
-            DrawLockGauge(on && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
+            DrawLockGauge(on && !arms.Aiming && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
             hw = Mathf.Lerp(hw, lockFollowHalf.x + lockOffset * 0.35f, e);
             hh = Mathf.Lerp(hh, lockFollowHalf.y + lockOffset * 0.35f, e);
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
             var col = lockInk;
+            // 構え中は武器のサイトを使い、ロックオンは敵を囲む表示だけ残す。
+            if (arms.Aiming) col.a *= e;
             if (e > 0f) col.a = Mathf.Min(1f, col.a * Mathf.Lerp(1f, LockFollowAlpha / LockRestAlpha, e));   // 敵に重なる間は薄く
             float a = lockHit * e;
             if (a > 0f)

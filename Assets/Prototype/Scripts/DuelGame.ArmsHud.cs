@@ -19,8 +19,8 @@ namespace Prototype
         {
             float y = ArmsTop, x = ArmsLeft + AmmoGaugeW + CellGap;
             float width = CellW * 2f + CellGap;
-            DrawWeaponCell(arms, DuelSlot.Melee, new Rect(x, y, CellW, CellH));
-            DrawWeaponCell(arms, DuelSlot.Ranged, new Rect(x + CellW + CellGap, y, CellW, CellH));
+            DrawWeaponCell(arms, DuelSlot.Ranged, new Rect(x, y, CellW, CellH));
+            DrawWeaponCell(arms, DuelSlot.Melee, new Rect(x + CellW + CellGap, y, CellW, CellH));
 
             var back = arms.Get(DuelSlot.Back);
             var backRect = new Rect(x, y + CellH + CellGap, width, 25f);

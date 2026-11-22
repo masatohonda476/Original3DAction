@@ -114,10 +114,10 @@ namespace Prototype
             dashSpeed = 30f, sideDashRate = 0.08f, antiAirChance = 0.6f, antiAirHeight = 40f, knockMul = 0.25f, boss = moves ?? new BossMoves(),
         };
 
-        /// <summary>兵卒(雑魚):複数で来る前提。地上の技は横薙ぎと突きだけ(叩きつけはない)、2発で怯み、攻めはゆっくり。</summary>
+        /// <summary>兵卒(雑魚):複数で来る前提。地上の技は横薙ぎと突きだけ(叩きつけはない)、攻めはゆっくり。</summary>
         public static Spec Grunt(float hp) => new()
         {
-            name = "兵卒", size = 1f, hp = hp, maxStagger = 10f, damageMul = 0.65f, playerStaggerMul = 0.7f, windupMul = 1.15f,
+            name = "兵卒", size = 1f, hp = hp, maxStagger = 23f, damageMul = 0.65f, playerStaggerMul = 0.7f, windupMul = 1.15f,
             thinkMin = 1.5f, thinkMax = 2.8f, approachSpeed = 12f, strafeSpeed = 6f, keepDistance = 14f, sweepChain = 0f, canSlam = false,
             dashSpeed = 26f, sideDashRate = 0.1f, antiAirChance = 0.35f, antiAirHeight = 30f,
         };

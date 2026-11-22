@@ -54,7 +54,7 @@ namespace Prototype
         [Tooltip("跳び上がり斬り(対空。上段)")] public bool antiAir = false;
 
         [Header("落下攻撃(成功しているジャンプ中だけ、近接のボタン。相手へ向かって降り、着地した瞬間に斬る。技の威力・届く範囲は DuelMoveSet.Drop)")]
-        [Tooltip("落下攻撃が、跳び越えた敵の怯みゲージへためる量(兵卒の最大 10・剣士 25・ボス 70)。武装の倍率・「ふつうの殴り」の倍率(DuelGame.meleeStaggerMul)は掛からない。\n" +
+        [Tooltip("落下攻撃が、跳び越えた敵の怯みゲージへためる量(兵卒の最大 23・剣士 25・ボス 70)。武装の倍率・「ふつうの殴り」の倍率(DuelGame.meleeStaggerMul)は掛からない。\n" +
                  "敵が攻撃の後の隙の間に当てると、さらに 1.6 倍(DuelEnemy.recoverStaggerMul)")]
         public float dropSuccessStagger = 30f;
         [Tooltip("降りる速さ(m/s。相手の手前へまっすぐ向かう線の上の速さ)")]

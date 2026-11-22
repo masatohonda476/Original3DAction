@@ -146,6 +146,7 @@ namespace Prototype
             BoostOn = false;
             ClearBufferedInput();
             Arms.ClearBufferedInput();
+            Arms.StopBurst();
             airVel = Vector3.zero;
             flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
             slideOff = Vector3.zero;
@@ -215,7 +216,11 @@ namespace Prototype
 
         void Update()
         {
-            if (DuelGame.Paused) return;   // メニュー(装備の確認・操作方法)を開いている間は止める
+            if (DuelGame.Paused)
+            {
+                Arms.CheckPausedBurstRelease();
+                return;
+            }
             float dt = Time.deltaTime;
             float now = Time.time;
             stateT += dt;
@@ -375,6 +380,7 @@ namespace Prototype
 
         void Enter(State s, float dur = 0f)
         {
+            if (s is State.Dodge or State.Hurt) Arms.StopBurst();
             if (s != State.Attack)
             {
                 dropping = fatal = false;
@@ -432,6 +438,7 @@ namespace Prototype
             HP = 0f;
             ClearBufferedInput();
             Arms.ClearBufferedInput();
+            Arms.StopBurst();
             EndJump();
             // 空中で撃墜されたら、飛行と上昇の勢いを止めて落ちる
             flying = false;

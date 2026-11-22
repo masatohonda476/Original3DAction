@@ -528,11 +528,11 @@ namespace Prototype
             d /= len;
             if (shot.blastRadius > 0f)
             {
-                // 信管の範囲を含め、地形までに起爆できる相手を十字に反映する。
-                float reach = Mathf.Min(shot.range, len + shot.proximityRadius);
+                // 信管の作動距離と敵の半径を、実際の着弾判定と同じ計算で見る。
+                float reach = shot.range;
                 if (Physics.Raycast(from, d, out var wall, reach, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                     reach = wall.distance;
-                FindProjectileTarget(from, d, reach, shot, out var fuseTarget, out _);
+                FindProjectileTarget(from, d, reach, shot, out var fuseTarget, out _, aimDepth: len);
                 return fuseTarget;
             }
             bool wideBeam = IsWideBeam(shot);

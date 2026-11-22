@@ -14,6 +14,7 @@ namespace Prototype
         const float BlastEdgePower = 0.35f; // 仮。爆風の端で残る威力・崩し・押し出しの割合。
         const float BlastLife = 0.30f; // 仮
         const int BlastSparks = 14; // 仮
+        const float FuseArmingDistance = 4f; // 仮。銃口からこの距離を飛ぶと近接信管が働く。
         const float WideBeamThreshold = 1f, WideBeamLife = 0.18f; // 仮
 
         static bool IsWideBeam(DuelShot shot) =>
@@ -84,7 +85,7 @@ namespace Prototype
             {
                 if (!burstSpecial && !PayPrimary(weapon))
                 {
-                    roundsPending = 0;
+                    StopBurst();
                     break;
                 }
                 roundsPending--;
@@ -241,17 +242,24 @@ namespace Prototype
 
         // ───────── 飛ぶ弾 ─────────
 
-        /// <summary>弾の見た目:光る球と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
-        static Transform Projectile(Vector3 at, Color c, float size, float trail = 0.18f)
+        /// <summary>見た目だけの球。生成したフレームも、弾やカメラの地形判定に使われない。</summary>
+        static GameObject VisualSphere(string name, Vector3 at, Color color, float size)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             DestroyImmediate(go.GetComponent<Collider>());
-            go.name = "Shot";
+            go.name = name;
             go.transform.position = at;
             go.transform.localScale = Vector3.one * size;
             var r = go.GetComponent<Renderer>();
-            r.sharedMaterial = ProtoFx.Unlit(c);
+            r.sharedMaterial = ProtoFx.Unlit(color);
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            return go;
+        }
+
+        /// <summary>弾の見た目:光る球と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
+        static Transform Projectile(Vector3 at, Color c, float size, float trail = 0.18f)
+        {
+            var go = VisualSphere("Shot", at, c, size);
             var tr = go.AddComponent<TrailRenderer>();
             tr.time = trail;
             tr.startWidth = size * 0.7f;
@@ -293,7 +301,7 @@ namespace Prototype
                 float len = wall ? hit.distance : step;
                 if (pierced != null)
                     PierceSegment(pos, dir, len, w, c, pierced, mark);
-                else if (FindProjectileTarget(pos, dir, len, w, out var enemy, out float distance))
+                else if (FindProjectileTarget(pos, dir, len, w, out var enemy, out float distance, flown: flown))
                 {
                     Vector3 at = pos + dir * distance;
                     if (w.blastRadius > 0f) Explode(wall && distance >= len ? BlastCenter(hit) : at, dir, w, mark);
@@ -318,22 +326,33 @@ namespace Prototype
             }
         }
 
-        // 直撃と近接信管を同じフレームの線分で調べる。len は地形に当たる所まで。
-        bool FindProjectileTarget(Vector3 from, Vector3 dir, float len, DuelShot shot, out DuelEnemy hit, out float distance)
+        // 直撃と近接信管を地形までの線分で調べる。十字の判定だけ、狙った奥行きと敵の太さでも範囲を絞る。
+        bool FindProjectileTarget(Vector3 from, Vector3 dir, float len, DuelShot shot, out DuelEnemy hit, out float distance,
+            float flown = 0f, float aimDepth = float.PositiveInfinity)
         {
             if (shot.blastRadius <= 0f) return RayHitsEnemy(from, dir, len, out hit, out distance);
 
-            // 信管のない弾は敵の体に触れたとき、近接信管弾は体の近くを通ったときにも起爆する。
+            bool hasFuse = shot.proximityRadius > 0f;
+            float fuseOffset = Mathf.Max(0f, FuseArmingDistance - flown);
+            Vector3 fuseStart = from + dir * fuseOffset;
             hit = null;
             distance = len;
-            Vector3 end = from + dir * len;
             foreach (var enemy in game.Enemies)
             {
                 if (enemy == null || enemy.Dead) continue;
+                float forward = hasFuse ? Vector3.Dot(enemy.Chest - from, dir) : 0f;
+                if (forward < 0f) continue;
                 float radius = BodyAxis(enemy, out Vector3 a, out Vector3 b);
-                if (SegSegDistance(from, end, a, b, out float s) > radius + shot.proximityRadius) continue;
-                float along = s * len;
-                if (hit != null && along >= distance) continue;
+                float reach = Mathf.Min(len, aimDepth + Mathf.Max(shot.proximityRadius, radius * 2f));
+                Vector3 end = from + dir * reach;
+                float along = SegSegDistance(from, end, a, b, out float direct) <= radius
+                    ? direct * reach : float.PositiveInfinity;
+                // 信管の有効距離をまたぐフレームは、その地点から先だけを調べる。直撃は全区間で調べる。
+                if (hasFuse && fuseOffset <= reach && forward >= fuseOffset &&
+                    SegSegDistance(fuseStart, end, a, b, out float near) <= radius + shot.proximityRadius)
+                    along = Mathf.Min(along, fuseOffset + near * (reach - fuseOffset));
+
+                if (along > distance || (hit != null && along == distance)) continue;
                 Vector3 at = from + dir * along;
                 if (!DuelSenses.ClearSight(at, ClosestBodyPoint(at, a, b))) continue;
                 distance = along;
@@ -362,7 +381,8 @@ namespace Prototype
                 enemy.TakeRangedHit(shot.damage * power, shot.stagger * power, away * (shot.knock * power), 0.3f);
                 NoteHit(enemy, mark);
             }
-            ProtoFx.Blast(at, shot.blastRadius, ShellColor, BlastLife);
+            var blast = VisualSphere("射撃の爆発", at, ShellColor, shot.blastRadius * 0.4f);
+            blast.AddComponent<FxAnim>().Setup(blast.transform.localScale, Vector3.one * (shot.blastRadius * 2f), BlastLife);
             DuelSpark.Burst(at, Vector3.zero, ShellColor, BlastSparks);
         }
 

@@ -90,7 +90,7 @@ namespace Prototype
             choiceEndFrame = Time.frameCount;
             blockR1 |= ProtoInput.RightHandHeld || ProtoInput.Attack;
             blockR2 |= ProtoInput.RightShoulderHeld || ProtoInput.RightShoulderPressed;
-            blockL2 |= ProtoInput.LeftShoulderHeld;
+            blockL2 |= RawRangedHeld;
             blockFly |= ProtoInput.FlyHeld;
             ClearBufferedInput();
         }
@@ -107,6 +107,7 @@ namespace Prototype
             old.LowerPriority();
             if (w.IsGun)
             {
+                StopBurst();
                 old.Memo = rangedMemo;
                 rangedMemo = loot.Memo;
                 reloadTime = bloom = 0f;
@@ -186,6 +187,7 @@ namespace Prototype
             ResetWeapons(false);
             CancelChoice();
             ClearBufferedInput();
+            StopBurst();
             Ammo = 0f;
             return lost;
         }

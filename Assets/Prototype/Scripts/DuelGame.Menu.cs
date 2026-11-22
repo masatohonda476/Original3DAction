@@ -82,7 +82,7 @@ namespace Prototype
             if (!MenuOpen)
             {
                 player.Arms.CancelChoice();
-                // 先行入力(攻撃・回避・射撃)を捨てる(閉じた直後に出ないように)
+                // 新しい攻撃・回避・射撃の先行入力を捨て、開始済みの連射はポーズ明けに引き継ぐ。
                 player.ClearBufferedInput();
                 player.Arms.ClearBufferedInput();
                 menuSel = 0;

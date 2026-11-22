@@ -1,5 +1,6 @@
 using HuntProto;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Prototype
 {
@@ -33,7 +34,11 @@ namespace Prototype
         public float EnCostMul => BackW.enCostMul;
 
         // 共用の入力クラスでは肩の名称。ここでは L2/E が持ち替え、R2/R が強攻撃・大技。
-        public bool RangedHeld => !ChoiceLocksInput && !blockL2 && ProtoInput.LeftShoulderHeld;
+        bool RangedInputHeld => !ChoiceLocksInput && !blockL2 && ProtoInput.LeftShoulderHeld;
+        static bool RawRangedHeld => Gamepad.current?.leftTrigger.isPressed == true || Keyboard.current?.eKey.isPressed == true;
+        // メニュー明けの入力制限中も、押し続けている L2 で開始済みの連射だけ再開できる。
+        public bool RangedHeld => RangedInputHeld ||
+            (roundsPending > 0 && !DuelGame.Paused && !ChoiceLocksInput && RawRangedHeld);
         public bool Aiming => RangedHeld && player != null && !player.Dead && !player.MeleeCommitted;
         public bool CursorActive => Aiming && Rules.cursorMovable;
         // 固定照準では射撃入力と撃った直後だけ自動選択を待つ。L2 だけなら従来どおり敵を探す。
@@ -68,7 +73,12 @@ namespace Prototype
         {
             if (!ProtoInput.RightHandHeld) blockR1 = false;
             if (!ProtoInput.RightShoulderHeld) blockR2 = false;
-            if (!ProtoInput.LeftShoulderHeld) blockL2 = false;
+            bool rawRangedHeld = RawRangedHeld;
+            if (!rawRangedHeld)
+            {
+                blockL2 = false;
+                StopBurst();
+            }
             if (!ProtoInput.FlyHeld) blockFly = false;
             if (!ProtoInput.BreakAmmoHeld) breakLeftHold = false;
 
@@ -77,6 +87,7 @@ namespace Prototype
                 Nearby = null;
                 CancelChoice();
                 ClearBufferedInput();
+                StopBurst();
                 return;
             }
 
@@ -88,7 +99,7 @@ namespace Prototype
                 : null;
             UpdateChoice();
 
-            bool ranged = RangedHeld;
+            bool ranged = RangedInputHeld;
             if (ranged != wasRanged)
             {
                 ClearBufferedInput();
@@ -97,7 +108,7 @@ namespace Prototype
             if (ranged && LightPressed) shotPressedAt = Time.time;
             if (ranged && HeavyPressed) specialPressedAt = Time.time;
             // 選択画面で入力を止めていても、実際に L2 を押している間は弾を詰めない。
-            UpdateReload(!ProtoInput.LeftShoulderHeld);
+            UpdateReload(!rawRangedHeld);
         }
 
         void UpdateReload(bool melee)
@@ -131,9 +142,20 @@ namespace Prototype
             float now = Time.time;
             bool special = roundsPending > 0 ? burstSpecial : now - specialPressedAt <= PressBuffer;
             UpdateCursor();
-            if (!UpdateFrame(special, out Vector3 from, out Vector3 aim) || !canShoot)
+            bool aimReady = UpdateFrame(special, out Vector3 from, out Vector3 aim);
+            if (!canShoot || (!aimReady && !ChoiceLocksInput))
             {
-                roundsPending = 0;   // 構えを解く・回避に入るなどで残りの発射を止める。
+                StopBurst();
+                return;
+            }
+            if (ChoiceLocksInput)
+            {
+                // 落とし物の選択中は戦闘の時間が進むので、連射の間隔と待ち時間だけ止める。
+                if (roundsPending > 0)
+                {
+                    nextRoundAt += Time.deltaTime;
+                    rangedMemo.ready += Time.deltaTime;
+                }
                 return;
             }
             if (Time.deltaTime <= 0f || game.stage == null || game.stage.Cleared) return;
@@ -151,10 +173,13 @@ namespace Prototype
             StartFiring(special, from, aim);
         }
 
-        public void ClearBufferedInput()
+        public void ClearBufferedInput() => shotPressedAt = specialPressedAt = float.NegativeInfinity;
+
+        internal void StopBurst() => roundsPending = 0;
+
+        internal void CheckPausedBurstRelease()
         {
-            shotPressedAt = specialPressedAt = float.NegativeInfinity;
-            roundsPending = 0;
+            if (roundsPending > 0 && !RawRangedHeld) StopBurst();
         }
 
         public void AddFatalAmmo()

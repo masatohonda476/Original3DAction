@@ -12,6 +12,12 @@ namespace Prototype
         {
             // 同時に攻撃している敵が多ければ、順番を待つ(回り込みながら少しして考え直す)
             if (!game.CanStartAttack(this)) { thinkAt = Time.time + Random.Range(0.3f, 0.6f); return; }
+            if (TryStartRanged(gap)) return;
+            if (Kind.hovers || (!IsBoss && gap > 26f))
+            {
+                thinkAt = Time.time + 0.3f;
+                return;
+            }
             // 持ち場のある敵は、自機が持ち場の近くへ来るまで技を出さない(段差の下へ突きで飛び降りてこない)
             if (leashRadius > 0f)
             {
@@ -82,6 +88,8 @@ namespace Prototype
 
         float WindupTime => skill switch
         {
+            Skill.Shot => 0.65f,
+            Skill.Missile => 0.95f,
             Skill.WideSweep => B.wideWindup,
             Skill.Charge => B.chargeWindup,
             Skill.LeapSlam => B.leapWindup,
@@ -120,6 +128,7 @@ namespace Prototype
 
         void UpdateWindup(float dt, Vector3 dir)
         {
+            if (IsRangedSkill) { UpdateRangedWindup(dt, dir); return; }
             // 最後の0.15秒(突進は長め)は向きを変えない(そこで横へ避ければ外れる)
             if (stateT < stateDur - CommitTime) { Face(dir, 10f, dt); commitDir = transform.forward; }
             if (stateT < stateDur) return;

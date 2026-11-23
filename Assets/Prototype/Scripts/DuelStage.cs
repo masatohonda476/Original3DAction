@@ -281,6 +281,7 @@ namespace Prototype
         {
             var root = new GameObject("Stage").transform;
             var mats = new Dictionary<Color, Material>();
+            var chestFloors = new HashSet<Collider>();
             Material Mat(Color c)
             {
                 if (!mats.TryGetValue(c, out var m)) mats[c] = m = ProtoFx.Lit(c);
@@ -302,9 +303,15 @@ namespace Prototype
                     DestroyImmediate(go.GetComponent<Collider>());   // 同じフレームの床の高さのレイに当たらないように、すぐ消す
                     r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 }
+                else if (b.floor || b.color == FloorColor)
+                {
+                    // 主な床と、床色で描いた竪穴の足場・格納庫の歩廊。
+                    chestFloors.Add(go.GetComponent<Collider>());
+                }
             }
             BuildBossGate(root);
             Physics.SyncTransforms();   // 置いたばかりの地形に、すぐレイ(足もとの高さ・敵の目線)が当たるように
+            BuildChests(root, chestFloors);
         }
 
         // ───────── ボス戦の入口の扉 ─────────
@@ -532,10 +539,13 @@ namespace Prototype
 
             // ボス:大ホールに入っている間は、気づいて戦う(見失わない)
             var boss = bossSpawn != null ? bossSpawn.enemy : null;
-            if (boss == null || boss.Dead || !bossRoom.Contains(p)) return;
-            boss.KeepEngaged();
-            // 入口の扉より十分奥まで入ったら、扉を閉じてボス戦を始める(入口に立っているだけでは閉じない)
-            if (!bossFight && p.z >= bossGate.max.z + player.Radius + gateClearance) BeginBossFight();
+            if (boss != null && !boss.Dead && bossRoom.Contains(p))
+            {
+                boss.KeepEngaged();
+                // 入口の扉より十分奥まで入ったら、扉を閉じてボス戦を始める(入口に立っているだけでは閉じない)
+                if (!bossFight && p.z >= bossGate.max.z + player.Radius + gateClearance) BeginBossFight();
+            }
+            TickChests();
         }
 
         /// <summary>セーブポイントに触れた:再開地点を変えて知らせる(HPは回復しない)。</summary>
@@ -669,6 +679,7 @@ namespace Prototype
         /// <summary>そのレア度から一つ選ぶ。今付けている武装は出にくくする。</summary>
         DuelWeapon PickWeapon(int rarity)
         {
+            if (arsenal == null || arsenal.Count == 0) return null;
             var arms = player != null ? player.Arms : null;
             foreach (int r in new[] { rarity, rarity - 1, rarity + 1, rarity - 2, rarity + 2 })
             {

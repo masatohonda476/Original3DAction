@@ -138,7 +138,7 @@ namespace Prototype
 
             startTime = Time.time;
             stage.Begin(player);
-            Log("敵が落とす武装を拾って船の中を登り、頭頂部のボスを倒す");
+            Log("敵や宝箱から武装を拾って船の中を登り、頭頂部のボスを倒す");
         }
 
         /// <summary>その敵が技を出し始めてよいか(同時に攻撃している敵が maxAttackers 未満なら)。</summary>

@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Prototype
 {
-    /// <summary>落ちる武装のレア度の割合(敵の種類ごとに持つ。倒した所の高さは見ない)。</summary>
+    /// <summary>コモン・レア・エピックの抽選の重み。</summary>
     [System.Serializable]
     public class DuelRarityWeights
     {
@@ -17,7 +17,9 @@ namespace Prototype
         }
 
         /// <summary>重みに応じてレア度を1つ選ぶ(負の重みは0として扱う)。</summary>
-        public int RollRarity()
+        public int RollRarity() => RollRarity(common, rare, epic);
+
+        public static int RollRarity(float common, float rare, float epic)
         {
             float c = Mathf.Max(0f, common), r = Mathf.Max(0f, rare), e = Mathf.Max(0f, epic);
             float sum = c + r + e;

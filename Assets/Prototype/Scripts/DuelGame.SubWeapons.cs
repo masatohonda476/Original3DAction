@@ -9,7 +9,10 @@ namespace Prototype
 
         void DrawSubAim(DuelArms arms, Camera cam)
         {
-            if (Event.current.type != EventType.Repaint || !arms.SubSight(cam, out float halfW, out float halfH)) return;
+            if (Event.current.type != EventType.Repaint || cam == null || !arms.SubAiming) return;
+            bool showCorners = arms.SubSight(cam, out float halfW, out float halfH);
+            DrawCross(SW * 0.5f, SH * 0.5f, CrossMinGap, showCorners ? 0.7f : 0.95f, outline: !showCorners);
+            if (!showCorners) return;
             bool hasTarget = false;
             for (int i = 0; i < SubSlotCount; i++)
             {
@@ -22,7 +25,6 @@ namespace Prototype
 
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
             DrawWeaponSightCorners(halfW * k, halfH * k, hasTarget, false);
-            DrawCross(SW * 0.5f, SH * 0.5f, CrossMinGap, 0.7f);
 
             for (int i = 0; i < SubSlotCount; i++)
             {

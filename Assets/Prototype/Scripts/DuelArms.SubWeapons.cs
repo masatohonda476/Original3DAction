@@ -45,7 +45,7 @@ namespace Prototype
         public static int SubSlotStart(DuelWeapon w) => w.Slot == DuelSlot.Shoulder ? 0 : Sides;
         public DuelWeapon SubWeaponAt(int slot) => subMounts[slot].Weapon;
         public int SubUsesAt(int slot) => subMounts[slot].Uses;
-        public DuelEnemy SubTargetAt(int slot) => SubAiming ? subTargets[slot] : null;
+        public DuelEnemy SubTargetAt(int slot) => SubAiming && player.LockOn ? subTargets[slot] : null;
         public int SubChoiceIndex { get; private set; }
 
         public bool IsEquipped(DuelWeapon weapon)
@@ -172,7 +172,7 @@ namespace Prototype
         public bool SubSight(Camera camera, out float halfW, out float halfH)
         {
             halfW = halfH = 0f;
-            if (camera == null || !SubAiming) return false;
+            if (camera == null || !SubAiming || !player.LockOn) return false;
             float vertical = Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
             float width = Mathf.Tan(SubSightAngle * Mathf.Deg2Rad);
             halfW = Mathf.Min(width, 0.96f * vertical * camera.aspect);
@@ -188,20 +188,22 @@ namespace Prototype
                 return;
             }
             Array.Clear(subTargets, 0, subTargets.Length);
-            bool aiming = SubSight(camera, out float halfW, out float halfH);
-            if (aiming && !SubFiring)
+            if (camera != null && SubAiming && !SubFiring)
             {
-                viewFrame = -1;
-                for (int i = 0; i < SubSlotCount; i++)
+                if (SubSight(camera, out float halfW, out float halfH))
                 {
-                    var sub = subMounts[i];
-                    if (sub.Uses > 0 && sub.Weapon.GuidedSub)
-                        subTargets[i] = AimTarget(camera, halfW, halfH, SubMuzzle(i), sub.Weapon.Primary.range, out _);
+                    viewFrame = -1;
+                    for (int i = 0; i < SubSlotCount; i++)
+                    {
+                        var sub = subMounts[i];
+                        if (sub.Uses > 0 && sub.Weapon.GuidedSub)
+                            subTargets[i] = AimTarget(camera, halfW, halfH, SubMuzzle(i), sub.Weapon.Primary.range, out _);
+                    }
                 }
                 int start = ProtoInput.RightShoulderPressed && PairHasUses(0) ? 0
                     : ProtoInput.Attack && PairHasUses(Sides) ? Sides : -1;
                 if (start >= 0 && Time.deltaTime > 0f)
-                    BeginSubVolley(start, AimPointAlong(camera.transform.position, camera.transform.forward, out _));
+                    BeginSubVolley(start, AimPointAlong(camera.transform.position, camera.transform.forward, player.LockOn));
             }
             if (SubFiring) FireSubRounds();
         }
@@ -240,14 +242,14 @@ namespace Prototype
                     var w = launch.Weapon;
                     var shot = w.Primary;
                     var from = SubMuzzle(i);
-                    var target = launch.Target != null && !launch.Target.Dead ? launch.Target : null;
+                    var target = player.LockOn && launch.Target != null && !launch.Target.Dead ? launch.Target : null;
                     Vector3 direction = (launch.Aim - from).normalized;
                     if (direction == Vector3.zero) direction = transform.forward;
                     if (target != null) direction = (direction + Vector3.up * 0.22f).normalized;
                     var color = w.GuidedSub ? BulletColor : ShellColor;
                     ProtoFx.Blast(from, 1.2f, color, 0.09f);
                     StartCoroutine(Fly(from, direction, shot, color, false, SpeedOf(shot), false,
-                        target, MissileTurn, subFlightVersion));
+                        target, MissileTurn, subFlightVersion, inheritMovement: player.LockOn));
                     launch.Rounds--;
                     pendingSubRounds--;
                     launch.NextAt += shot.burstInterval;

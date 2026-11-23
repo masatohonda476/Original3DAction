@@ -24,6 +24,8 @@ namespace Prototype
         /// <summary>画面に出す射撃の照準枠。</summary>
         public struct AimFrame
         {
+            /// <summary>ロックオン機能が有効なときだけ照準枠を描く。</summary>
+            public bool showCorners;
             /// <summary>次に撃てるまで待っている間は枠を明るくする。</summary>
             public bool hot;
             /// <summary>枠の中に当てる相手がいる(枠の色を変える)。</summary>
@@ -221,19 +223,35 @@ namespace Prototype
             var w = RangedWeapon;
             var shot = special ? w.Special : w.Primary;
             float recoil = special ? 0f : bloom;
+            var frame = new AimFrame
+            {
+                showCorners = player.LockOn,
+                hot = Cooling > 0f,
+                spread = Mathf.Tan(Mathf.Min(80f, shot.spread + recoil) * Mathf.Deg2Rad),
+            };
+            from = Muzzle();
+            if (!frame.showCorners)
+            {
+                // 手動照準はカメラ中央の地形・空を基準にする。弾はこの照準方向を保つ。
+                Vector3 point = AimPointAlong(cam.transform.position, cam.transform.forward, useEnemyDepth: false);
+                aim = from + Vector3.ClampMagnitude(point - from, shot.range);
+                ShotPoint = aim;
+                ShotInView = true;
+                ShotFrame = frame;
+                return true;
+            }
+
             float tanV = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
             float halfW = Mathf.Tan(Rules.FrameDeg(w) * Mathf.Deg2Rad);
-            float halfH = halfW * Rules.frameAspect;
-            halfW = Mathf.Min(halfW, 0.96f * tanV * cam.aspect);
-            halfH = Mathf.Min(halfH, 0.9f * tanV);
+            frame.halfW = Mathf.Min(halfW, 0.96f * tanV * cam.aspect);
+            frame.halfH = Mathf.Min(halfW * Rules.frameAspect, 0.9f * tanV);
 
             // ロックオンの付け始めで使った投影があれば、移動とカメラ操作後の位置でもう一度作る。
             viewFrame = -1;
-            from = Muzzle();
-            MarkedEnemy = AimTarget(cam, halfW, halfH, from, shot.range, out aim);
+            MarkedEnemy = AimTarget(cam, frame.halfW, frame.halfH, from, shot.range, out aim);
             if (MarkedEnemy == null)
             {
-                Vector3 point = AimPointAlong(cam.transform.position, cam.transform.forward, out _);
+                Vector3 point = AimPointAlong(cam.transform.position, cam.transform.forward, useEnemyDepth: true);
                 aim = from + Vector3.ClampMagnitude(point - from, shot.range);
             }
             Vector3 predicted = default;
@@ -244,18 +262,15 @@ namespace Prototype
             Vector3 vp = cam.WorldToViewportPoint(predicted);
             ShotInView = vp.z > 0f && vp.x >= 0f && vp.x <= 1f && vp.y >= 0f && vp.y <= 1f;
             ShotEnemy = led ? MarkedEnemy : PathEnemy(from, predicted, shot);
-            ShotFrame = new AimFrame
-            {
-                halfW = halfW, halfH = halfH, hot = Cooling > 0f, locked = MarkedEnemy != null,
-                spread = Mathf.Tan(Mathf.Min(80f, shot.spread + recoil) * Mathf.Deg2Rad),
-            };
+            frame.locked = MarkedEnemy != null;
+            ShotFrame = frame;
             return true;
         }
 
         const float AimFar = 250f;
 
-        /// <summary>o から向き d の先で最初に当たる地形・敵(なければ AimFar 先)。enemy は当たった敵(地形・空なら null)。</summary>
-        Vector3 AimPointAlong(Vector3 o, Vector3 d, out DuelEnemy enemy)
+        /// <summary>カメラ中央の狙う点。手動照準の奥行きは地形か AimFar 先で決める。</summary>
+        Vector3 AimPointAlong(Vector3 o, Vector3 d, bool useEnemyDepth)
         {
             // カメラは壁で寄らず、壁の向こうに残って壁を透かすことがある(DuelCamera)。カメラと自機の間の物(透けている壁など)に当てて、
             // 照準の先が自機より手前(カメラ側)にならないよう、自機の位置(線の上へ下ろした所)より先だけを調べる
@@ -263,7 +278,7 @@ namespace Prototype
             Vector3 s = o + d * skip;
             float best = AimFar;
             if (Physics.Raycast(s, d, out var hit, AimFar, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)) best = hit.distance;
-            if (RayHitsEnemy(s, d, best, out enemy, out float ed)) best = ed;
+            if (useEnemyDepth && RayHitsEnemy(s, d, best, out _, out float ed)) best = ed;
             return s + d * best;
         }
 

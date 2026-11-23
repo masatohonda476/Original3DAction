@@ -150,6 +150,14 @@ namespace Prototype
             if (arms.ShotFrame is not { } frame) return;
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
             float cx = SW * 0.5f, cy = SH * 0.5f;
+            float gap = Mathf.Clamp(frame.spread * k, CrossMinGap, SH * 0.3f);
+            float crossAlpha = frame.hot ? 0.85f : 0.4f;
+            if (!frame.showCorners)
+            {
+                crossShownAt = -1f;
+                DrawCross(cx, cy, gap, 0.95f, outline: true);
+                return;
+            }
             DrawWeaponSightCorners(frame.halfW * k, frame.halfH * k, frame.locked, frame.hot);
 
             // 弾道の十字は補正と反動を反映する。カメラの後ろに来たら隠す。
@@ -174,7 +182,7 @@ namespace Prototype
                     crossHit = Mathf.MoveTowards(crossHit, onEnemy, (now - crossShownAt) / CrossHitTime);
                 }
                 crossShownAt = now;
-                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(frame.spread * k, CrossMinGap, SH * 0.3f), frame.hot ? 0.85f : 0.4f, crossHit);
+                DrawCross(crossPos.x, crossPos.y, gap, crossAlpha, crossHit);
             }
             DrawAimTargetMark(cam, arms.MarkedEnemy);
         }
@@ -212,17 +220,25 @@ namespace Prototype
         const float CrossHitAlpha = 1f;
 
         /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。hit(0〜1)は敵に重なっている度合いで、1 なら濃い橙(FrameHit。弾が当たるときのロックオンの角と同じ色)で透けさせない。</summary>
-        static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f)
+        static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f, bool outline = false)
         {
             var sc = Color.Lerp(FrameIdle, FrameHit, hit);
             sc.a = Mathf.Lerp(alpha, Mathf.Max(alpha, CrossHitAlpha), hit);
-            GUI.color = sc;
             const float len = 7f, th = 2f;
-            var t = Texture2D.whiteTexture;
-            GUI.DrawTexture(new Rect(cx - g - len, cy - th / 2f, len, th), t);
-            GUI.DrawTexture(new Rect(cx + g, cy - th / 2f, len, th), t);
-            GUI.DrawTexture(new Rect(cx - th / 2f, cy - g - len, th, len), t);
-            GUI.DrawTexture(new Rect(cx - th / 2f, cy + g, th, len), t);
+            void Stroke(Rect line)
+            {
+                if (outline)
+                {
+                    GUI.color = new Color(0.03f, 0.05f, 0.08f, 0.85f);
+                    GUI.DrawTexture(new Rect(line.x - 1f, line.y - 1f, line.width + 2f, line.height + 2f), Texture2D.whiteTexture);
+                }
+                GUI.color = sc;
+                GUI.DrawTexture(line, Texture2D.whiteTexture);
+            }
+            Stroke(new Rect(cx - g - len, cy - th / 2f, len, th));
+            Stroke(new Rect(cx + g, cy - th / 2f, len, th));
+            Stroke(new Rect(cx - th / 2f, cy - g - len, th, len));
+            Stroke(new Rect(cx - th / 2f, cy + g, th, len));
             GUI.color = Color.white;
         }
 
@@ -334,7 +350,7 @@ namespace Prototype
                 lockOnAt = on ? now : -1f;
                 lockOffAt = on ? -1f : now;
             }
-            if (player.Dead || MenuOpen)
+            if (player.Dead || MenuOpen || (!on && player.Arms.FreeAim))
             {
                 lockOnAt = lockOffAt = -1f;
                 lockCornersShown = false;

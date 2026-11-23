@@ -126,7 +126,8 @@ namespace Prototype
                     dir = Quaternion.AngleAxis(angle, Vector3.up) * direction;
                 }
                 else dir = Jitter(direction, shot.spread + (special ? 0f : bloom));
-                if (speed > 0f) StartCoroutine(Fly(from, dir, shot, color, spread, speed, ShotInView));
+                if (speed > 0f)
+                    StartCoroutine(Fly(from, dir, shot, color, spread, speed, ShotInView, inheritMovement: player.LockOn));
                 else Shot(from, dir, shot, color, spread);
             }
             float recoil = Mathf.Max(0f, Rules.recoilMul);
@@ -283,13 +284,16 @@ namespace Prototype
 
         /// <summary>速さを持つ弾。地形で止まり、貫通弾は射程までに通った敵に一度ずつ当たる。</summary>
         IEnumerator Fly(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet, float speed, bool mark,
-            DuelEnemy homing = null, float turnRate = 0f, int flightVersion = -1)
+            DuelEnemy homing = null, float turnRate = 0f, int flightVersion = -1, bool inheritMovement = true)
         {
             var r = Rules;
             // サイト内への補正と弾道表示も、発射時に自機から受け継ぐ速度を使っている。
-            Vector3 velocity = ShotVelocity(dir, speed);
-            speed = velocity.magnitude;
-            dir = velocity.normalized;
+            if (inheritMovement)
+            {
+                Vector3 velocity = ShotVelocity(dir, speed);
+                speed = velocity.magnitude;
+                dir = velocity.normalized;
+            }
             const float ShellSize = 1.1f; // 仮
             float size = w.blastRadius > 0f ? ShellSize : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
             float trail = Mathf.Max(0.01f, r.bulletTrail);

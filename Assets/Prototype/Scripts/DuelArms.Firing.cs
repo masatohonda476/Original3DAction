@@ -270,7 +270,7 @@ namespace Prototype
         }
 
         /// <summary>弾の見た目:光る弾体と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
-        static Transform Projectile(Vector3 at, Color c, float size, float trail, float length = 0f)
+        internal static Transform Projectile(Vector3 at, Color c, float size, float trail, float length = 0f)
         {
             var go = VisualSphere("Shot", at, c, size);
             if (length > 0f)
@@ -412,7 +412,7 @@ namespace Prototype
         }
 
         /// <summary>弾が止まった:その所まで動かしてから球を隠し、尾が消えるのを待って消す(当たった所まで筋が届いて見えるように)。</summary>
-        static void EndProjectile(Transform p, Vector3 at, float trail)
+        internal static void EndProjectile(Transform p, Vector3 at, float trail)
         {
             if (p == null) return;
             p.position = at;

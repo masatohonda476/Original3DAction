@@ -6,7 +6,7 @@ namespace Prototype
     /// <summary>
     /// 敵(人型の剣士メカ)。中距離で回り込みながら間合いを測り、距離に応じて技を選ぶ。
     /// 横薙ぎ(2連まで)/ 叩きつけ/ 踏み込み突き(離れた所から一気に詰める)。
-    /// どの技かは予備動作の姿勢だけで分かるようにする(色・技名・地面の印は出さない)。
+    /// どの近接技かは予備動作の姿勢だけで分かるようにする(色・技名・地面の印は出さない)。
     ///   横薙ぎ:剣を上げつつ上半身を横へひねって溜める / 叩きつけ:剣を高く掲げ、のけぞって浮き上がる(一番大きく長い)/
     ///   突き:低く前かがみに構え、少し後ろへ下がって溜める /
     ///   跳び上がり斬り(対空):自機が頭上を飛んでいると、深く沈み込んで上を見上げるようにのけぞって溜め、自機へ跳び上がる
@@ -19,6 +19,7 @@ namespace Prototype
     /// 種類(Spec)で性格を変える:剣士(中型・1.5倍の大きさ・地上の技3つ・ブースト飛行)/ 兵卒(雑魚・地上の技2つ・すぐ怯む・攻めがゆっくり)。
     /// どちらも自機が頭上を飛ぶと跳び上がり斬りを使う(確率 Spec.antiAirChance。飛べる剣士は先に飛び上がって高さを合わせる)。
     /// 剣士は自機が頭上を飛ぶと、噴射炎を出して同じ高さまで飛び上がり、空中で斬りかかる(続けて飛べるのは maxFlyTime 秒まで)。
+    /// 離れた相手には直進弾・誘導弾を使う。飛行偵察機は持ち場の高度で常に浮かび、直進弾と誘導弾を交互に使う。
     /// 同時に攻撃してくる数は DuelGame が絞る(順番待ちの間は回り込んで待つ)。
     /// ボス(大剣士):剣士を大きく硬くし、固有の技を3つ足したもの(大薙ぎ・突進・跳躍叩きつけ)。数値は BossMoves(ステージの DuelStage で触れる)。
     ///   大薙ぎ:深く沈み、上半身を左へ大きくひねって剣を担ぐ(普通の横薙ぎは右へひねる)→ その場で1回転して全周を斬る /
@@ -54,6 +55,11 @@ namespace Prototype
             /// <summary>ブースト飛行できるか。上昇の速さ・続けて飛べる秒数・使い切った後に飛べない秒数。</summary>
             public bool canFly;
             public float flyRiseSpeed = 18f, maxFlyTime = 4f, flyCooldown = 3f;
+            /// <summary>持ち場の高度を保ち、予備動作のある直進弾と誘導弾を交互に撃つ。</summary>
+            public bool hovers;
+            /// <summary>遠距離攻撃を始める距離(m)。0なら遠距離攻撃をしない。</summary>
+            public float fireRange;
+            public bool usesMissiles;
             /// <summary>当てられて怯んだときに吹き飛ぶ量の倍率(大きく重い機体ほど小さく)。</summary>
             public float knockMul = 1f;
             /// <summary>ボスの技の数値(null ならボスの技は使わない)。</summary>
@@ -104,14 +110,14 @@ namespace Prototype
         }
 
         /// <summary>剣士(中型):1対1で読み合う相手。</summary>
-        public static Spec Duelist(float hp) => new() { name = "剣士", size = 1.5f, hp = hp, keepDistance = 15f, canFly = true };
+        public static Spec Duelist(float hp) => new() { name = "剣士", size = 1.5f, hp = hp, keepDistance = 15f, canFly = true, fireRange = 78f, usesMissiles = true };
 
         /// <summary>ボス(大剣士):剣士を大きく硬くし、固有の技を足したもの。怯みにくく、吹き飛びにくい。飛ばない。</summary>
         public static Spec Boss(float hp, BossMoves moves, float size = 2.5f, float maxStagger = 70f) => new()
         {
             name = "大剣士", size = size, hp = hp, maxStagger = maxStagger, damageMul = 1.3f, windupMul = 1.25f,
             thinkMin = 0.9f, thinkMax = 1.6f, approachSpeed = 11f, strafeSpeed = 5f, keepDistance = 16f, sweepChain = 0.5f,
-            dashSpeed = 30f, sideDashRate = 0.08f, antiAirChance = 0.6f, antiAirHeight = 40f, knockMul = 0.25f, boss = moves ?? new BossMoves(),
+            dashSpeed = 30f, sideDashRate = 0.08f, antiAirChance = 0.6f, antiAirHeight = 40f, knockMul = 0.25f, fireRange = 95f, usesMissiles = true, boss = moves ?? new BossMoves(),
         };
 
         /// <summary>兵卒(雑魚):複数で来る前提。地上の技は横薙ぎと突きだけ(叩きつけはない)、攻めはゆっくり。</summary>
@@ -119,7 +125,14 @@ namespace Prototype
         {
             name = "兵卒", size = 1f, hp = hp, maxStagger = 23f, damageMul = 0.65f, playerStaggerMul = 0.7f, windupMul = 1.15f,
             thinkMin = 1.5f, thinkMax = 2.8f, approachSpeed = 12f, strafeSpeed = 6f, keepDistance = 14f, sweepChain = 0f, canSlam = false,
-            dashSpeed = 26f, sideDashRate = 0.1f, antiAirChance = 0.35f, antiAirHeight = 30f,
+            dashSpeed = 26f, sideDashRate = 0.1f, antiAirChance = 0.35f, antiAirHeight = 30f, fireRange = 58f,
+        };
+
+        public static Spec FlyingScout() => new()
+        {
+            name = "飛行偵察機", size = 0.55f, hp = 26f, maxStagger = 23f,
+            hovers = true, fireRange = 65f, keepDistance = 28f,
+            approachSpeed = 10f, strafeSpeed = 7f, dashSpeed = 16f, sideDashRate = 0f,
         };
 
         public Spec Kind { get; private set; }
@@ -143,7 +156,7 @@ namespace Prototype
         public enum State { Approach, Strafe, Windup, Active, Recover, Flinch, Dead }
         /// <summary>技を出している途中(予備動作か、出ている間)。同時に攻撃する数を数えるのに使う。</summary>
         public bool Attacking => Current is State.Windup or State.Active;
-        public enum Skill { Sweep, Slam, Thrust, AntiAir, WideSweep, Charge, LeapSlam, Flurry }
+        public enum Skill { Sweep, Slam, Thrust, AntiAir, WideSweep, Charge, LeapSlam, Flurry, Shot, Missile }
         public bool IsBoss => Kind != null && Kind.boss != null;
         BossMoves B => Kind.boss;
 
@@ -190,7 +203,9 @@ namespace Prototype
             Enter(State.Approach);
             thinkAt = Time.time + 1f;
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
-            if (spec.canFly || spec.boss != null) gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中・ダッシュ中の噴射炎
+            if (spec.hovers && rig != null && rig.sword != null) rig.sword.gameObject.SetActive(false);
+            if (spec.fireRange > 0f) BuildRangedMount();
+            if (spec.hovers || spec.canFly || spec.boss != null) gameObject.AddComponent<DuelThruster>().Init(this, rig);   // 飛行中・ダッシュ中の噴射炎
         }
 
         // ───────── ブースト飛行(剣士) ─────────
@@ -205,6 +220,16 @@ namespace Prototype
         /// </summary>
         void UpdateFlight(float dt)
         {
+            if (Kind.hovers)
+            {
+                flying = true;
+                float bob = Mathf.Sin(Time.time * 2.1f + home.x) * 0.8f;
+                float offset = Engaged && player != null
+                    ? Mathf.Clamp((player.Chest.y - home.y) * 0.35f, -2f, 5f) : 0f;
+                riseSpeed = Mathf.Clamp((home.y + offset + bob - transform.position.y) * 3f, -8f, 8f);
+                riseAccel = 48f;
+                return;
+            }
             bool want = false;
             if (CanFlyNow && player != null && !player.Dead && Engaged && Current != State.Flinch && Current != State.Dead &&
                 !(Current == State.Active && skill == Skill.AntiAir))
@@ -249,7 +274,7 @@ namespace Prototype
             if (Engaged && UpdateEngaged(dt))
             {
                 // 発覚を切ったフレームは、技を考えずにここで終える(次のフレームから持ち場へ帰る)
-                flying = false;
+                UpdateFlight(dt);
                 dashing = false;
                 Move(Vector3.zero, dt);
                 Animate(dt, Vector3.zero);
@@ -261,7 +286,7 @@ namespace Prototype
                 Vector3 calm = UpdateUnaware(dt);
                 if (!Engaged)
                 {
-                    flying = false;
+                    UpdateFlight(dt);
                     dashing = false;
                     calm = LimitToLeash(calm);
                     bool settled = calm == Vector3.zero && cc.isGrounded && !Airborne;
@@ -284,11 +309,11 @@ namespace Prototype
             {
                 case State.Approach:
                     Face(dir, 8f, dt);
-                    // 離れていればダッシュで一気に詰める
-                    dashing = gap > keepDistance + 14f;
+                    // 射程内なら、遠距離攻撃を選べる間合いを残すため歩いて近づく。
+                    dashing = gap > keepDistance + 14f && !(playerAlive && InRangedAttackBand(gap));
                     vel = dir * (dashing ? Kind.dashSpeed : approachSpeed);
                     if (gap <= keepDistance) Enter(State.Strafe);
-                    if (playerAlive && now >= thinkAt && (gap <= 26f || IsBoss)) Think(gap);   // ボスは遠くからも突進・跳躍で詰める
+                    if (playerAlive && now >= thinkAt) Think(gap);
                     break;
 
                 case State.Strafe:
@@ -435,7 +460,7 @@ namespace Prototype
             Stagger = 0f;
             chain = 0;
             Knockback(knock * 1.5f * Kind.knockMul);
-            StopRising();   // 空中で怯んだら上昇が止まり、怯んでいる間は落ちる
+            StopRising();   // 常時飛行する機体は怯み中も高度を保つ
             Enter(State.Flinch, ranged ? flinchTime : Mathf.Max(flinchTime, game.breakFlinchMin));
         }
 
@@ -475,7 +500,9 @@ namespace Prototype
         {
             HP = 0f;
             StopRising();   // 跳び上がり斬りの途中で倒されたら、そのまま落ちる
+            flying = false;
             Enter(State.Dead);
+            UpdateRangedMount();
             PlayDeath(true);   // 火花 → 爆発 → 黒焦げ(爆発したら当たり判定を消し、残骸にぶつからないようにする)
             game.OnEnemyDied(this);
             Destroy(gameObject, 3f);   // 黒焦げの残骸を少し見せてから消す

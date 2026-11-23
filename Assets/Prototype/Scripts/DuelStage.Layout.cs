@@ -40,6 +40,7 @@ namespace Prototype
             G(-30, 0, 44, 90);    // 横を向いて立つ(物陰づたいに近づける)
             G(34, 0, 64, 200);
             G(6, 12, 104, 180);   // 裂け目の見張り(斜面を見下ろす)
+            F(5, 15, 77, 180, 16);
 
             // ── 2. 横倒しの居住区:元の壁が床になった狭い部屋が3つ。寝台・ロッカーが壁から横に突き出し、ドアの穴が床と天井にある ──
             Region("居住区", -27, 27, 8, 82, 112, 251);
@@ -101,6 +102,8 @@ namespace Prototype
             G(-33, 88, 290, 90, leash: 8f);    // 足場2:x -45〜-20・z 272〜306
             G(28, 106, 291, 180, leash: 7f);   // 足場3:x 15〜45・z 280〜302
             G(39, 106, 289, 270, leash: 5f);
+            F(-11, 68, 272, 135, 10);
+            F(3, 111, 290, 180, 10);
             Save("竪穴の上", 30, 124, 316, 270f);   // 足場3から上がったところ(東へも西へも、この脇を通る)
 
             // ── 4a. 外殻を伝う外の道(開けている):横倒しの船の側面(いまは上面)の外板の上を、斜面(20°)で上る ──
@@ -235,6 +238,8 @@ namespace Prototype
             G(20, 192, 600, 210);
             D(-8, 192, 640, 180);
             D(25, 192, 660, 200);
+            F(2, 212, 615, 180, 16);
+            F(-26, 223, 650, 150, 15);
 
             // ── 8. 昇降機の竪穴(床192m〜天井333m):細く高い。張り出した足場と、途中で止まった昇降機の箱を、ブースト飛行で上る ──
             Region("昇降機の竪穴", -30, 30, 189, 335, 680, 740);
@@ -257,6 +262,7 @@ namespace Prototype
             G(18, 238, 712, 225, leash: 4f);    // 足場2:x 10〜27・z 700〜737
             G(-3, 262, 714, 180, leash: 4f);    // 昇降機の箱:x -14〜8・z 705〜725
             G(17, 280, 691, 315, leash: 3f);    // 足場3:x 8〜27・z 683〜700
+            F(-8, 270, 705, 135, 10);
             Save("昇降機の上", 0, 302, 726, 0f);   // 上の口の手前
 
             // ── 9. 船首の外板(開けている):横倒しの船首の外板の上を、斜面(18°)で上る。めくれた外板・砲塔の残骸・アンテナの柱が物陰 ──
@@ -376,6 +382,7 @@ namespace Prototype
 
         void G(float x, float y, float z, float yaw, float leash = 0f) => Add(Kind.Grunt, x, y, z, yaw, leash);
         void D(float x, float y, float z, float yaw) => Add(Kind.Duelist, x, y, z, yaw, 0f);
+        void F(float x, float y, float z, float yaw, float leash) => Add(Kind.FlyingScout, x, y, z, yaw, leash);
 
         Spawn Add(Kind kind, float x, float y, float z, float yaw, float leash)
         {
@@ -480,8 +487,8 @@ namespace Prototype
             Gizmos.matrix = Matrix4x4.identity;
             foreach (var s in spawns)
             {
-                Gizmos.color = s.kind switch { Kind.Boss => Color.red, Kind.Duelist => new Color(1f, 0.6f, 0.2f), _ => Color.yellow };
-                float r = s.kind switch { Kind.Boss => 5f, Kind.Duelist => 3f, _ => 2f };
+                Gizmos.color = s.kind switch { Kind.Boss => Color.red, Kind.Duelist => new Color(1f, 0.6f, 0.2f), Kind.FlyingScout => Color.cyan, _ => Color.yellow };
+                float r = s.kind switch { Kind.Boss => 5f, Kind.Duelist => 3f, Kind.FlyingScout => 1.1f, _ => 2f };
                 Vector3 c = s.pos + Vector3.up * r;
                 Gizmos.DrawWireSphere(c, r);
                 Gizmos.DrawLine(c, c + Quaternion.Euler(0f, s.yaw, 0f) * Vector3.forward * r * 3f);   // 立ち番の向き

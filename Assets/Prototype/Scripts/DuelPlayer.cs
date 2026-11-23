@@ -36,7 +36,7 @@ namespace Prototype
         [Header("回避")]
         public float dodgeDistance = 13f;
         public float dodgeDuration = 0.38f;
-        [Tooltip("回避の出だしから、この秒数は攻撃が当たらない")]
+        [Tooltip("回避の出だしの無敵時間(秒)。背中のスラスターの倍率が掛かる")]
         public float dodgeInvincible = 0.26f;
         public float dodgeCooldown = 0.12f;
 
@@ -100,10 +100,10 @@ namespace Prototype
             (dropping || FatalCommitted || phase == 1 || (phase == 2 && stateT < dodgeLockAfterSwing));
 
         // 背中のスラスターによる機動の補正。
-        float RunMul => Arms.RunMul;
         float DashMul => Arms.DashMul;
         float EnCostMul => Arms.EnCostMul;
-        float DodgeDistance => dodgeDistance * Arms.DodgeMul;
+        float DodgeDistance => dodgeDistance * Arms.DodgeDistanceMul;
+        float DodgeInvincibleTime => dodgeInvincible * Arms.DodgeInvincibleMul;
         float DashSpeed => dashSpeed * DashMul;
 
         /// <summary>踏み込むのは振りかぶりのうち、この割合(前半)だけ。</summary>
@@ -281,7 +281,7 @@ namespace Prototype
                     if (TryDodge(now, worldMove)) break;
                     if (TryAttack(now)) break;
                     Dashing = BoostOn && worldMove.sqrMagnitude > 0.04f && Energy > 0f;
-                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed) * RunMul;
+                    float spd = Dashing ? DashSpeed : (Target != null ? lockedSpeed : runSpeed);
                     vel = worldMove * spd;
                     if (Dashing)
                     {

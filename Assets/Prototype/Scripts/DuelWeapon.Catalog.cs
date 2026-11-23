@@ -28,11 +28,11 @@ namespace Prototype
             Primary = normal, Special = special, SpecialAmmo = specialAmmo,
         };
 
-        static DuelWeapon Back(string name, int rarity, string feel, float run, float dash, float dodge,
+        static DuelWeapon Back(string name, int rarity, string feel, float dash, float dodgeDistance, float dodgeInvincible,
             float en, Vector3 scale, float weight) => new()
         {
-            name = name, Slot = DuelSlot.Back, rarity = rarity, feel = feel, runMul = run, dashMul = dash,
-            dodgeMul = dodge, enCostMul = en, scale = scale, weight = weight,
+            name = name, Slot = DuelSlot.Back, rarity = rarity, feel = feel, dashMul = dash,
+            dodgeDistanceMul = dodgeDistance, dodgeInvincibleMul = dodgeInvincible, enCostMul = en, scale = scale, weight = weight,
         };
 
         // 仮。技の時間・EN・崩しは DuelMoveSet の強攻撃の設定。通常の振り方と間合いは全武器共通。
@@ -163,10 +163,10 @@ namespace Prototype
                 },
                 17, "通常は近距離の 7 粒散弾。大技は広げた 5 発がそれぞれ爆発する"),
 
-            Back("背部スラスター", 0, "速さと燃費のバランス型", 1.05f, 1.15f, 1.1f, 0.85f, new Vector3(2.4f, 2.8f, 1.3f), 5f),
-            Back("省エネスラスター", 0, "速さは控えめだが、長く飛び続けられる", 1f, 1.05f, 1f, 0.6f, new Vector3(2f, 2.4f, 1.1f), 5f),
-            Back("軽量スラスター", 1, "軽く速い。回避が伸びる", 1.15f, 1.3f, 1.2f, 0.75f, new Vector3(1.6f, 2f, 0.8f), 2f),
-            Back("高速スラスター", 2, "とても速く、燃費も良い", 1.25f, 1.6f, 1.35f, 0.6f, new Vector3(2.8f, 3.2f, 1.6f), 4.5f),
+            Back("背部スラスター", 0, "速さと燃費のバランス型", 1.15f, 1.155f, 1.05f, 0.85f, new Vector3(2.4f, 2.8f, 1.3f), 5f),
+            Back("省エネスラスター", 0, "速さは控えめだが、長く飛び続けられる", 1.05f, 1f, 1f, 0.6f, new Vector3(2f, 2.4f, 1.1f), 5f),
+            Back("軽量スラスター", 1, "軽く速い。回避が伸びる", 1.3f, 1.38f, 1.15f, 0.75f, new Vector3(1.6f, 2f, 0.8f), 2f),
+            Back("高速スラスター", 2, "とても速く、燃費も良い", 1.6f, 1.6875f, 1.25f, 0.6f, new Vector3(2.8f, 3.2f, 1.6f), 4.5f),
         };
 
         public static List<DuelWeapon> Defaults() => new(DropCatalog);

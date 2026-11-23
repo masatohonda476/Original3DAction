@@ -68,9 +68,9 @@ namespace Prototype
 
         static Axis[] BackAxes() => new[]
         {
-            A("走り", w => w.runMul, (_, v) => $"×{v:0.00}"),
             A("ブースト", w => w.dashMul, (_, v) => $"×{v:0.00}"),
-            A("回避", w => w.dodgeMul, (_, v) => $"×{v:0.00}"),
+            A("回避距離", w => w.dodgeDistanceMul, (_, v) => $"×{v:0.00}"),
+            A("無敵時間", w => w.dodgeInvincibleMul, (_, v) => $"×{v:0.00}"),
             A("燃費", w => w.enCostMul, (_, v) => $"×{v:0.00}", false),
             A("軽さ", w => w.weight, (_, v) => $"{v:0.#}", false),
         };

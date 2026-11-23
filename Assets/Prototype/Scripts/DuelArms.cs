@@ -27,9 +27,9 @@ namespace Prototype
         public DuelWeapon BackW => Get(DuelSlot.Back);
         public float EquippedWeight => MeleeWeapon.weight + RangedWeapon.weight + BackW.weight;
         public float Mobility => Rules.MobilityAt(EquippedWeight);
-        public float RunMul => BackW.runMul;
         public float DashMul => BackW.dashMul * Mobility;
-        public float DodgeMul => BackW.dodgeMul * Mobility;
+        public float DodgeDistanceMul => BackW.dodgeDistanceMul * Mobility;
+        public float DodgeInvincibleMul => BackW.dodgeInvincibleMul;
         public float EnCostMul => BackW.enCostMul;
 
         // 共用の入力クラスでは肩の名称。ここでは L2/E が持ち替え、R2/R が強攻撃・大技。

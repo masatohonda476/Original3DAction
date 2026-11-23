@@ -51,7 +51,7 @@ namespace Prototype
         public string GunTypeName { get; private set; }
 
         [Header("背中")]
-        public float runMul = 1f, dashMul = 1f, dodgeMul = 1f, enCostMul = 1f;
+        public float dashMul = 1f, dodgeDistanceMul = 1f, dodgeInvincibleMul = 1f, enCostMul = 1f;
 
         [Header("見た目")]
         public Vector3 scale;

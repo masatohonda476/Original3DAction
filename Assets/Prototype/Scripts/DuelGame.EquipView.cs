@@ -73,7 +73,7 @@ namespace Prototype
         {
             DuelSlot.Melee => $"強攻撃　{w.HeavyName}（EN {w.HeavyMove.cost:0.#}）",
             DuelSlot.Ranged => $"通常　{w.GunTypeName}　　大技　{w.HeavyName}（共通の弾 {w.SpecialAmmo}）",
-            _ => "走り・回避・ブースト・飛行の性能を変える",
+            _ => "回避・ブースト・飛行の性能を変える",
         };
 
         // 同じ枠の武装を比較するときは、項目ごとに「装備中 → 落とし物」の順に並べる。
@@ -106,7 +106,10 @@ namespace Prototype
                 float? previousDamage = current != null ? DuelRadar.VolleyDamage(current) : null;
                 return $"通常最大威力 {Value(DuelRadar.VolleyDamage(w), previousDamage, "0.#")}　射程 {Value(w.Primary.range, current?.Primary.range, "0.#")} m　{fuel}";
             }
-            return $"走り ×{Value(w.runMul, current?.runMul, "0.00")}　ブースト ×{Value(w.dashMul, current?.dashMul, "0.00")}　回避 ×{Value(w.dodgeMul, current?.dodgeMul, "0.00")}　消費 EN ×{Value(w.enCostMul, current?.enCostMul, "0.00")}";
+            return $"ブースト ×{Value(w.dashMul, current?.dashMul, "0.00")}　" +
+                $"回避距離 ×{Value(w.dodgeDistanceMul, current?.dodgeDistanceMul, "0.00")}　" +
+                $"無敵時間 ×{Value(w.dodgeInvincibleMul, current?.dodgeInvincibleMul, "0.00")}　" +
+                $"消費 EN ×{Value(w.enCostMul, current?.enCostMul, "0.00")}";
         }
     }
 }

@@ -23,7 +23,7 @@ namespace Prototype
         }
 
         /// <summary>攻撃が当たらない間:回避の出だしと、致命攻撃の踏み込み〜振り抜きの間(ほかの敵に割り込まれて止められないように)。</summary>
-        bool Invincible => (Current == State.Dodge && stateT < dodgeInvincible) || FatalCommitted;
+        bool Invincible => (Current == State.Dodge && stateT < DodgeInvincibleTime) || FatalCommitted;
 
         // ───────── 攻撃 ─────────
 

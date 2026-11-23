@@ -8,7 +8,7 @@ namespace Prototype
     {
         const float GrenadeRange = 38f, GrenadeFlight = 0.64f, GrenadeFuse = 0.85f;
         const float GrenadeRadius = 14f, GrenadeDamage = 18f, GrenadeStagger = 12f;
-        const float AnchorRadius = 14f, AnchorDuration = 5f, AnchorHeight = 3f;
+        const float AnchorRadius = 14f, AnchorDuration = 10f, AnchorHeight = 3f;
         const float BeaconRange = 35f, BeaconHeight = 7f, BeaconDuration = 4f;
 
         sealed class CombatItem
@@ -16,7 +16,7 @@ namespace Prototype
             public DuelItem Kind;
             public Transform Visual;
             public float StartedAt, EndsAt;
-            public DuelEnemy Target;
+            public HashSet<DuelEnemy> BeaconTargets;
             public Vector3 Origin, Destination;
             public bool Landed;
         }
@@ -48,28 +48,27 @@ namespace Prototype
                 new Vector3(0.52f, 0.4f, 0.52f), new Color(0.22f, 0.23f, 0.28f));
         }
 
-        internal DuelEnemy FindBeaconTarget(Vector3 floor)
+        HashSet<DuelEnemy> FindBeaconTargets(Vector3 floor)
         {
-            DuelEnemy target = null;
-            float best = BeaconRange * BeaconRange;
+            var targets = new HashSet<DuelEnemy>();
             foreach (var enemy in game.Enemies)
             {
                 if (enemy == null || enemy.Dead || enemy.Invulnerable || enemy.IsBoss || !enemy.Engaged ||
                     enemy.Kind.hovers || enemy.Airborne || enemy.Flinching || TryGetBeacon(enemy, out _)) continue;
                 Vector3 offset = enemy.transform.position - floor;
-                if (Mathf.Abs(offset.y) > BeaconHeight || offset.sqrMagnitude > best ||
+                if (Mathf.Abs(offset.y) > BeaconHeight || offset.sqrMagnitude > BeaconRange * BeaconRange ||
                     !DuelSenses.ClearSight(enemy.Chest, floor + Vector3.up * 1.5f)) continue;
-                target = enemy;
-                best = offset.sqrMagnitude;
+                targets.Add(enemy);
             }
-            return target;
+            return targets;
         }
 
-        internal void PlaceCombatItem(DuelItem kind, RaycastHit floor, DuelEnemy target)
+        internal void PlaceCombatItem(DuelItem kind, RaycastHit floor)
         {
             bool anchor = kind == DuelItem.MagneticAnchor;
+            var targets = anchor ? null : FindBeaconTargets(floor.point);
             var item = CreateCombatItem(kind, floor.point, anchor ? AnchorDuration : BeaconDuration);
-            item.Target = target;
+            item.BeaconTargets = targets;
             var tint = DuelItems.Get(kind).Tint;
             ItemShape(item.Visual, PrimitiveType.Cylinder, Vector3.up * 0.23f, new Vector3(2.7f, 0.23f, 2.7f), tint);
             ItemShape(item.Visual, PrimitiveType.Cube, Vector3.up * (anchor ? 0.8f : 1.5f),
@@ -117,7 +116,7 @@ namespace Prototype
         {
             foreach (var item in combatItems)
             {
-                if (item.Kind != DuelItem.DecoyBeacon || item.Target != enemy || Time.time >= item.EndsAt) continue;
+                if (item.Kind != DuelItem.DecoyBeacon || !item.BeaconTargets.Contains(enemy) || Time.time >= item.EndsAt) continue;
                 position = item.Visual.position;
                 return true;
             }
@@ -133,8 +132,7 @@ namespace Prototype
                 var item = combatItems[i];
                 bool grenade = item.Kind == DuelItem.Grenade;
                 if (grenade && !item.Landed) AdvanceGrenade(item, now);
-                bool targetLost = item.Kind == DuelItem.DecoyBeacon && (item.Target == null || item.Target.Dead);
-                if (now < item.EndsAt && !targetLost) continue;
+                if (now < item.EndsAt) continue;
                 combatItems.RemoveAt(i);
                 Vector3 position = item.Visual.position;
                 Destroy(item.Visual.gameObject);

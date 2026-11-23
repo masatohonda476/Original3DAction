@@ -28,6 +28,7 @@ namespace Prototype
         public float EquippedWeight => MeleeWeapon.weight + RangedWeapon.weight + BackW.weight;
         public float Mobility => Rules.MobilityAt(EquippedWeight);
         public float DashMul => BackW.dashMul * Mobility;
+        /// <summary>スラスターと装備全体の重さを反映した回避距離の倍率。</summary>
         public float DodgeDistanceMul => BackW.dodgeDistanceMul * Mobility;
         public float DodgeInvincibleMul => BackW.dodgeInvincibleMul;
         public float EnCostMul => BackW.enCostMul;

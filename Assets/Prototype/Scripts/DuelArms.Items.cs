@@ -119,30 +119,22 @@ namespace Prototype
                 ShowItemNotice("未登録のスロット");
                 return;
             }
-            if (!CanUseItem(item, out _, out _)) return;
+            if (!CanUseItem(item, out _)) return;
             itemSelectButton = null;
             itemNotice = null;
             itemUseAt = Time.time;
             usingItem = item;
         }
 
-        bool CanUseItem(DuelItem item, out RaycastHit floor, out DuelEnemy decoyTarget)
+        bool CanUseItem(DuelItem item, out RaycastHit floor)
         {
             floor = default;
-            decoyTarget = null;
             string reason = null;
             if (ItemCount(item) == 0) reason = "所持数が0";
             else if (item == DuelItem.RepairArmor && player.HP >= player.MaxHP) reason = "HP満タン";
             else if (item == DuelItem.Ammo && Ammo >= Rules.ammoMax) reason = "共通の弾が満タン";
-            else if (item is DuelItem.MagneticAnchor or DuelItem.DecoyBeacon)
-            {
-                if (!player.TryGetFoothold(out floor)) reason = "地上で設置できます";
-                else if (item == DuelItem.DecoyBeacon)
-                {
-                    decoyTarget = game.stage.FindBeaconTarget(floor.point);
-                    if (decoyTarget == null) reason = "誘導できる敵がいません";
-                }
-            }
+            else if ((item is DuelItem.MagneticAnchor or DuelItem.DecoyBeacon) && !player.TryGetFoothold(out floor))
+                reason = "地上で設置できます";
 
             if (reason == null) return true;
             ShowItemNotice(reason);
@@ -151,7 +143,7 @@ namespace Prototype
 
         void UseItem(DuelItem item)
         {
-            if (!CanUseItem(item, out var floor, out var decoyTarget)) return;
+            if (!CanUseItem(item, out var floor)) return;
 
             // 爆発や設置によって発動するアイテムも、使用が成立した時点で1個消費する。
             itemStock[(int)item]--;
@@ -172,7 +164,7 @@ namespace Prototype
                     break;
                 case DuelItem.MagneticAnchor:
                 case DuelItem.DecoyBeacon:
-                    game.stage.PlaceCombatItem(item, floor, decoyTarget);
+                    game.stage.PlaceCombatItem(item, floor);
                     ShowItemNotice(item == DuelItem.MagneticAnchor ? "アンカーを設置" : "ビーコンを設置");
                     break;
             }

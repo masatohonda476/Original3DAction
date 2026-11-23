@@ -243,7 +243,7 @@ namespace Prototype
             HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
             HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "相手を変更（構え中は Tab / R3 のみ）");
-            HelpRow(B(ProtoInput.Btn.PickUp), "近くの落とし物を調べる");
+            HelpRow(B(ProtoInput.Btn.PickUp), "近くの武装を調べる / アイテムを拾う");
             HelpRow($"↑↓ / {B(ProtoInput.Btn.Confirm)}", "武装の操作を選ぶ / 決定（解体は長押し）");
             HelpRow(B(ProtoInput.Btn.Back), "落とし物・所持品の操作を取り消す");
             HelpRow($"{B(ProtoInput.Btn.EquipView)} / {B(ProtoInput.Btn.Restart)}", "メニュー / 最初からやり直す");

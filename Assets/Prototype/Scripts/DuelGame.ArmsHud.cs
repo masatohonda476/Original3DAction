@@ -109,11 +109,14 @@ namespace Prototype
             var weapon = loot.Weapon;
             if (!arms.ChoiceOpen)
             {
-                string hint = $"{WeaponName(weapon)}　　{ProtoInput.L(ProtoInput.Btn.PickUp)} 調べる";
+                string pickup = ProtoInput.L(ProtoInput.Btn.PickUp);
+                string hint = loot.Item is DuelItem item
+                    ? $"{DuelLoot.ItemName(item)} ×1　　{pickup} 拾う"
+                    : $"{WeaponName(weapon)}　　{pickup} 調べる";
                 float hintWidth = Mathf.Min(SW - 24f, center.CalcSize(new GUIContent(hint)).x + 40f);
                 var hintRect = new Rect((SW - hintWidth) * 0.5f, ArmsTop - 50f, hintWidth, 34f);
                 MenuPanel(hintRect);
-                Chip(new Rect(hintRect.x, hintRect.y, 3f, hintRect.height), weapon.Color);
+                Chip(new Rect(hintRect.x, hintRect.y, 3f, hintRect.height), loot.Tint);
                 GUI.Label(hintRect, hint, center);
                 return;
             }

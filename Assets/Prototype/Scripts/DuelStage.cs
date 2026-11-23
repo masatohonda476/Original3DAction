@@ -69,8 +69,12 @@ namespace Prototype
         public DuelRarityWeights duelistRarity = new(0.1f, 0.45f, 0.45f);
         [Tooltip("照準・装備の重量・弾と装填・解体の決まり(数値は仮)")]
         public DuelArmsRules armsRules = new();
-        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で武装が全部消し飛び、共通の弾も0になる(画面は揺らさない)")]
+        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で拾った武装とアイテムが消し飛び、共通の弾も0になる(画面は揺らさない)")]
         public float bossBlastRadius = 45f;
+
+        [Header("アイテムの落とし物")]
+        [Tooltip("兵卒・剣士を倒したとき、武装の抽選とは別にアイテムが1個落ちる確率")]
+        [Range(0f, 1f)] public float itemDropChance = 0.3f;
 
         [Header("ボス(大剣士)")]
         [Tooltip("ボスの最大HP")]
@@ -602,16 +606,21 @@ namespace Prototype
         /// <summary>敵が倒れた(DuelGame から)。ボスならステージクリア。</summary>
         public void OnEnemyDied(DuelEnemy e)
         {
+            if (e == null || Cleared) return;
             bool boss = bossSpawn != null && e == bossSpawn.enemy;
-            if (!boss) { TryDrop(e); return; }
-            if (Cleared) return;
+            if (!boss)
+            {
+                TryDropWeapon(e);
+                TryDropItem(e);
+                return;
+            }
             Cleared = true;
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
             game.Log("ボスを倒した");
             EndBossFight();                  // 入口の扉を開ける
             if (player != null) player.Arms.ForgetKeptAmmo();   // 控えた弾は捨てる(この後の再開で古い弾が戻らないように)
-            DuelLoot.ClearAll();   // 床の武装も消す(消し飛んだ後にまた付けられないように)
+            DuelLoot.ClearAll();
             StartCoroutine(BossBlast(e.Chest, e.Size));
         }
 
@@ -619,7 +628,7 @@ namespace Prototype
         public string ClearNote { get; private set; }
 
         /// <summary>
-        /// ボスの撃墜の爆発(撃墜の演出の爆発の後)に巻き込まれ、武装が全部消し飛ぶ。画面は揺らさない(大きな爆発・火花・短いヒットストップだけ)。
+        /// ボスの撃墜の爆発(撃墜の演出の爆発の後)に巻き込まれ、拾った武装とアイテム、弾が消し飛ぶ。
         /// </summary>
         IEnumerator BossBlast(Vector3 at, float size)
         {
@@ -632,19 +641,27 @@ namespace Prototype
             int lost = player != null ? player.Arms.LoseAll() : 0;   // 共通の弾と弾倉も空に戻る
             if (lost > 0 || hadAmmo)
             {
-                ClearNote = "ボスの爆発に巻き込まれ、拾った武装と弾が消し飛んだ";
+                ClearNote = "ボスの爆発に巻き込まれ、拾った武装・アイテムと弾が消し飛んだ";
                 game.Log(ClearNote);
             }
         }
 
-        // ───────── 武装の落とし物 ─────────
+        // ───────── 落とし物 ─────────
+
+        void TryDropItem(DuelEnemy e)
+        {
+            if (itemDropChance < 1f && Random.value >= itemDropChance) return;
+            var item = Random.Range(0, 2) == 0 ? DuelItem.RepairArmor : DuelItem.Ammo;
+            Vector2 k = Random.insideUnitCircle * 5f;
+            DuelLoot.Drop(item, e.Chest, new Vector3(k.x, 0f, k.y));
+        }
 
         /// <summary>
         /// 倒した敵が武装を落とすか決め(どの敵も dropChance。救済なし)、落とすなら敵の種類のレア度の重みで1つ選んで落とす。
         /// </summary>
-        void TryDrop(DuelEnemy e)
+        void TryDropWeapon(DuelEnemy e)
         {
-            if (arsenal == null || arsenal.Count == 0 || e == null || Cleared) return;   // ボスを倒した後は落とさない
+            if (arsenal == null || arsenal.Count == 0) return;
             if (Random.value >= dropChance) return;
             var kind = Kind.Grunt;
             foreach (var s in spawns) if (s.enemy == e) { kind = s.kind; break; }

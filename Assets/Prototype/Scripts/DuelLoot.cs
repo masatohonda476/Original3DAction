@@ -4,9 +4,11 @@ using UnityEngine;
 
 namespace Prototype
 {
+    public enum DuelItem { RepairArmor, Ammo }
+
     /// <summary>
-    /// 落ちている武装(ステージだけ)。倒した敵が落とし、真下の床まで落ちて、レア度の色の光の柱を立てる。時間では消えない。
-    /// 自機が近くにいるときに△(C)で調べ、装備・所持・解体を選ぶ。無視すれば残る。
+    /// 落ちている武装とアイテム。倒した敵が落とし、床まで落ちて光の柱を立てる。時間では消えない。
+    /// 自機が近くにいるときに△(C)で武装を調べるか、アイテムを拾う。無視すれば残る。
     /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。置いた直後から拾えるが、拾う案内の優先度は低い
     /// (LowerPriority。作者「落とした後すぐ触れるようにはしてほしい(優先度を下げるだけ)」):拾える範囲にふつうの武装があればそちらが対象で、
     /// なければ外した武装が対象になる。優先度が戻るのは、自機がその武装の拾える範囲から一度出たときだけ(時間では戻さない。RestorePriorities)。
@@ -20,6 +22,11 @@ namespace Prototype
         const float Hover = 1.5f;
 
         public DuelWeapon Weapon { get; private set; }
+        public DuelItem? Item { get; private set; }
+        public Color Tint => Weapon?.Color ?? (Item == DuelItem.RepairArmor ? new Color(0.35f, 1f, 0.65f) : new Color(1f, 0.72f, 0.28f));
+        public const string RepairArmorName = "補修用装甲", AmmoItemName = "弾薬";
+        public static string ItemName(DuelItem item) => item == DuelItem.RepairArmor ? RepairArmorName : AmmoItemName;
+
         /// <summary>
         /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした銃の弾倉は空。付け替えで外した銃は、撃ちかけの残りと装填待ちを覚えておく
         /// (拾い直しで満タン・待ちなしにならないように)。
@@ -27,7 +34,7 @@ namespace Prototype
         public DuelArms.Memo Memo { get; set; } = new();
 
         static readonly List<DuelLoot> all = new();
-        /// <summary>落ちている武装の全部(消えた直後の null が混じることがある。ボス戦の前の弾倉の残りを控える・戻すのに DuelArms が見る)。</summary>
+        /// <summary>落ちている武装とアイテムの全部。</summary>
         public static IReadOnlyList<DuelLoot> All => all;
         Transform visual;
         float vy, t;
@@ -39,10 +46,12 @@ namespace Prototype
         static bool anyLowPriority;
 
         /// <summary>pos に武装を落とす(少し跳ねて、真下の床まで落ちる)。</summary>
-        public static DuelLoot Drop(DuelWeapon w, Vector3 pos, Vector3 kick) => Spawn(w, pos, 12f, kick);
+        public static DuelLoot Drop(DuelWeapon w, Vector3 pos, Vector3 kick) => Spawn(w, null, pos, 12f, kick);
+
+        public static DuelLoot Drop(DuelItem item, Vector3 pos, Vector3 kick) => Spawn(null, item, pos, 12f, kick);
 
         /// <summary>pos にそのまま置く(勢いなし。付け替えで外した武装を、拾った武装のあった所に置く)。</summary>
-        public static DuelLoot Place(DuelWeapon w, Vector3 pos) => Spawn(w, pos, 0f, Vector3.zero);
+        public static DuelLoot Place(DuelWeapon w, Vector3 pos) => Spawn(w, null, pos, 0f, Vector3.zero);
 
         public static bool HasFloorAtFeet(DuelPlayer player) => FindFloorAtFeet(player, out _);
 
@@ -61,12 +70,13 @@ namespace Prototype
                 out floor, 4f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         }
 
-        static DuelLoot Spawn(DuelWeapon w, Vector3 pos, float vy, Vector3 kick)
+        static DuelLoot Spawn(DuelWeapon w, DuelItem? item, Vector3 pos, float vy, Vector3 kick)
         {
-            var go = new GameObject($"Loot_{w.name}");
+            var go = new GameObject($"Loot_{(item is DuelItem kind ? ItemName(kind) : w.name)}");
             go.transform.position = pos;
             var l = go.AddComponent<DuelLoot>();
             l.Weapon = w;
+            l.Item = item;
             l.vy = vy;
             l.kick = kick;
             l.Build();
@@ -74,13 +84,13 @@ namespace Prototype
             return l;
         }
 
-        /// <summary>落ちている武装を全部消す(ボスを倒したとき)。</summary>
+        /// <summary>落ちている武装とアイテムを全部消す(ボスを倒したとき)。</summary>
         public static void ClearAll()
         {
             foreach (var l in all)
             {
                 if (l == null) continue;
-                ProtoFx.Blast(l.transform.position + Vector3.up, 3f, l.Weapon.Color, 0.25f);
+                ProtoFx.Blast(l.transform.position + Vector3.up, 3f, l.Tint, 0.25f);
                 Destroy(l.gameObject);
             }
             all.Clear();
@@ -164,7 +174,7 @@ namespace Prototype
         /// <summary>拾った:光って消える。</summary>
         public void Take()
         {
-            ProtoFx.Blast(transform.position + Vector3.up, 4f, Weapon.Color, 0.3f);
+            ProtoFx.Blast(transform.position + Vector3.up, 4f, Tint, 0.3f);
             all.Remove(this);
             Destroy(gameObject);
         }
@@ -173,17 +183,36 @@ namespace Prototype
 
         void Build()
         {
-            visual = DuelArms.CreateVisual(Weapon, transform);
-            // 光の柱(レア度の色。エピックは太く)
-            var beam = GameObject.CreatePrimitive(PrimitiveType.Cylinder).transform;
-            DestroyImmediate(beam.GetComponent<Collider>());
-            beam.SetParent(transform, false);
-            float w = Weapon.rarity >= 2 ? 0.9f : Weapon.rarity == 1 ? 0.65f : 0.45f;
-            beam.localScale = new Vector3(w, 14f, w);
-            beam.localPosition = new Vector3(0f, 14f, 0f);
-            var r = beam.GetComponent<Renderer>();
-            r.sharedMaterial = ProtoFx.Unlit(Weapon.Color);
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            float w, h;
+            if (Weapon != null)
+            {
+                visual = DuelArms.CreateVisual(Weapon, transform);
+                w = Weapon.rarity >= 2 ? 0.9f : Weapon.rarity == 1 ? 0.65f : 0.45f;
+                h = 14f;
+            }
+            else
+            {
+                // 色付きの帯がある補給箱と、武装より短い光の柱。
+                visual = new GameObject("SupplyCrate").transform;
+                visual.SetParent(transform, false);
+                Marker(PrimitiveType.Cube, visual, Vector3.zero, new Vector3(2.4f, 1.35f, 1.65f), new Color(0.18f, 0.23f, 0.26f));
+                Marker(PrimitiveType.Cube, visual, Vector3.zero, new Vector3(0.55f, 1.4f, 1.7f), Tint);
+                w = 0.32f;
+                h = 6f;
+            }
+            Marker(PrimitiveType.Cylinder, transform, Vector3.up * h, new Vector3(w, h, w), Tint);
+        }
+
+        static void Marker(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Color color)
+        {
+            var marker = GameObject.CreatePrimitive(type).transform;
+            DestroyImmediate(marker.GetComponent<Collider>());
+            marker.SetParent(parent, false);
+            marker.localPosition = pos;
+            marker.localScale = scale;
+            var renderer = marker.GetComponent<Renderer>();
+            renderer.sharedMaterial = ProtoFx.Unlit(color);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
 
         /// <summary>地形と見えない壁(Ignore Raycast の層)。横へ飛び散るときは見えない壁でも止める。</summary>

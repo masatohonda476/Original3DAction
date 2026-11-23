@@ -33,6 +33,8 @@ namespace Prototype
         const float SalvageHoldSeconds = 0.6f;
         readonly List<Carried> carried = new();
         public IReadOnlyList<Carried> CarriedWeapons => carried;
+        public int RepairArmorCount { get; private set; }
+        public int AmmoItemCount { get; private set; }
         public float CarriedWeight { get; private set; }
         public float TotalWeight => EquippedWeight + CarriedWeight;
         public DuelLoot Nearby { get; private set; }
@@ -61,6 +63,15 @@ namespace Prototype
             if (!ChoiceOpen)
             {
                 if (Nearby == null || !ProtoInput.PickUp) return;
+                if (Nearby.Item is DuelItem itemKind)
+                {
+                    if (itemKind == DuelItem.RepairArmor) RepairArmorCount++;
+                    else AmmoItemCount++;
+                    game.Log($"「{DuelLoot.ItemName(itemKind)}」を1個入手");
+                    Nearby.Take();
+                    Nearby = null;
+                    return;
+                }
                 Choosing = Nearby;
                 ResetAction();
                 ClearBufferedInput();
@@ -277,7 +288,7 @@ namespace Prototype
             foreach (var item in carried)
                 if (item.Weapon.HasMagazine) keptMags[item.State] = item.State.mag;
             foreach (var loot in DuelLoot.All)
-                if (loot != null && loot.Weapon.HasMagazine) keptMags[loot.Memo] = loot.Memo.mag;
+                if (loot != null && loot.Weapon?.HasMagazine == true) keptMags[loot.Memo] = loot.Memo.mag;
         }
 
         public void RestoreKeptAmmo()
@@ -288,7 +299,7 @@ namespace Prototype
             foreach (var item in carried)
                 if (item.Weapon.HasMagazine) RestoreMagazine(item.State);
             foreach (var loot in DuelLoot.All)
-                if (loot != null && loot.Weapon.HasMagazine) RestoreMagazine(loot.Memo);
+                if (loot != null && loot.Weapon?.HasMagazine == true) RestoreMagazine(loot.Memo);
             reloadTime = 0f;
             ForgetKeptAmmo();
         }
@@ -315,8 +326,9 @@ namespace Prototype
 
         public int LoseAll()
         {
-            int lost = carried.Count;
+            int lost = carried.Count + RepairArmorCount + AmmoItemCount;
             carried.Clear();
+            RepairArmorCount = AmmoItemCount = 0;
             CarriedWeight = 0f;
             CloseCarriedChoice();
             for (int i = 0; i < slots.Length; i++)

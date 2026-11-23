@@ -69,10 +69,14 @@ namespace Prototype
             }
 
             int count = arms.CarriedWeapons.Count;
-            if (count == 0) return;
-            carriedSel = Mathf.Clamp(carriedSel, 0, count - 1);
-            if (direction != 0) carriedSel = (carriedSel + direction + count) % count;
-            else if (ProtoInput.MenuConfirm) arms.OpenCarriedChoice(carriedSel);
+            int rowCount = count + 1;
+            carriedSel = Mathf.Clamp(carriedSel, -1, count - 1);
+            if (direction != 0) carriedSel = (carriedSel + 1 + direction + rowCount) % rowCount - 1;
+            else if (ProtoInput.MenuConfirm)
+            {
+                if (carriedSel == -1) SetMenuPage(MenuPage.ItemSlots);
+                else arms.OpenCarriedChoice(carriedSel);
+            }
         }
 
         void DrawCarriedView(DuelArms arms)
@@ -97,8 +101,11 @@ namespace Prototype
             MenuPanel(new Rect(x, y, width, height));
             GUI.Label(new Rect(x, y + 8f, width, 36f), "所持品", viewTitleStyle);
             GUI.Label(new Rect(x + pad, y + 48f, width - pad * 2f, 24f), CarryWeightText(arms), small);
-            GUI.Label(new Rect(x + pad, y + 78f, width - pad * 2f, 24f),
-                $"{DuelLoot.RepairArmorName} ×{arms.RepairArmorCount}　　{DuelLoot.AmmoItemName} ×{arms.AmmoItemCount}", small);
+            int selected = Mathf.Clamp(carriedSel, -1, items.Count - 1);
+            var itemRow = new Rect(x + pad, y + 76f, width - pad * 2f, 32f);
+            if (selected == -1) SelectionBand(itemRow);
+            GUI.Label(new Rect(itemRow.x + 10f, itemRow.y + 4f, itemRow.width - 20f, 24f),
+                $"アイテム登録　　{ItemStockText(arms, DuelItem.RepairArmor)}　　{ItemStockText(arms, DuelItem.Ammo)}", small);
 
             if (items.Count == 0)
             {
@@ -106,7 +113,6 @@ namespace Prototype
             }
             else
             {
-                int selected = Mathf.Clamp(carriedSel, 0, items.Count - 1);
                 int first = Mathf.Clamp(selected - VisibleCarriedRows / 2, 0, Mathf.Max(0, items.Count - VisibleCarriedRows));
                 for (int i = first; i < Mathf.Min(first + VisibleCarriedRows, items.Count); i++)
                 {
@@ -122,11 +128,13 @@ namespace Prototype
                     GUI.Label(new Rect(row.x + row.width - 176f, row.y + 10f, 166f, 25f),
                         $"重量 {weapon.weight:0.#}{mag}", rightSmall);
                 }
-                GUI.Label(new Rect(x + pad, y + 381f, width - pad * 2f, 23f), $"{selected + 1} / {items.Count}", cellTinyRight);
+                if (selected >= 0)
+                    GUI.Label(new Rect(x + pad, y + 381f, width - pad * 2f, 23f), $"{selected + 1} / {items.Count}", cellTinyRight);
             }
 
             string confirm = ProtoInput.L(ProtoInput.Btn.Confirm), back = ProtoInput.L(ProtoInput.Btn.Back);
-            string actions = items.Count == 0 ? "" : arms.CanUseCarried ? $"↑↓ 選ぶ　{confirm} 詳細　　" : "行動可能な状態で武装を操作できます　　";
+            string actions = selected == -1 ? $"↑↓ 選ぶ　{confirm} アイテム登録　　"
+                : arms.CanUseCarried ? $"↑↓ 選ぶ　{confirm} 詳細　　" : "行動可能な状態で武装を操作できます　　";
             GUI.Label(new Rect(x + pad, y + 409f, width - pad * 2f, 24f), $"{actions}{back} 戻る", center);
         }
 

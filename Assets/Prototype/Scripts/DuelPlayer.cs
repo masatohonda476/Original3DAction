@@ -147,6 +147,7 @@ namespace Prototype
             ClearBufferedInput();
             Arms.ClearBufferedInput();
             Arms.StopBurst();
+            Arms.ResetItemInput();
             airVel = Vector3.zero;
             flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
             slideOff = Vector3.zero;
@@ -169,7 +170,7 @@ namespace Prototype
             energyUsedAt = Time.time;
         }
 
-        /// <summary>HP を amount だけ回復する(武装の分解。最大まで)。撃墜中は何もしない。</summary>
+        /// <summary>HP を amount だけ回復する(最大まで)。撃墜中は何もしない。</summary>
         public void Heal(float amount)
         {
             if (Dead || amount <= 0f) return;
@@ -357,6 +358,7 @@ namespace Prototype
                 if (facing != Vector3.zero) transform.rotation = Quaternion.LookRotation(facing);
             }
             Arms.UpdateCombat(CanShoot);
+            Arms.TickItems();
         }
 
         void ReadButtons(float now)
@@ -404,6 +406,7 @@ namespace Prototype
         public void ReceiveHit(DuelHit h)
         {
             if (Dead || Invincible) return;
+            Arms.InterruptItemUse();
             EndJump();   // 被弾で「ジャンプ中」は終わる。成功も消える
             if (DropDiving) airVel = Vector3.zero;
             Vector3 away = Flat(transform.position - h.from);

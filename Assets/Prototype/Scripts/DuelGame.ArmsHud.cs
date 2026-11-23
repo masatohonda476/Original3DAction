@@ -43,8 +43,10 @@ namespace Prototype
             for (int i = 1; i < 4; i++)
                 Chip(new Rect(gauge.x, gauge.yMax - gauge.height * i * 0.25f, gauge.width, 1f), new Color(0f, 0f, 0f, 0.55f));
 
-            GUI.color = ammoColor;
-            GUI.Label(new Rect(x + width - 187f, backRect.y + 1f, 180f, 22f), $"共通の弾  {arms.Ammo:0.#}/{max:0}", cellTinyRight);
+            float gained = arms.RecentItemGain(DuelItem.Ammo);
+            GUI.color = gained > 0f ? AmmoGauge : ammoColor;
+            string gain = gained > 0f ? $"  +{gained:0.#}" : "";
+            GUI.Label(new Rect(x + width - 205f, backRect.y + 1f, 198f, 22f), $"共通の弾  {arms.Ammo:0.#}/{max:0}{gain}", cellTinyRight);
             GUI.color = Color.white;
         }
 
@@ -111,7 +113,7 @@ namespace Prototype
             {
                 string pickup = ProtoInput.L(ProtoInput.Btn.PickUp);
                 string hint = loot.Item is DuelItem item
-                    ? $"{DuelLoot.ItemName(item)} ×1　　{pickup} 拾う"
+                    ? $"{DuelItems.Get(item).Name} ×1　　{pickup} 拾う"
                     : $"{WeaponName(weapon)}　　{pickup} 調べる";
                 float hintWidth = Mathf.Min(SW - 24f, center.CalcSize(new GUIContent(hint)).x + 40f);
                 var hintRect = new Rect((SW - hintWidth) * 0.5f, ArmsTop - 50f, hintWidth, 34f);

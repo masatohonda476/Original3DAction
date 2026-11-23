@@ -4,8 +4,6 @@ using UnityEngine;
 
 namespace Prototype
 {
-    public enum DuelItem { RepairArmor, Ammo }
-
     /// <summary>
     /// 落ちている武装とアイテム。倒した敵が落とし、床まで落ちて光の柱を立てる。時間では消えない。
     /// 自機が近くにいるときに△(C)で武装を調べるか、アイテムを拾う。無視すれば残る。
@@ -23,9 +21,7 @@ namespace Prototype
 
         public DuelWeapon Weapon { get; private set; }
         public DuelItem? Item { get; private set; }
-        public Color Tint => Weapon?.Color ?? (Item == DuelItem.RepairArmor ? new Color(0.35f, 1f, 0.65f) : new Color(1f, 0.72f, 0.28f));
-        public const string RepairArmorName = "補修用装甲", AmmoItemName = "弾薬";
-        public static string ItemName(DuelItem item) => item == DuelItem.RepairArmor ? RepairArmorName : AmmoItemName;
+        public Color Tint => Item is DuelItem item ? DuelItems.Get(item).Tint : Weapon.Color;
 
         /// <summary>
         /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした銃の弾倉は空。付け替えで外した銃は、撃ちかけの残りと装填待ちを覚えておく
@@ -50,6 +46,8 @@ namespace Prototype
 
         public static DuelLoot Drop(DuelItem item, Vector3 pos, Vector3 kick) => Spawn(null, item, pos, 12f, kick);
 
+        public static DuelLoot PlaceItem(DuelItem item, Vector3 pos) => Spawn(null, item, pos, 0f, Vector3.zero);
+
         /// <summary>pos にそのまま置く(勢いなし。付け替えで外した武装を、拾った武装のあった所に置く)。</summary>
         public static DuelLoot Place(DuelWeapon w, Vector3 pos) => Spawn(w, null, pos, 0f, Vector3.zero);
 
@@ -72,7 +70,7 @@ namespace Prototype
 
         static DuelLoot Spawn(DuelWeapon w, DuelItem? item, Vector3 pos, float vy, Vector3 kick)
         {
-            var go = new GameObject($"Loot_{(item is DuelItem kind ? ItemName(kind) : w.name)}");
+            var go = new GameObject($"Loot_{(item is DuelItem kind ? DuelItems.Get(kind).Name : w.name)}");
             go.transform.position = pos;
             var l = go.AddComponent<DuelLoot>();
             l.Weapon = w;

@@ -47,6 +47,13 @@ namespace Prototype
             float y = leftTop + 5f;
             Bar(new Rect(x, y, 300f, 14f), player.HP / player.MaxHP, new Color(0.35f, 0.85f, 0.45f));
             GUI.Label(new Rect(x + 308f, y - 5f, 120f, 24f), $"HP {Mathf.CeilToInt(player.HP)}", small);
+            float healed = player.Arms.RecentItemGain(DuelItem.RepairArmor);
+            if (healed > 0f)
+            {
+                GUI.color = DuelItems.Get(DuelItem.RepairArmor).Tint;
+                GUI.Label(new Rect(x + 308f, y - 26f, 120f, 22f), $"HP +{healed:0.#}", small);
+                GUI.color = Color.white;
+            }
             // 怯みゲージ(HPの右、HPのバーの1/4の長さ)
             bool hurt = player.Current == DuelPlayer.State.Hurt;
             Bar(new Rect(x + 400f, y + 2f, 75f, 8f), hurt ? 1f : player.Stagger / player.maxStagger,
@@ -69,7 +76,11 @@ namespace Prototype
             if (Event.current.type == EventType.Repaint)
             {
                 DrawArms(player.Arms);
-                if (!MenuOpen) DrawPickup(player.Arms);
+                if (!MenuOpen)
+                {
+                    if (!player.Dead && !stage.Cleared) DrawItemsHud(player.Arms);
+                    DrawPickup(player.Arms);
+                }
             }
 
             // ロックオンの印は四つの角の枠だけ(敵を囲む。DrawLockCorners)。胸の上の白い十字は、枠と二重になるのでやめた(作者「敵の上で印が重なる」→「A」)

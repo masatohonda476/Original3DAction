@@ -33,8 +33,6 @@ namespace Prototype
         const float SalvageHoldSeconds = 0.6f;
         readonly List<Carried> carried = new();
         public IReadOnlyList<Carried> CarriedWeapons => carried;
-        public int RepairArmorCount { get; private set; }
-        public int AmmoItemCount { get; private set; }
         public float CarriedWeight { get; private set; }
         public float TotalWeight => EquippedWeight + CarriedWeight;
         public DuelLoot Nearby { get; private set; }
@@ -65,11 +63,7 @@ namespace Prototype
                 if (Nearby == null || !ProtoInput.PickUp) return;
                 if (Nearby.Item is DuelItem itemKind)
                 {
-                    if (itemKind == DuelItem.RepairArmor) RepairArmorCount++;
-                    else AmmoItemCount++;
-                    game.Log($"「{DuelLoot.ItemName(itemKind)}」を1個入手");
-                    Nearby.Take();
-                    Nearby = null;
+                    PickUpItem(itemKind, Nearby);
                     return;
                 }
                 Choosing = Nearby;
@@ -277,9 +271,10 @@ namespace Prototype
         float keptAmmo;
         readonly Dictionary<Memo, int> keptMags = new();
 
-        // ボス戦前の共通弾と銃ごとの残弾を控える。戦闘中に詰めた弾が再開で増えないよう、床と所持品の銃も含める。
-        public void KeepAmmo()
+        // ボス戦前のアイテムと、共通弾・銃ごとの残弾を控える。銃は床と所持品も含める。
+        public void KeepBossSupplies()
         {
+            KeepItems();
             ammoKept = true;
             // 再開時に連射は引き継がないので、入口時点の未発射分は弾として控える。
             keptAmmo = Mathf.Min(Rules.ammoMax, Ammo + RefundableBurstAmmo());
@@ -291,9 +286,10 @@ namespace Prototype
                 if (loot != null && loot.Weapon?.HasMagazine == true) keptMags[loot.Memo] = loot.Memo.mag;
         }
 
-        public void RestoreKeptAmmo()
+        public void RestoreBossSupplies()
         {
             if (!ammoKept) return;
+            RestoreItems();
             Ammo = keptAmmo;
             if (RangedWeapon.HasMagazine) RestoreMagazine(rangedMemo);
             foreach (var item in carried)
@@ -301,15 +297,16 @@ namespace Prototype
             foreach (var loot in DuelLoot.All)
                 if (loot != null && loot.Weapon?.HasMagazine == true) RestoreMagazine(loot.Memo);
             reloadTime = 0f;
-            ForgetKeptAmmo();
+            ForgetBossSupplies();
         }
 
         void RestoreMagazine(Memo memo) => memo.mag = keptMags.TryGetValue(memo, out int mag) ? mag : 0;
 
-        public void ForgetKeptAmmo()
+        public void ForgetBossSupplies()
         {
             ammoKept = false;
             keptMags.Clear();
+            ForgetKeptItems();
         }
 
         void ResetWeapons(bool loaded)
@@ -326,9 +323,8 @@ namespace Prototype
 
         public int LoseAll()
         {
-            int lost = carried.Count + RepairArmorCount + AmmoItemCount;
+            int lost = carried.Count + LoseItems();
             carried.Clear();
-            RepairArmorCount = AmmoItemCount = 0;
             CarriedWeight = 0f;
             CloseCarriedChoice();
             for (int i = 0; i < slots.Length; i++)

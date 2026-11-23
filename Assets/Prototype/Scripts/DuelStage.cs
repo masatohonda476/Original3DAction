@@ -98,7 +98,7 @@ namespace Prototype
         [Tooltip("扉が下りきる・上がりきるまでの秒数(見た目だけ。機体はこれを待たず、閉じた瞬間から通れない)。0 ならすぐ")]
         public float gateTime = 0.35f;
 
-        public enum Kind { Grunt, Duelist, Boss }
+        public enum Kind { Grunt, Duelist, Boss, FlyingScout }
 
         /// <summary>壁の厚み。</summary>
         const float T = 3f;
@@ -477,7 +477,7 @@ namespace Prototype
         void PlaceEnemy(Spawn s)
         {
             Vector3 pos = s.pos;
-            if (Physics.Raycast(pos + Vector3.up * 8f, Vector3.down, out var hit, 40f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            if (s.kind != Kind.FlyingScout && Physics.Raycast(pos + Vector3.up * 8f, Vector3.down, out var hit, 40f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
                 pos.y = hit.point.y;
             var rot = Quaternion.Euler(0f, s.yaw, 0f);
             var go = new GameObject($"{KindName(s.kind)}");
@@ -486,6 +486,7 @@ namespace Prototype
             e.Init(game, player, s.kind switch
             {
                 Kind.Duelist => DuelEnemy.Duelist(game.enemyHP),
+                Kind.FlyingScout => DuelEnemy.FlyingScout(),
                 Kind.Boss => DuelEnemy.Boss(bossHP, bossMoves, bossSize, bossMaxStagger),
                 _ => DuelEnemy.Grunt(game.gruntHP),
             });
@@ -505,7 +506,7 @@ namespace Prototype
             game.Enemies.Add(e);
         }
 
-        static string KindName(Kind k) => k switch { Kind.Duelist => "剣士", Kind.Boss => "大剣士", _ => "兵卒" };
+        static string KindName(Kind k) => k switch { Kind.Duelist => "剣士", Kind.Boss => "大剣士", Kind.FlyingScout => "飛行偵察機", _ => "兵卒" };
 
         // ───────── 進行 ─────────
 
@@ -587,6 +588,7 @@ namespace Prototype
         /// </summary>
         void Respawn()
         {
+            game.CancelEnemyRounds();
             foreach (var s in spawns)
                 if (s.enemy != null && !s.enemy.Dead) s.enemy.ResetToHome();
             var sp = currentSave ?? saves[0];
@@ -615,6 +617,7 @@ namespace Prototype
                 return;
             }
             Cleared = true;
+            game.CancelEnemyRounds();
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
             game.Log("ボスを倒した");

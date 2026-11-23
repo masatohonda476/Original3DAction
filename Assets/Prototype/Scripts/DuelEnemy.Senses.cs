@@ -104,8 +104,11 @@ namespace Prototype
             Stagger = 0f;
             chain = 0;
             flyTime = 0f;
-            Teleport(home, homeRotation);
+            rangedReadyAt = 0f;
+            thinkAt = Time.time + 1f;
             Enter(State.Approach);
+            UpdateRangedMount();
+            Teleport(home, homeRotation);
             ResetAwareness();
             stuckFor = highFor = 0f;
             holdEngagedUntil = 0f;
@@ -274,7 +277,7 @@ namespace Prototype
             }
             if (seesPlayer) { unseenFor = 0f; lastKnown = player.transform.position; }
             else unseenFor += dt;
-            if (Mathf.Abs(player.transform.position.y - transform.position.y) > senses.heightLoseGap) highFor += dt;
+            if (Mathf.Abs(player.transform.position.y - transform.position.y) > Mathf.Max(senses.heightLoseGap, Kind.fireRange)) highFor += dt;
             else highFor = 0f;
             bool leashed = !CanSense();
             bool lost = unseenFor >= senses.loseSightTime || leashed || highFor >= senses.heightLoseTime;

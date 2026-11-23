@@ -10,6 +10,14 @@ namespace Prototype
 
         void Animate(float dt, Vector3 vel)
         {
+            UpdateRangedMount();
+            if (IsRangedSkill && Current is State.Windup or State.Recover)
+            {
+                Pose(Kind.hovers ? MechRig.Dash : MechRig.Idle, 0f, 12f);
+                float recoil = Current == State.Recover ? Mathf.Clamp01(1f - stateT * 5f) : 0f;
+                BodyOffset(-10f * recoil, 0f, 0f, 15f, dt);
+                return;
+            }
             const string clip = MechRig.Attack;
             const float R = MechRig.AttackRaised, S = MechRig.AttackStruck, E = MechRig.AttackEnd;
             float k = Mathf.Clamp01(stateT / Mathf.Max(0.01f, stateDur));

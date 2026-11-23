@@ -26,7 +26,7 @@ namespace Prototype
         public DuelWeapon RangedWeapon => Get(DuelSlot.Ranged);
         public DuelWeapon BackW => Get(DuelSlot.Back);
         public float EquippedWeight => MeleeWeapon.weight + RangedWeapon.weight + BackW.weight;
-        public float Mobility => Rules.MobilityAt(EquippedWeight);
+        public float Mobility => Rules.MobilityAt(TotalWeight);
         public float DashMul => BackW.dashMul * Mobility;
         /// <summary>スラスターと装備全体の重さを反映した回避距離の倍率。</summary>
         public float DodgeDistanceMul => BackW.dodgeDistanceMul * Mobility;
@@ -76,7 +76,6 @@ namespace Prototype
                 StopBurst();
             }
             if (!ProtoInput.FlyHeld) blockFly = false;
-            if (!ProtoInput.BreakAmmoHeld) breakLeftHold = false;
 
             if (player.Dead || game.stage == null || game.stage.Cleared)
             {
@@ -89,7 +88,7 @@ namespace Prototype
 
             DuelLoot.RestorePriorities(player);
             bool canPick = !player.Airborne && player.Current == DuelPlayer.State.Free;
-            var selected = Choosing != null ? Choosing : Breaking;
+            var selected = Choosing;
             Nearby = canPick
                 ? selected != null && selected.CanPick(player) ? selected : DuelLoot.Nearest(player)
                 : null;

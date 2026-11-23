@@ -108,10 +108,9 @@ namespace Prototype
             // 自動で選ぶ・見失って外す・倒した敵から次へ移るのは、選ぶ表示の間も今までどおり動く。
             // ロックオン中の右スティックの弾き・マウスの振りでの切り替え(下)も、選ぶ表示の間は止める(作者が 2 案から「止める」を選んだ。
             // ロックオン中は右スティックでカメラが回らないので、その間の選ぶ表示では右スティックは何もしない)。
-            // 分解を選ぶ表示を抜けた後に十字左を離すまでは、十字左では切り替えない(分解の「弾にする」と同じボタン。DuelArms.LockDpadTaken)
             bool wasOn = LockOn;
             bool choice = Arms.ChoiceLocksInput;
-            bool toggle = !choice && (Arms.LockDpadTaken ? ProtoInput.LockToggleNoDpad : ProtoInput.LockToggle);
+            bool toggle = !choice && ProtoInput.LockToggle;
             bool switchPressed = !choice && ProtoInput.SwitchTarget;
             if (toggle) SetLockOn(!LockOn);
             else if (switchPressed && !LockOn) SetLockOn(true);

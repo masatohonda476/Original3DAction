@@ -5,6 +5,8 @@ namespace Prototype
     // DuelStage の地形と敵の配置(Define)と、その書き方・シーンビューでの確認(partial。本体と全体の説明は DuelStage.cs)
     public partial class DuelStage
     {
+        const float LowestFloorY = 0f;
+
         // ───────── 地形と敵の配置 ─────────
 
         /// <summary>
@@ -21,7 +23,7 @@ namespace Prototype
 
             // ── 1. 地面の裂け目(入口・最下層):開けた窪地。正面に船の外板がそびえ、瓦礫の斜面を登って裂け目から中へ入る ──
             Region("地面の裂け目", -96, 96, -10, 80, -46, 112);
-            Slab(-96, 96, -46, 113, 0f, FloorColor, 3f, floor: true);
+            Slab(-96, 96, -46, 113, LowestFloorY, FloorColor, 3f, floor: true);
             Solid(-96, -90, 0, 40, -46, 113, RockColor);   // 窪地の崖
             Solid(90, 96, 0, 40, -46, 113, RockColor);
             Solid(-96, 96, 0, 40, -46, -40, RockColor);

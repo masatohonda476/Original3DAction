@@ -10,24 +10,24 @@ namespace Prototype
     {
         // ───────── メニュー(右のメニューボタン) ─────────
 
-        /// <summary>メニューの段階:閉じている / 項目のメニュー / 「装備」のページ(装備の確認)/ 「操作方法」のページ。</summary>
-        enum MenuPage { Closed, Top, Equip, Help }
+        /// <summary>一時停止メニューの現在のページ。</summary>
+        enum MenuPage { Closed, Top, Equip, Carried, Help }
 
         MenuPage menuPage;
         /// <summary>メニューのどれかの段階を開いている。この間は照準・拾う案内・ロックオンの枠を出さない。</summary>
         bool MenuOpen => menuPage != MenuPage.Closed;
-        /// <summary>メニュー(項目のメニュー・装備の確認・操作方法)を開いている(時間が止まっている)。自機・敵・ステージの Update はこの間なにもしない。</summary>
+        /// <summary>一時停止メニューを開いている間は自機・敵・ステージの更新が止まる。</summary>
         public static bool Paused => I != null && I.MenuOpen;
 
         /// <summary>項目のメニューの並び(添字は menuSel)。装備へは OPTIONS → × の2押しで行けるよう、装備を一番上にする。</summary>
-        static readonly string[] MenuItems = { "装備", "操作方法", "閉じる" };
+        static readonly string[] MenuItems = { "装備", "所持品", "操作方法", "閉じる" };
         int menuSel;
 
         /// <summary>
         /// 右のメニューボタン(OPTIONS・≡・+ / I)で項目のメニューを開く。操作方法を画面に出し続けるのをやめ、ここから見る形にした
         /// (作者「操作方法は常に出すのではなく、オプションにメニューを出してください」)。
         /// 項目のメニュー:↑↓(十字・左スティック・↑↓・W/S)で選び、×・A / Space・Enter で決定、○・B / Backspace で閉じる。
-        /// 「装備」「操作方法」のページ:○・B / Backspace で1つ前(項目のメニュー)へ戻る。
+        /// 「装備」「所持品」「操作方法」のページ:○・B / Backspace で1つ前へ戻る。
         /// 右のメニューボタン / I は、どの段階からでも全部閉じてゲームに戻る(Esc はカメラのマウスの固定を外すので使わない)。
         /// 開いている間は、どの段階でも時間を止め、戦闘の入力を止める(Paused・ProtoInput.Paused)。
         /// 閉じたあとは、その時に押していたボタン(決定の × = 飛行、戻るの ○ = ブーストなど)を離すまで効かない(ProtoInput 側)。
@@ -59,12 +59,15 @@ namespace Prototype
                     int d = (down ? 1 : 0) - (up ? 1 : 0);
                     if (d != 0) menuSel = (menuSel + d + MenuItems.Length) % MenuItems.Length;
                     else if (ProtoInput.MenuConfirm)
-                        SetMenuPage(menuSel switch { 0 => MenuPage.Equip, 1 => MenuPage.Help, _ => MenuPage.Closed });
+                        SetMenuPage(menuSel switch { 0 => MenuPage.Equip, 1 => MenuPage.Carried, 2 => MenuPage.Help, _ => MenuPage.Closed });
                     break;
                 }
                 case MenuPage.Equip:
                     if (ProtoInput.EquipViewBack) SetMenuPage(MenuPage.Top);
                     else viewSel = (viewSel + (down ? 1 : 0) - (up ? 1 : 0) + ArmRows) % ArmRows;
+                    break;
+                case MenuPage.Carried:
+                    UpdateCarriedView(player.Arms, (down ? 1 : 0) - (up ? 1 : 0));
                     break;
                 case MenuPage.Help:
                     if (ProtoInput.MenuBack) SetMenuPage(MenuPage.Top);
@@ -87,7 +90,9 @@ namespace Prototype
                 player.Arms.ClearBufferedInput();
                 menuSel = 0;
             }
+            if (menuPage == MenuPage.Carried) player?.Arms.CloseCarriedChoice();
             if (page == MenuPage.Equip) viewSel = 0;
+            if (page == MenuPage.Carried) carriedSel = 0;
             menuPage = page;
             ProtoInput.Paused = MenuOpen;
         }
@@ -110,13 +115,13 @@ namespace Prototype
             bool kb = dev == ProtoInput.Device.Keyboard;
             string menu = ProtoInput.L(ProtoInput.Btn.EquipView), back = ProtoInput.L(ProtoInput.Btn.Back);
             string confirm = ProtoInput.L(ProtoInput.Btn.Confirm) + (kb ? "/Enter" : "");
-            menuHint = $"{menu} メニュー(装備・操作方法)";
+            menuHint = $"{menu} メニュー(装備・所持品・操作方法)";
             menuFoot = $"一時停止中 ― {(kb ? "↑↓/W・S" : "↑↓")} 選ぶ  {confirm} 決定  {back} / {menu} 閉じる";
             helpFoot = $"一時停止中 ― {back} 戻る  {menu} 閉じる";
             menuFootW = Mathf.Ceil(center.CalcSize(new GUIContent(menuFoot)).x);
         }
 
-        /// <summary>左下に出す短い案内(「OPTIONS メニュー(装備・操作方法)」。ボタン名は使っている機器に合わせる)。</summary>
+        /// <summary>左下に出す短い案内(「OPTIONS メニュー(装備・所持品・操作方法)」。ボタン名は使っている機器に合わせる)。</summary>
         string MenuHint()
         {
             BuildMenuText();
@@ -130,6 +135,7 @@ namespace Prototype
             {
                 case MenuPage.Top: DrawMenuTop(); break;
                 case MenuPage.Equip: DrawEquipView(arms); break;
+                case MenuPage.Carried: DrawCarriedView(arms); break;
                 case MenuPage.Help: DrawHelpPage(); break;
             }
         }
@@ -237,9 +243,9 @@ namespace Prototype
             HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
             HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "相手を変更（構え中は Tab / R3 のみ）");
-            HelpRow(B(ProtoInput.Btn.EquipNow), "落とし物と比較。もう一度で入れ替え");
-            HelpRow(B(ProtoInput.Btn.Break), "落とし物を解体（弾か回復）");
-            HelpRow(B(ProtoInput.Btn.Back), "入れ替え・解体を取り消す");
+            HelpRow(B(ProtoInput.Btn.PickUp), "近くの落とし物を調べる");
+            HelpRow($"↑↓ / {B(ProtoInput.Btn.Confirm)}", "武装の操作を選ぶ / 決定（解体は長押し）");
+            HelpRow(B(ProtoInput.Btn.Back), "落とし物・所持品の操作を取り消す");
             HelpRow($"{B(ProtoInput.Btn.EquipView)} / {B(ProtoInput.Btn.Restart)}", "メニュー / 最初からやり直す");
 
             var gc = new GUIContent();

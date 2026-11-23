@@ -100,52 +100,78 @@ namespace Prototype
             GUI.color = Color.white;
         }
 
+        const float ItemActionsHeight = 260f;
+
         void DrawPickup(DuelArms arms)
         {
-            var loot = arms.Breaking ?? arms.Choosing ?? arms.Nearby;
-            var w = loot != null ? loot.Weapon : null;
-            if (w == null || player.Dead) return;
-
-            float width = 700f;
-            float x = (SW - width) * 0.5f, y = ArmsTop - 142f;
-            var card = new Rect(x, y, width, 130f);
-            MenuPanel(card);
-            Chip(new Rect(x, y, 3f, card.height), w.Color);
-            Rect Row(float offset) => new(x + 14f, y + offset, width - 28f, 23f);
-            GUI.color = w.Color;
-            GUI.Label(Row(6f), $"{DuelWeapon.SlotName(w.Slot)}　{WeaponName(w)}", viewHeadStyle);
-            GUI.color = Color.white;
-
-            string cancel = ProtoInput.L(ProtoInput.Btn.Back);
-            string equip = ProtoInput.L(ProtoInput.Btn.EquipNow);
-            string salvage = ProtoInput.L(ProtoInput.Btn.Break);
-            if (arms.Breaking != null)
+            var loot = arms.Choosing ?? arms.Nearby;
+            if (loot == null || player.Dead) return;
+            var weapon = loot.Weapon;
+            if (!arms.ChoiceOpen)
             {
-                float room = Mathf.Max(0f, arms.Rules.ammoMax - arms.Ammo);
-                float magAmmo = arms.MagAmmo(loot);
-                float refund = Mathf.Min(room, magAmmo);
-                float ammo = Mathf.Min(room, arms.SalvageAmmo(w) + magAmmo);
-                float hp = Mathf.Max(0f, Mathf.Min(player.MaxHP - player.HP, arms.SalvageHeal(w)));
-                string left = ProtoInput.L(ProtoInput.Btn.BreakAmmo);
-                string right = ProtoInput.L(ProtoInput.Btn.BreakHeal);
-                string ammoText = ammo > 0.001f ? $"共通の弾 +{ammo:0.#}" : "弾の補給なし";
-                string repairText = hp > 0.001f ? $"回復 +{hp:0.#}" : "回復なし";
-                if (refund > 0.001f) repairText += $"・弾倉から弾 +{refund:0.#}";
-                GUI.Label(Row(37f), "解体する", small);
-                GUI.Label(Row(65f), $"{left} {ammoText}　　{right} {repairText}", small);
-                GUI.Label(Row(101f), $"{salvage} / {cancel} 取り消す", small);
+                string hint = $"{WeaponName(weapon)}　　{ProtoInput.L(ProtoInput.Btn.PickUp)} 調べる";
+                float hintWidth = Mathf.Min(SW - 24f, center.CalcSize(new GUIContent(hint)).x + 40f);
+                var hintRect = new Rect((SW - hintWidth) * 0.5f, ArmsTop - 50f, hintWidth, 34f);
+                MenuPanel(hintRect);
+                Chip(new Rect(hintRect.x, hintRect.y, 3f, hintRect.height), weapon.Color);
+                GUI.Label(hintRect, hint, center);
                 return;
             }
 
-            var current = arms.Get(w.Slot);
-            string currentTechnique = current is { IsGun: true } ? $"　{current.GunTypeName} / {current.HeavyName}" : "";
-            GUI.Label(Row(36f), $"装備中　{WeaponName(current)}{currentTechnique}", small);
-            GUI.Label(Row(59f), WeaponStats(w, current), cellNameSmall);
-            GUI.Label(Row(79f), WeaponTechnique(w), cellNameSmall);
-            GUI.Label(Row(101f), arms.Choosing != null
-                ? $"{equip} {DuelWeapon.SlotName(w.Slot)}を入れ替える　　{cancel} 取り消す"
-                : $"{equip} 入れ替えの確認　　{salvage} 解体する", small);
-            if (arms.Choosing != null) DrawPickupChart(w, current, y);
+            float width = Mathf.Min(650f, SW - 24f);
+            var card = new Rect((SW - width) * 0.5f, ArmsTop - ItemActionsHeight - 12f, width, ItemActionsHeight);
+            DrawPickupChart(weapon, arms.Get(weapon.Slot), card.y);
+            DrawItemActions(card, arms, new DuelArms.Carried(weapon, loot.Memo), false);
+        }
+
+        void DrawItemActions(Rect card, DuelArms arms, DuelArms.Carried item, bool fromCarried)
+        {
+            var weapon = item.Weapon;
+            var current = arms.Get(weapon.Slot);
+            MenuPanel(card);
+            Chip(new Rect(card.x, card.y, 3f, card.height), weapon.Color);
+            Rect Row(float offset, float height = 23f) => new(card.x + 14f, card.y + offset, card.width - 28f, height);
+            GUI.color = weapon.Color;
+            GUI.Label(Row(6f, 31f), $"{DuelWeapon.SlotName(weapon.Slot)}　{WeaponName(weapon)}", viewHeadStyle);
+            GUI.color = Color.white;
+            GUI.Label(Row(36f), $"装備中　{WeaponName(current)}", small);
+            GUI.Label(Row(56f), WeaponStats(weapon, current), cellNameSmall);
+            GUI.Label(Row(76f), WeaponTechnique(weapon), cellNameSmall);
+
+            string confirm = ProtoInput.L(ProtoInput.Btn.Confirm);
+            string back = ProtoInput.L(ProtoInput.Btn.Back);
+            float equipWeight = fromCarried ? arms.TotalWeight : arms.WeightAfterEquip(weapon);
+            float keepWeight = fromCarried ? arms.TotalWeight - weapon.weight : arms.TotalWeight + weapon.weight;
+            string WeightText(float weight) => Mathf.Approximately(arms.TotalWeight, weight)
+                ? $"総重量 {weight:0.#} / {arms.Rules.carryMax:0.#}"
+                : $"総重量 {arms.TotalWeight:0.#} → {weight:0.#} / {arms.Rules.carryMax:0.#}";
+
+            float ammo = arms.AmmoFrom(item, false);
+            float hp = arms.HpFrom(item);
+            float refund = arms.AmmoFrom(item, true);
+            string heal = refund > 0f ? $"HP +{hp:0.#}　共通弾 +{refund:0.#}" : $"HP +{hp:0.#}";
+            DrawAction(DuelArms.WeaponAction.Equip, 103f, "入れ替える", WeightText(equipWeight));
+            DrawAction(DuelArms.WeaponAction.KeepOrDrop, 135f,
+                fromCarried ? "床に置く" : "所持する",
+                fromCarried && !arms.CanChooseAction(item, true, DuelArms.WeaponAction.KeepOrDrop)
+                    ? "地上で置けます" : WeightText(keepWeight));
+            DrawAction(DuelArms.WeaponAction.Ammo, 167f, "解体して弾にする", $"共通弾 +{ammo:0.#}");
+            DrawAction(DuelArms.WeaponAction.Heal, 199f, "解体して回復する", heal);
+            GUI.Label(Row(232f), $"↑↓ 選ぶ　　{confirm} 決定　　解体は {confirm} 長押し　　{back} 戻る", center);
+
+            void DrawAction(DuelArms.WeaponAction action, float y, string label, string detail)
+            {
+                Rect line = Row(y, 28f);
+                bool selected = arms.SelectedAction == action;
+                bool available = arms.CanChooseAction(item, fromCarried, action);
+                if (selected) SelectionBand(line);
+                if (selected && arms.SalvageProgress > 0f)
+                    Chip(new Rect(line.x, line.yMax - 3f, line.width * arms.SalvageProgress, 3f), ActiveArms);
+                GUI.color = available ? Color.white : new Color(1f, 1f, 1f, 0.50f);
+                GUI.Label(new Rect(line.x + 9f, line.y + 2f, line.width * 0.43f, 23f), label, small);
+                GUI.Label(new Rect(line.x + line.width * 0.44f, line.y + 2f, line.width * 0.56f - 9f, 23f), detail, cellTinyRight);
+                GUI.color = Color.white;
+            }
         }
 
         void DrawPickupChart(DuelWeapon weapon, DuelWeapon current, float cardY)
@@ -154,19 +180,24 @@ namespace Prototype
             // 比較は機体を隠さないよう右寄せ。背中の比較は従来どおり画面上部の中央。
             bool back = weapon.Slot == DuelSlot.Back;
             float x = back ? (SW - width) * 0.5f : SW - margin - width;
-            float y = back ? 82f : cardY - gap - height;
-            MenuPanel(new Rect(x, y, width, height));
+            float y = back ? 82f : Mathf.Max(6f, cardY - gap - height);
+            DrawWeaponComparison(new Rect(x, y, width, height), weapon, current, "落とし物");
+        }
 
+        void DrawWeaponComparison(Rect panel, DuelWeapon weapon, DuelWeapon current, string itemLabel)
+        {
+            MenuPanel(panel);
             var pair = DuelRadar.Get(weapon, current);
-            Chip(new Rect(x + 15f, y + 11f, 12f, 3f), DuelRadar.MainColor);
-            GUI.Label(new Rect(x + 32f, y + 3f, 74f, 23f), "落とし物", cellNameSmall);
+            Chip(new Rect(panel.x + 15f, panel.y + 11f, 12f, 3f), DuelRadar.MainColor);
+            GUI.Label(new Rect(panel.x + 32f, panel.y + 3f, 74f, 23f), itemLabel, cellNameSmall);
             if (pair.Compared)
             {
-                Chip(new Rect(x + 110f, y + 11f, 12f, 3f), DuelRadar.OtherColor);
-                GUI.Label(new Rect(x + 127f, y + 3f, 72f, 23f), "装備中", cellNameSmall);
-                GUI.Label(new Rect(x + 206f, y + 3f, width - 220f, 23f), "数値は装備中 → 落とし物", cellTinyRight);
+                Chip(new Rect(panel.x + 110f, panel.y + 11f, 12f, 3f), DuelRadar.OtherColor);
+                GUI.Label(new Rect(panel.x + 127f, panel.y + 3f, 72f, 23f), "装備中", cellNameSmall);
+                GUI.Label(new Rect(panel.x + 206f, panel.y + 3f, panel.width - 220f, 23f),
+                    $"数値は装備中 → {itemLabel}", cellTinyRight);
             }
-            DrawWeaponChart(new Rect(x + 10f, y + 27f, width - 20f, height - 31f), pair);
+            DrawWeaponChart(new Rect(panel.x + 10f, panel.y + 27f, panel.width - 20f, panel.height - 31f), pair);
         }
     }
 }

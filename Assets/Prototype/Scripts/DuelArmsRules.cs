@@ -48,7 +48,8 @@ namespace Prototype
         [Tooltip("外れた弾の筋の太さ(m。機体は約9m)")]
         public float missTracerWidth = 0.35f;
 
-        [Header("装備の重さ")]
+        [Header("装備と所持品の重さ")]
+        [Min(0f)] public float carryMax = 100f;
         [Tooltip("この重さまでは遅くならない")]
         public float freeWeight = 15f;
         [Tooltip("それを超えた重さ1あたりに、ENを使う移動の速さが下がる割合。歩き・走りには効かない")]

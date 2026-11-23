@@ -6,8 +6,7 @@ namespace Prototype
 {
     /// <summary>
     /// 落ちている武装(ステージだけ)。倒した敵が落とし、真下の床まで落ちて、レア度の色の光の柱を立てる。時間では消えない。
-    /// 自機が近くにいる(壁ごしでない)と比べた内容が画面に出て、十字右(V)で入れ替えを確認し、もう一度押して同じ種類の枠に付ける。
-    /// 十字上(F)で解体(弾か回復)。無視すれば残る。
+    /// 自機が近くにいるときに△(C)で調べ、装備・所持・解体を選ぶ。無視すれば残る。
     /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。置いた直後から拾えるが、拾う案内の優先度は低い
     /// (LowerPriority。作者「落とした後すぐ触れるようにはしてほしい(優先度を下げるだけ)」):拾える範囲にふつうの武装があればそちらが対象で、
     /// なければ外した武装が対象になる。優先度が戻るのは、自機がその武装の拾える範囲から一度出たときだけ(時間では戻さない。RestorePriorities)。
@@ -44,6 +43,23 @@ namespace Prototype
 
         /// <summary>pos にそのまま置く(勢いなし。付け替えで外した武装を、拾った武装のあった所に置く)。</summary>
         public static DuelLoot Place(DuelWeapon w, Vector3 pos) => Spawn(w, pos, 0f, Vector3.zero);
+
+        public static bool HasFloorAtFeet(DuelPlayer player) => FindFloorAtFeet(player, out _);
+
+        public static bool TryPlaceAtFeet(DuelWeapon weapon, DuelPlayer player, out DuelLoot loot)
+        {
+            loot = null;
+            if (!FindFloorAtFeet(player, out var floor)) return false;
+            loot = Place(weapon, floor.point + Vector3.up * Hover);
+            return true;
+        }
+
+        static bool FindFloorAtFeet(DuelPlayer player, out RaycastHit floor)
+        {
+            floor = default;
+            return !player.Airborne && Physics.Raycast(player.transform.position + Vector3.up * 2f, Vector3.down,
+                out floor, 4f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+        }
 
         static DuelLoot Spawn(DuelWeapon w, Vector3 pos, float vy, Vector3 kick)
         {

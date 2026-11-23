@@ -173,10 +173,7 @@ namespace Prototype
         {
             halfW = halfH = 0f;
             if (camera == null || !SubAiming || !player.LockOn) return false;
-            float vertical = Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            float width = Mathf.Tan(SubSightAngle * Mathf.Deg2Rad);
-            halfW = Mathf.Min(width, 0.96f * vertical * camera.aspect);
-            halfH = Mathf.Min(width * SubSightAspect, 0.9f * vertical);
+            WeaponSightHalfExtents(camera, SubSightAngle, SubSightAspect, out halfW, out halfH);
             return true;
         }
 

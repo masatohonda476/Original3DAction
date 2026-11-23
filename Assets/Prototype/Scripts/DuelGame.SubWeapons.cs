@@ -23,7 +23,7 @@ namespace Prototype
                 }
             }
 
-            float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float k = SightPixelsPerTangent(cam);
             DrawWeaponSightCorners(halfW * k, halfH * k, hasTarget, false);
 
             for (int i = 0; i < SubSlotCount; i++)

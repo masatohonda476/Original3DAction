@@ -241,15 +241,20 @@ namespace Prototype
                 {
                     var w = launch.Weapon;
                     var shot = w.Primary;
-                    var from = SubMuzzle(i);
-                    var target = player.LockOn && launch.Target != null && !launch.Target.Dead ? launch.Target : null;
-                    Vector3 direction = (launch.Aim - from).normalized;
-                    if (direction == Vector3.zero) direction = transform.forward;
-                    if (target != null) direction = (direction + Vector3.up * 0.22f).normalized;
-                    var color = w.GuidedSub ? BulletColor : ShellColor;
-                    ProtoFx.Blast(from, 1.2f, color, 0.09f);
-                    StartCoroutine(Fly(from, direction, shot, color, false, SpeedOf(shot), false,
-                        target, MissileTurn, subFlightVersion, inheritMovement: player.LockOn));
+                    if (w.DeploysFlare)
+                        DeployFlare(i);
+                    else
+                    {
+                        var from = SubMuzzle(i);
+                        var target = player.LockOn && launch.Target != null && !launch.Target.Dead ? launch.Target : null;
+                        Vector3 direction = (launch.Aim - from).normalized;
+                        if (direction == Vector3.zero) direction = transform.forward;
+                        if (target != null) direction = (direction + Vector3.up * 0.22f).normalized;
+                        var color = w.GuidedSub || shot.blastRadius <= 0f ? BulletColor : ShellColor;
+                        ProtoFx.Blast(from, 1.2f, color, 0.09f);
+                        StartCoroutine(Fly(from, direction, shot, color, false, SpeedOf(shot), false,
+                            target, MissileTurn, subFlightVersion, inheritMovement: player.LockOn));
+                    }
                     launch.Rounds--;
                     pendingSubRounds--;
                     launch.NextAt += shot.burstInterval;
@@ -301,8 +306,7 @@ namespace Prototype
 
         int LoseSubWeapons()
         {
-            StopSubVolley();
-            subFlightVersion++;
+            ResetSubCombat();
             int lost = 0;
             for (int i = 0; i < SubSlotCount; i++)
             {
@@ -318,6 +322,7 @@ namespace Prototype
         {
             StopSubVolley();
             subFlightVersion++;
+            ClearFlares();
             Array.Clear(subTargets, 0, subTargets.Length);
         }
     }

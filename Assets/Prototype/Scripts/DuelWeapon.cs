@@ -12,6 +12,8 @@ namespace Prototype
     {
         public float damage, range, interval, stagger, knock, shotSpeed, spread, beamWidth;
         public float recoilPerShot, recoilMax, recoilRecover;
+        /// <summary>弾の見た目の長さ(m)。0 は従来の球形。</summary>
+        public float projectileLength;
         /// <summary>一度の発射で同時に飛ぶ弾の数。散弾や拡散爆発に使う。</summary>
         public int pellets = 1;
         /// <summary>一度の入力で時間差を付けて撃つ回数と間隔(秒)。interval は最初の発射から次の入力で撃てるまで。</summary>
@@ -53,6 +55,7 @@ namespace Prototype
         public int SubUses { get; private set; }
         public bool IsSub => Slot is DuelSlot.Shoulder or DuelSlot.Leg;
         public bool GuidedSub { get; private set; }
+        public bool DeploysFlare { get; private set; }
 
         [Header("背中")]
         public float dashMul = 1f, dodgeDistanceMul = 1f, dodgeInvincibleMul = 1f, enCostMul = 1f;

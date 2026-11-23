@@ -416,7 +416,7 @@ namespace Prototype
             if (w.UsesTwoHands) return CreateTwoHandVisual(w, parent, false);
             var root = new GameObject(w.name).transform;
             root.SetParent(parent, false);
-            bool cannon = w.IsSub && !w.GuidedSub;
+            bool cannon = w.IsSub && !w.GuidedSub && !w.DeploysFlare;
             var part = GameObject.CreatePrimitive(cannon ? PrimitiveType.Cylinder : PrimitiveType.Cube);
             DestroyImmediate(part.GetComponent<Collider>());
             part.transform.SetParent(root, false);

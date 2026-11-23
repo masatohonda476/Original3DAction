@@ -269,10 +269,12 @@ namespace Prototype
             return go;
         }
 
-        /// <summary>弾の見た目:光る球と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
-        static Transform Projectile(Vector3 at, Color c, float size, float trail = 0.18f)
+        /// <summary>弾の見た目:光る弾体と、尾を引く線(trail 秒の長さ。弾の筋)。</summary>
+        static Transform Projectile(Vector3 at, Color c, float size, float trail, float length = 0f)
         {
             var go = VisualSphere("Shot", at, c, size);
+            if (length > 0f)
+                go.transform.localScale = new Vector3(size, size, length);
             var tr = go.AddComponent<TrailRenderer>();
             tr.time = trail;
             tr.startWidth = size * 0.7f;
@@ -297,8 +299,11 @@ namespace Prototype
             const float ShellSize = 1.1f; // 仮
             float size = w.blastRadius > 0f ? ShellSize : (pellet ? r.pelletSize : r.bulletSize) + w.beamWidth * 0.5f;
             float trail = Mathf.Max(0.01f, r.bulletTrail);
-            var p = Projectile(from, c, size, trail);
+            if (w.projectileLength > 0f) size *= 0.5f;
+            var p = Projectile(from, c, size, trail, w.projectileLength);
+            if (w.projectileLength > 0f) p.rotation = Quaternion.LookRotation(dir);
             Destroy(p.gameObject, w.range / Mathf.Max(1f, speed) + trail + 1f);   // 念のため(コルーチンが止まっても残らない)
+            var guidance = new DuelMissileGuidance(homing);
             List<DuelEnemy> pierced = w.pierce ? new List<DuelEnemy>() : null;
             Vector3 pos = from;
             float flown = 0f;
@@ -311,9 +316,8 @@ namespace Prototype
                     EndProjectile(p, pos, trail);
                     yield break;
                 }
-                if (homing != null && !homing.Dead)
-                    dir = Vector3.RotateTowards(dir, (homing.Chest - pos).normalized,
-                        turnRate * Mathf.Deg2Rad * Time.deltaTime, 0f);
+                if (homing != null)
+                    dir = guidance.Steer(pos, dir, turnRate * Mathf.Deg2Rad * Time.deltaTime);
                 float step = speed * Time.deltaTime;
                 if (step <= 0f) continue;   // ヒットストップ・止まった時間の中
                 bool last = flown + step >= w.range;

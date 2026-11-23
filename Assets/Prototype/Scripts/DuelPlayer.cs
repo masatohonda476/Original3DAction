@@ -150,10 +150,16 @@ namespace Prototype
         }
 
         // 足の中心に地形がある間だけ、復帰地点として使う。敵の上や、縁に機体が少し掛かっているだけの場所は除く。
-        internal bool OnFoothold => cc.isGrounded &&
-            Physics.Raycast(transform.position + Vector3.up, Vector3.down, out var hit, 1.5f,
-                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
-            Vector3.Angle(hit.normal, Vector3.up) <= cc.slopeLimit;
+        internal bool OnFoothold => TryGetFoothold(out _);
+
+        internal bool TryGetFoothold(out RaycastHit hit)
+        {
+            hit = default;
+            return cc.isGrounded &&
+                Physics.Raycast(transform.position + Vector3.up, Vector3.down, out hit, 1.5f,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
+                Vector3.Angle(hit.normal, Vector3.up) <= cc.slopeLimit;
+        }
 
         internal void RecoverFromFall(Vector3 pos, float damage)
         {

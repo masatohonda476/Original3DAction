@@ -507,6 +507,8 @@ namespace Prototype
             foreach (var sp0 in spawns)
                 if (sp0.enemy != null && !sp0.enemy.Dead && sp0.enemy.transform.position.y < fallLimitY) sp0.enemy.ResetToHome();
             if (player.Dead) return;
+            TickCombatItems();
+
             Vector3 p = player.transform.position;
             if (p.y <= lastFoothold.y - fallRecoveryDepth)
             {
@@ -556,7 +558,11 @@ namespace Prototype
             BannerAt = Time.unscaledTime;
         }
 
-        public void OnPlayerDied() => respawnAt = Time.unscaledTime + respawnDelay;
+        public void OnPlayerDied()
+        {
+            ClearCombatItems();
+            respawnAt = Time.unscaledTime + respawnDelay;
+        }
 
         /// <summary>
         /// 最後に触れたセーブポイントから再開する。倒した敵はそのまま。生きている敵は HP を戻して持ち場へ帰し、発覚・警戒を切る
@@ -600,6 +606,7 @@ namespace Prototype
                 return;
             }
             Cleared = true;
+            ClearCombatItems();
             game.CancelEnemyRounds();
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
@@ -637,7 +644,7 @@ namespace Prototype
         void TryDropItem(DuelEnemy e)
         {
             if (itemDropChance < 1f && Random.value >= itemDropChance) return;
-            var item = Random.Range(0, 2) == 0 ? DuelItem.RepairArmor : DuelItem.Ammo;
+            var item = DuelItems.RollDrop();
             Vector2 k = Random.insideUnitCircle * 5f;
             DuelLoot.Drop(item, e.Chest, new Vector3(k.x, 0f, k.y));
         }

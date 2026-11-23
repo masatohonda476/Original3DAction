@@ -15,6 +15,15 @@ namespace Prototype
         public int SelectedItemSlot { get; private set; }
         public DuelItem? ItemAt(int slot) => itemSlots[slot];
         public int ItemCount(DuelItem item) => itemStock[(int)item];
+        public int TotalItems
+        {
+            get
+            {
+                int total = 0;
+                foreach (int count in itemStock) total += count;
+                return total;
+            }
+        }
 
         ButtonControl itemSelectButton;
         float itemSelectAt;
@@ -110,39 +119,64 @@ namespace Prototype
                 ShowItemNotice("未登録のスロット");
                 return;
             }
-            if (!CanUseItem(item)) return;
+            if (!CanUseItem(item, out _, out _)) return;
             itemSelectButton = null;
             itemNotice = null;
             itemUseAt = Time.time;
             usingItem = item;
         }
 
-        bool CanUseItem(DuelItem item)
+        bool CanUseItem(DuelItem item, out RaycastHit floor, out DuelEnemy decoyTarget)
         {
-            if (ItemCount(item) == 0)
+            floor = default;
+            decoyTarget = null;
+            string reason = null;
+            if (ItemCount(item) == 0) reason = "所持数が0";
+            else if (item == DuelItem.RepairArmor && player.HP >= player.MaxHP) reason = "HP満タン";
+            else if (item == DuelItem.Ammo && Ammo >= Rules.ammoMax) reason = "共通の弾が満タン";
+            else if (item is DuelItem.MagneticAnchor or DuelItem.DecoyBeacon)
             {
-                ShowItemNotice("所持数が0");
-                return false;
+                if (!player.TryGetFoothold(out floor)) reason = "地上で設置できます";
+                else if (item == DuelItem.DecoyBeacon)
+                {
+                    decoyTarget = game.stage.FindBeaconTarget(floor.point);
+                    if (decoyTarget == null) reason = "誘導できる敵がいません";
+                }
             }
-            bool repair = item == DuelItem.RepairArmor;
-            if (repair ? player.HP < player.MaxHP : Ammo < Rules.ammoMax) return true;
-            ShowItemNotice(repair ? "HP満タン" : "共通の弾が満タン");
+
+            if (reason == null) return true;
+            ShowItemNotice(reason);
             return false;
         }
 
         void UseItem(DuelItem item)
         {
-            if (!CanUseItem(item)) return;
-            float gain;
-            if (item == DuelItem.RepairArmor)
-            {
-                float before = player.HP;
-                player.Heal(player.MaxHP * DuelItems.RepairFraction);
-                gain = player.HP - before;
-            }
-            else gain = AddAmmo(DuelItems.AmmoAmount);
+            if (!CanUseItem(item, out var floor, out var decoyTarget)) return;
 
+            // 爆発や設置によって発動するアイテムも、使用が成立した時点で1個消費する。
             itemStock[(int)item]--;
+            float gain = 0f;
+            switch (item)
+            {
+                case DuelItem.RepairArmor:
+                    float before = player.HP;
+                    player.Heal(player.MaxHP * DuelItems.RepairFraction);
+                    gain = player.HP - before;
+                    break;
+                case DuelItem.Ammo:
+                    gain = AddAmmo(DuelItems.AmmoAmount);
+                    break;
+                case DuelItem.Grenade:
+                    game.stage.ThrowGrenade();
+                    ShowItemNotice("手榴弾を投げた");
+                    break;
+                case DuelItem.MagneticAnchor:
+                case DuelItem.DecoyBeacon:
+                    game.stage.PlaceCombatItem(item, floor, decoyTarget);
+                    ShowItemNotice(item == DuelItem.MagneticAnchor ? "アンカーを設置" : "ビーコンを設置");
+                    break;
+            }
+
             gainedItem = item;
             itemGain = gain;
             itemGainAt = Time.unscaledTime;
@@ -212,8 +246,7 @@ namespace Prototype
 
         int LoseItems()
         {
-            int lost = 0;
-            foreach (int count in itemStock) lost += count;
+            int lost = TotalItems;
             Array.Clear(itemStock, 0, itemStock.Length);
             ResetItemInput();
             return lost;

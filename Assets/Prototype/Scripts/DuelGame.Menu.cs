@@ -85,7 +85,7 @@ namespace Prototype
         void SetMenuPage(MenuPage page)
         {
             if (page == menuPage) return;
-            player?.Arms.ResetItemInput();
+            player?.Arms.ResetItemInput(cancelUse: false);
             if (!MenuOpen)
             {
                 player.Arms.CancelChoice();
@@ -227,7 +227,7 @@ namespace Prototype
             static string B(ProtoInput.Btn b) => ProtoInput.L(b);
             bool kb = dev == ProtoInput.Device.Keyboard;
             string r1 = B(ProtoInput.Btn.R1), r2 = B(ProtoInput.Btn.R2), l2 = B(ProtoInput.Btn.L2);
-            string fly = B(ProtoInput.Btn.Fly);
+            string fly = B(ProtoInput.Btn.Fly), l1 = B(ProtoInput.Btn.L1);
 
             // 左の列は移動と戦闘。
             HelpRow(B(ProtoInput.Btn.Move), "移動");
@@ -240,6 +240,8 @@ namespace Prototype
             HelpRow(r2, "近接の強攻撃");
             HelpRow($"成功したジャンプ中に {r1}", "近接の落下攻撃");
             HelpRow($"崩れた敵の近くで {r1}", "地上の近接で致命攻撃。命中で共通の弾を補給");
+            HelpRow($"{l1} + {r2}", "両肩のサブ武装を発射");
+            HelpRow($"{l1} + {r1}", "両脚のサブ武装を発射");
 
             // 右の列は射撃・ロックオン・落とし物・メニュー。
             helpSplit = helpBtn.Count;

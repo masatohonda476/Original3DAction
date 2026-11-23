@@ -697,7 +697,7 @@ namespace Prototype
         }
 
         float Weight(DuelWeapon w, DuelArms arms) =>
-            Mathf.Max(0f, w.dropWeight) * (arms != null && arms.Get(w.Slot) == w ? sameWeaponWeight : 1f);
+            Mathf.Max(0f, w.dropWeight) * (arms != null && arms.IsEquipped(w) ? sameWeaponWeight : 1f);
 
         // ───────── 画面に出す情報 ─────────
 

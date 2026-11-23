@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Prototype
 {
-    public enum DuelSlot { Melee, Ranged, Back }
+    public enum DuelSlot { Melee, Ranged, Back, Shoulder, Leg }
     public enum DuelHeavyEffect { None, Knockback, GuardPoint, Wave }
     public enum DuelMeleeShape { OneHandSword, TwoHandSword, Spear, Glaive, Hammer }
 
@@ -50,6 +50,10 @@ namespace Prototype
         public int SpecialAmmo { get; private set; }
         public string GunTypeName { get; private set; }
 
+        public int SubUses { get; private set; }
+        public bool IsSub => Slot is DuelSlot.Shoulder or DuelSlot.Leg;
+        public bool GuidedSub { get; private set; }
+
         [Header("背中")]
         public float dashMul = 1f, dodgeDistanceMul = 1f, dodgeInvincibleMul = 1f, enCostMul = 1f;
 
@@ -70,6 +74,8 @@ namespace Prototype
         {
             DuelSlot.Melee => "近接",
             DuelSlot.Ranged => "遠距離",
+            DuelSlot.Shoulder => "肩専用",
+            DuelSlot.Leg => "脚専用",
             _ => "背中",
         };
     }

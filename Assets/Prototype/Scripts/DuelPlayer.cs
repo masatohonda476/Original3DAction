@@ -147,6 +147,7 @@ namespace Prototype
             ClearBufferedInput();
             Arms.ClearBufferedInput();
             Arms.StopBurst();
+            Arms.ResetSubCombat();
             Arms.ResetItemInput();
             airVel = Vector3.zero;
             flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
@@ -291,7 +292,7 @@ namespace Prototype
                         if (Energy <= 0f) energyUsedAt = now;   // 使い切ったときだけ回復を待たせる(飛ぶのと同じ)
                     }
                     // 遠距離を構えていれば、LateUpdate でこのフレームのカメラに向きを合わせる。
-                    if (!Arms.Aiming)
+                    if (!Arms.FreeAim)
                     {
                         if (Target != null) Face(Target.transform.position - transform.position, 14f, dt);
                         else if (Dashing) Face(worldMove, 14f, dt);
@@ -352,18 +353,19 @@ namespace Prototype
             if (DuelGame.Paused || Dead) return;
             // 表示に使うカメラの向きが決まってから、機体の向き・銃口・射撃方向をそろえる。
             var cam = Camera.main;
-            if (Arms.Aiming && cam != null)
+            if (Arms.FreeAim && cam != null)
             {
                 Vector3 facing = Flat(cam.transform.forward);
                 if (facing != Vector3.zero) transform.rotation = Quaternion.LookRotation(facing);
             }
             Arms.UpdateCombat(CanShoot);
+            Arms.TickSubCombat(cam);
             Arms.TickItems();
         }
 
         void ReadButtons(float now)
         {
-            if (Arms.RangedHeld || Arms.ChoiceLocksInput)
+            if (Arms.RangedHeld || Arms.ChoiceLocksInput || Arms.UsingItem || Arms.SubFiring)
                 meleePressedAt = -10f;
             else if (Arms.HeavyPressed)
             {
@@ -376,7 +378,8 @@ namespace Prototype
                 heavyPressed = false;
             }
             // 落とし物の選択中と閉じたフレームには回避を先行入力しない。
-            if (!Arms.ChoiceLocksInput && ProtoInput.Dodge) dodgePressedAt = now;
+            if (Arms.SubFiring) dodgePressedAt = -10f;
+            else if (!Arms.ChoiceLocksInput && ProtoInput.Dodge) dodgePressedAt = now;
         }
 
         /// <summary>メニューや落とし物の選択を開いたとき、先行入力を捨てる。</summary>
@@ -390,6 +393,8 @@ namespace Prototype
         void Enter(State s, float dur = 0f)
         {
             if (s is State.Dodge or State.Hurt) Arms.StopBurst();
+            if (s == State.Dodge) Arms.InterruptItemUse();
+            if (s == State.Hurt) Arms.StopSubVolley();
             if (s != State.Attack)
             {
                 dropping = fatal = false;
@@ -406,7 +411,6 @@ namespace Prototype
         public void ReceiveHit(DuelHit h)
         {
             if (Dead || Invincible) return;
-            Arms.InterruptItemUse();
             EndJump();   // 被弾で「ジャンプ中」は終わる。成功も消える
             if (DropDiving) airVel = Vector3.zero;
             Vector3 away = Flat(transform.position - h.from);
@@ -449,6 +453,8 @@ namespace Prototype
             ClearBufferedInput();
             Arms.ClearBufferedInput();
             Arms.StopBurst();
+            Arms.ResetSubCombat();
+            Arms.ResetItemInput();
             EndJump();
             // 空中で撃墜されたら、飛行と上昇の勢いを止めて落ちる
             flying = false;

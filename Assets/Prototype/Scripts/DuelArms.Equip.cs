@@ -68,6 +68,7 @@ namespace Prototype
                 }
                 Choosing = Nearby;
                 ResetAction();
+                if (Choosing.Weapon.IsSub) BeginSubChoice(Choosing.Weapon);
                 ClearBufferedInput();
                 player.ClearBufferedInput();
                 return;
@@ -80,6 +81,11 @@ namespace Prototype
             }
 
             var loot = Choosing;
+            if (loot.Weapon.IsSub)
+            {
+                UpdateSubChoice(loot);
+                return;
+            }
             var item = new Carried(loot.Weapon, loot.Memo);
             if (!UpdateWeaponAction(item, false)) return;
             if (SelectedAction == WeaponAction.Equip)
@@ -275,6 +281,7 @@ namespace Prototype
         public void KeepBossSupplies()
         {
             KeepItems();
+            KeepSubWeapons();
             ammoKept = true;
             // 再開時に連射は引き継がないので、入口時点の未発射分は弾として控える。
             keptAmmo = Mathf.Min(Rules.ammoMax, Ammo + RefundableBurstAmmo());
@@ -290,6 +297,7 @@ namespace Prototype
         {
             if (!ammoKept) return;
             RestoreItems();
+            RestoreSubWeapons();
             Ammo = keptAmmo;
             if (RangedWeapon.HasMagazine) RestoreMagazine(rangedMemo);
             foreach (var item in carried)
@@ -307,6 +315,7 @@ namespace Prototype
             ammoKept = false;
             keptMags.Clear();
             ForgetKeptItems();
+            ForgetKeptSubWeapons();
         }
 
         void ResetWeapons(bool loaded)
@@ -323,7 +332,7 @@ namespace Prototype
 
         public int LoseAll()
         {
-            int lost = carried.Count + LoseItems();
+            int lost = carried.Count + LoseItems() + LoseSubWeapons();
             carried.Clear();
             CarriedWeight = 0f;
             CloseCarriedChoice();
@@ -407,10 +416,16 @@ namespace Prototype
             if (w.UsesTwoHands) return CreateTwoHandVisual(w, parent, false);
             var root = new GameObject(w.name).transform;
             root.SetParent(parent, false);
-            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bool cannon = w.IsSub && !w.GuidedSub;
+            var part = GameObject.CreatePrimitive(cannon ? PrimitiveType.Cylinder : PrimitiveType.Cube);
             DestroyImmediate(part.GetComponent<Collider>());
             part.transform.SetParent(root, false);
-            part.transform.localScale = w.IsBlade ? new Vector3(0.4f, 1f, 4.5f) : w.scale;
+            if (cannon)
+            {
+                part.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                part.transform.localScale = new Vector3(w.scale.x, w.scale.z * 0.5f, w.scale.y);
+            }
+            else part.transform.localScale = w.IsBlade ? new Vector3(0.4f, 1f, 4.5f) : w.scale;
             part.GetComponent<Renderer>().sharedMaterial = ProtoFx.Lit(w.Color);
             return root;
         }

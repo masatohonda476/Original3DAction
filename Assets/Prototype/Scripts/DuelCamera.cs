@@ -150,7 +150,7 @@ namespace Prototype
             float s = scale;
             Vector3 chest = p.LockPoint;   // 注視点の高さはロックオンの印と同じ(機体の高さの7割)
             var enemy = p.Target;
-            bool aiming = p.Arms.Aiming;
+            bool aiming = p.Arms.FreeAim;
             bool tracking = enemy != null && !aiming;
 
             Vector3 desired, look;

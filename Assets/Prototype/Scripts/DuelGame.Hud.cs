@@ -36,7 +36,8 @@ namespace Prototype
             if (player == null) return;
             if (!MenuOpen)
             {
-                DrawAimFrames(player.Arms, cam);   // 照準の枠は、ほかの表示より奥に描く
+                if (player.Arms.SubAiming) DrawSubAim(player.Arms, cam);
+                else DrawAimFrames(player.Arms, cam);   // 照準の枠は、ほかの表示より奥に描く
                 DrawHitMark(player.Arms);
             }
 
@@ -90,7 +91,7 @@ namespace Prototype
                 Vector3 sp = cam.WorldToScreenPoint(e.LockPoint);
                 // 画面の外(敵が背中側へ回り、カメラが上限の速さで向き直っている途中など):画面の端に、その方向を示す小さな印(見失わないように)
                 if (sp.z <= 0f || sp.x < 0f || sp.x > Screen.width || sp.y < 0f || sp.y > Screen.height) DrawOffscreenLock(cam, e.LockPoint);
-                else if (player.Arms.ShotPoint == null)
+                else if (player.Arms.ShotPoint == null && !player.Arms.FreeAim)
                 {
                     // 近接を構えている間、十字は相手の胸に出す。遠距離は弾が飛んでいく所を示す(DrawAimFrames)。
                     Vector3 cp = cam.WorldToScreenPoint(e.Chest);
@@ -149,10 +150,15 @@ namespace Prototype
             if (arms.ShotFrame is not { } frame) return;
             float k = SH * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);   // tan → 画面の大きさ
             float cx = SW * 0.5f, cy = SH * 0.5f;
-            float hw = frame.halfW * k, hh = frame.halfH * k;
-            var color = frame.locked ? FrameLocked : FrameIdle;
-            color.a = frame.locked || frame.hot ? 0.9f : 0.6f;
-            Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, color);
+            float gap = Mathf.Clamp(frame.spread * k, CrossMinGap, SH * 0.3f);
+            float crossAlpha = frame.hot ? 0.85f : 0.4f;
+            if (!frame.showCorners)
+            {
+                crossShownAt = -1f;
+                DrawCross(cx, cy, gap, 0.95f, outline: true);
+                return;
+            }
+            DrawWeaponSightCorners(frame.halfW * k, frame.halfH * k, frame.locked, frame.hot);
 
             // 弾道の十字は補正と反動を反映する。カメラの後ろに来たら隠す。
             Vector3 shotSp = arms.ShotPoint is Vector3 shot ? cam.WorldToScreenPoint(shot) : Vector3.forward;
@@ -176,22 +182,29 @@ namespace Prototype
                     crossHit = Mathf.MoveTowards(crossHit, onEnemy, (now - crossShownAt) / CrossHitTime);
                 }
                 crossShownAt = now;
-                DrawCross(crossPos.x, crossPos.y, Mathf.Clamp(frame.spread * k, CrossMinGap, SH * 0.3f), frame.hot ? 0.85f : 0.4f, crossHit);
+                DrawCross(crossPos.x, crossPos.y, gap, crossAlpha, crossHit);
             }
-            var mc = FrameLocked;
-            mc.a = 0.95f;
-            var marked = arms.MarkedEnemy;
+            DrawAimTargetMark(cam, arms.MarkedEnemy);
+        }
+
+        void DrawWeaponSightCorners(float hw, float hh, bool locked, bool hot)
+        {
+            var color = locked ? FrameLocked : FrameIdle;
+            color.a = locked || hot ? 0.9f : 0.6f;
+            float cx = SW * 0.5f, cy = SH * 0.5f;
+            Brackets(new Rect(cx - hw, cy - hh, hw * 2f, hh * 2f), Mathf.Clamp(Mathf.Min(hw, hh) * 0.35f, 8f, 26f), 2f, color);
+        }
+
+        void DrawAimTargetMark(Camera cam, DuelEnemy target)
+        {
             // ロックオンの角が囲んでいる相手には印を重ねない。
-            if (marked != null && !marked.Dead && (marked != player.Target || lockFollow <= 0f))
-            {
-                Vector3 sp = cam.WorldToScreenPoint(marked.Chest);
-                if (sp.z > 0f)
-                {
-                    float x = sp.x / uiScale, y = SH - sp.y / uiScale;
-                    Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, mc);
-                }
-            }
-            GUI.color = Color.white;
+            if (target == null || target.Dead || (target == player.Target && lockFollow > 0f)) return;
+            Vector3 sp = cam.WorldToScreenPoint(target.Chest);
+            if (sp.z <= 0f) return;
+            float x = sp.x / uiScale, y = SH - sp.y / uiScale;
+            var color = FrameLocked;
+            color.a = 0.95f;
+            Brackets(new Rect(x - 11f, y - 11f, 22f, 22f), 6f, 2f, color);
         }
 
         /// <summary>真ん中の十字の見た目の位置(GUI の座標)と、最後に出した時刻(実時間。-1 はまだ)。出す所へ CrossFollowTime 秒ほどで追いつく。</summary>
@@ -207,17 +220,25 @@ namespace Prototype
         const float CrossHitAlpha = 1f;
 
         /// <summary>十字(4本の短い線。g は真ん中の空き)。照準の色で、濃さは alpha。hit(0〜1)は敵に重なっている度合いで、1 なら濃い橙(FrameHit。弾が当たるときのロックオンの角と同じ色)で透けさせない。</summary>
-        static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f)
+        static void DrawCross(float cx, float cy, float g, float alpha, float hit = 0f, bool outline = false)
         {
             var sc = Color.Lerp(FrameIdle, FrameHit, hit);
             sc.a = Mathf.Lerp(alpha, Mathf.Max(alpha, CrossHitAlpha), hit);
-            GUI.color = sc;
             const float len = 7f, th = 2f;
-            var t = Texture2D.whiteTexture;
-            GUI.DrawTexture(new Rect(cx - g - len, cy - th / 2f, len, th), t);
-            GUI.DrawTexture(new Rect(cx + g, cy - th / 2f, len, th), t);
-            GUI.DrawTexture(new Rect(cx - th / 2f, cy - g - len, th, len), t);
-            GUI.DrawTexture(new Rect(cx - th / 2f, cy + g, th, len), t);
+            void Stroke(Rect line)
+            {
+                if (outline)
+                {
+                    GUI.color = new Color(0.03f, 0.05f, 0.08f, 0.85f);
+                    GUI.DrawTexture(new Rect(line.x - 1f, line.y - 1f, line.width + 2f, line.height + 2f), Texture2D.whiteTexture);
+                }
+                GUI.color = sc;
+                GUI.DrawTexture(line, Texture2D.whiteTexture);
+            }
+            Stroke(new Rect(cx - g - len, cy - th / 2f, len, th));
+            Stroke(new Rect(cx + g, cy - th / 2f, len, th));
+            Stroke(new Rect(cx - th / 2f, cy - g - len, th, len));
+            Stroke(new Rect(cx - th / 2f, cy + g, th, len));
             GUI.color = Color.white;
         }
 
@@ -329,7 +350,7 @@ namespace Prototype
                 lockOnAt = on ? now : -1f;
                 lockOffAt = on ? -1f : now;
             }
-            if (player.Dead || MenuOpen)
+            if (player.Dead || MenuOpen || (!on && player.Arms.FreeAim))
             {
                 lockOnAt = lockOffAt = -1f;
                 lockCornersShown = false;
@@ -385,7 +406,8 @@ namespace Prototype
             float e = Mathf.SmoothStep(0f, 1f, lockFollow);
             // 角は枠と同じ水色のまま。弾が囲んでいる相手に当たるとき(真ん中の十字が相手に重なって橙になるのと同じ条件。DuelArms.ShotEnemy)だけ、濃い橙にする。
             var arms = player.Arms;
-            bool hit = onEnemy && arms.ShotEnemy == target;
+            bool aiming = arms.FreeAim;
+            bool hit = onEnemy && (arms.ShotEnemy == target || SubTracksEnemy(arms, target));
             lockHit = Mathf.MoveTowards(lockHit, hit ? 1f : 0f, dt / LockHitTime);
 
             // 画面の縁寄りの枠(待機中に止まっている大きさは LockRestHalf。付け始めの判定と同じ値):縦が変わるときはなめらかに
@@ -397,13 +419,13 @@ namespace Prototype
             // 右辺の距離の目盛り:待機中の枠(敵を囲みに縮む前の大きさ。オン・オフの出入りには付いていく)の右辺に出す。
             // 出すのは、オンで狙う敵がいない(付く相手を探している)間だけ。付いている間は、相手が遮られた・画面の外に出たときも出さない
             // (枠を出し始めたフレーム=オンにした瞬間・メニューを閉じた直後に、もう付いていれば最初から出さない)。枠が敵から戻る途中は、戻るのに合わせて濃くなる
-            DrawLockGauge(on && !arms.Aiming && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
+            DrawLockGauge(on && !aiming && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
             hw = Mathf.Lerp(hw, lockFollowHalf.x + lockOffset * 0.35f, e);
             hh = Mathf.Lerp(hh, lockFollowHalf.y + lockOffset * 0.35f, e);
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;
             var col = lockInk;
             // 構え中は武器のサイトを使い、ロックオンは敵を囲む表示だけ残す。
-            if (arms.Aiming) col.a *= e;
+            if (aiming) col.a *= e;
             if (e > 0f) col.a = Mathf.Min(1f, col.a * Mathf.Lerp(1f, LockFollowAlpha / LockRestAlpha, e));   // 敵に重なる間は薄く
             float a = lockHit * e;
             if (a > 0f)

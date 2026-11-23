@@ -19,8 +19,20 @@ namespace Prototype
         {
             float y = ArmsTop, x = ArmsLeft + AmmoGaugeW + CellGap;
             float width = CellW * 2f + CellGap;
-            DrawWeaponCell(arms, DuelSlot.Ranged, new Rect(x, y, CellW, CellH));
-            DrawWeaponCell(arms, DuelSlot.Melee, new Rect(x + CellW + CellGap, y, CellW, CellH));
+            var first = new Rect(x, y, CellW, CellH);
+            var second = new Rect(x + CellW + CellGap, y, CellW, CellH);
+            if (!MenuOpen && !player.Dead && (arms.SubAiming || arms.SubFiring))
+            {
+                DrawSubWeaponGroup(arms, first, 0);
+                DrawSubWeaponGroup(arms, second, 2);
+                if (arms.SubFiring)
+                    GUI.Label(new Rect(second.x, y - 23f, second.width, 22f), "発射中", cellTinyRight);
+            }
+            else
+            {
+                DrawWeaponCell(arms, DuelSlot.Ranged, first);
+                DrawWeaponCell(arms, DuelSlot.Melee, second);
+            }
 
             var back = arms.Get(DuelSlot.Back);
             var backRect = new Rect(x, y + CellH + CellGap, width, 25f);
@@ -120,6 +132,12 @@ namespace Prototype
                 MenuPanel(hintRect);
                 Chip(new Rect(hintRect.x, hintRect.y, 3f, hintRect.height), loot.Tint);
                 GUI.Label(hintRect, hint, center);
+                return;
+            }
+
+            if (weapon.IsSub)
+            {
+                DrawSubPickup(arms, loot);
                 return;
             }
 

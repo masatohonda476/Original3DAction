@@ -25,7 +25,7 @@ namespace Prototype
         public DuelWeapon MeleeWeapon => Get(DuelSlot.Melee);
         public DuelWeapon RangedWeapon => Get(DuelSlot.Ranged);
         public DuelWeapon BackW => Get(DuelSlot.Back);
-        public float EquippedWeight => MeleeWeapon.weight + RangedWeapon.weight + BackW.weight;
+        public float EquippedWeight => MeleeWeapon.weight + RangedWeapon.weight + BackW.weight + SubWeight;
         public float Mobility => Rules.MobilityAt(TotalWeight);
         public float DashMul => BackW.dashMul * Mobility;
         /// <summary>スラスターと装備全体の重さを反映した回避距離の倍率。</summary>
@@ -34,16 +34,16 @@ namespace Prototype
         public float EnCostMul => BackW.enCostMul;
 
         // 共用の入力クラスでは肩の名称。ここでは L2/E が持ち替え、R2/R が強攻撃・大技。
-        bool RangedInputHeld => !ChoiceLocksInput && !blockL2 && ProtoInput.LeftShoulderHeld;
+        bool RangedInputHeld => !ChoiceLocksInput && !BlocksMainAttack && !blockL2 && ProtoInput.LeftShoulderHeld;
         static bool RawRangedHeld => Gamepad.current?.leftTrigger.isPressed == true || Keyboard.current?.eKey.isPressed == true;
         // メニュー明けの入力制限中も、押し続けている L2 で開始済みの連射だけ再開できる。
         public bool RangedHeld => RangedInputHeld ||
             (roundsPending > 0 && !DuelGame.Paused && !ChoiceLocksInput && RawRangedHeld);
         public bool Aiming => RangedHeld && player != null && !player.Dead && !player.MeleeCommitted;
-        public bool BlocksAutoLock => Aiming;
+        public bool BlocksAutoLock => FreeAim;
         public bool FlyBlocked => ChoiceLocksInput || blockFly;
-        public bool LightPressed => !ChoiceLocksInput && !blockR1 && ProtoInput.Attack;
-        public bool HeavyPressed => !ChoiceLocksInput && !blockR2 && ProtoInput.RightShoulderPressed;
+        public bool LightPressed => !ChoiceLocksInput && !BlocksMainAttack && !blockR1 && ProtoInput.Attack;
+        public bool HeavyPressed => !ChoiceLocksInput && !BlocksMainAttack && !blockR2 && ProtoInput.RightShoulderPressed;
 
         public float Ammo { get; private set; }
         public int Magazine => rangedMemo.mag;
@@ -62,6 +62,7 @@ namespace Prototype
             rig = r;
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
             ResetWeapons(true);
+            InitSubAnchors();
             Ammo = Mathf.Clamp(Rules.ammoStart, 0f, Rules.ammoMax);
         }
 
@@ -76,6 +77,7 @@ namespace Prototype
                 StopBurst();
             }
             if (!ProtoInput.FlyHeld) blockFly = false;
+            TickSubInput();
 
             if (player.Dead || game.stage == null || game.stage.Cleared)
             {
@@ -87,7 +89,7 @@ namespace Prototype
             }
 
             DuelLoot.RestorePriorities(player);
-            bool canPick = !player.Airborne && player.Current == DuelPlayer.State.Free;
+            bool canPick = !UsingItem && !SubFiring && !player.Airborne && player.Current == DuelPlayer.State.Free;
             var selected = Choosing;
             Nearby = canPick
                 ? selected != null && selected.CanPick(player) ? selected : DuelLoot.Nearest(player)

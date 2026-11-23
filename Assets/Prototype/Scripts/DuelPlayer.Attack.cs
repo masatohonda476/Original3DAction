@@ -197,7 +197,7 @@ namespace Prototype
                 float end = distance + step;
                 foreach (var e in game.Enemies)
                 {
-                    if (e == null || e.Dead || e.invulnerable || hit.Contains(e)) continue;
+                    if (e == null || e.Dead || e.Invulnerable || hit.Contains(e)) continue;
                     Vector3 offset = e.Chest - origin;
                     float height = origin.y - e.transform.position.y;
                     if (height < -WaveHalfHeight || height > game.mechHeight * e.Size + WaveHalfHeight) continue;
@@ -225,7 +225,7 @@ namespace Prototype
             bool any = false, big = false;
             foreach (var e in game.Enemies)
             {
-                if (e == null || e.Dead || e.invulnerable) continue;
+                if (e == null || e.Dead || e.Invulnerable) continue;
                 if (TooFarVertically(e) && !DropOnTopOf(e)) continue;   // 上下に離れすぎていれば届かない(落下攻撃を敵の体の上で振ったときは別)
                 Vector3 to = e.transform.position - transform.position;
                 to.y = 0f;
@@ -265,7 +265,7 @@ namespace Prototype
 
         /// <summary>致命攻撃を入れられる敵か:生きていて、崩れていて、近く(すき間が fatalRange 以内。上下に離れすぎていない)。</summary>
         bool FatalOk(DuelEnemy e, float reach) =>
-            e != null && !e.Dead && e.Flinching && !e.invulnerable && !TooFarVertically(e) && GapTo(e) <= reach;
+            e != null && !e.Dead && e.Flinching && !e.Invulnerable && !TooFarVertically(e) && GapTo(e) <= reach;
 
         /// <summary>致命攻撃の相手:ロックオンの相手(入れられるなら)→ 入れられる一番近い敵。いなければ null。</summary>
         DuelEnemy FatalTarget()

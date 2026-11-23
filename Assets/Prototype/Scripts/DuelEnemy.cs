@@ -409,6 +409,7 @@ namespace Prototype
         /// ボスが、入口の扉が閉じる(ボス戦が始まる)までの間これになる(DuelStage.SetBossInvulnerable)。
         /// </summary>
         [HideInInspector] public bool invulnerable;
+        internal bool Invulnerable => invulnerable || (IsBoss && !game.stage.PlayerInBossRoom);
 
         /// <summary>射撃が当たった。怯みゲージの蓄積に射撃用の倍率を掛ける。</summary>
         public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
@@ -427,7 +428,7 @@ namespace Prototype
             if (Dead) return;
             Engage();   // 斬られたら発覚(見通せる近くの仲間にも伝わる)
             if (senses != null) holdEngagedUntil = Time.time + senses.holdAfterHit;   // 斬られた直後は、持ち場から遠くても発覚を切らない
-            if (invulnerable) return;   // ダメージ・怯み・押し返しなし(ダメージの数字も、被弾の白い光・のけぞりも出さない)
+            if (Invulnerable) return;   // ダメージ・怯み・押し返しなし(ダメージの数字も、被弾の白い光・のけぞりも出さない)
             bool broken = Current == State.Flinch && !ranged;   // 崩れた敵を斬った
             if (broken) dmg *= game.brokenMeleeDamageMul;
             HP -= dmg;
@@ -480,7 +481,7 @@ namespace Prototype
             if (Dead) return false;
             Engage();
             if (senses != null) holdEngagedUntil = Time.time + senses.holdAfterHit;
-            if (invulnerable) return false;
+            if (Invulnerable) return false;
             HP -= dmg;
             ProtoDamageText.Show(Chest, dmg, true);
             Flash(Color.white, 0.14f);

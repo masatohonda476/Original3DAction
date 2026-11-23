@@ -210,6 +210,16 @@ namespace Prototype
             return from + flightDir * Mathf.Min(along, shot.range);
         }
 
+        /// <summary>武器の照準枠の半幅・半高を tan で求め、画面内に収める。</summary>
+        static void WeaponSightHalfExtents(Camera cam, float halfAngleDegrees, float heightRatio,
+            out float halfW, out float halfH)
+        {
+            float tanV = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+            float width = Mathf.Tan(halfAngleDegrees * Mathf.Deg2Rad);
+            halfW = Mathf.Min(width, 0.96f * tanV * cam.aspect);
+            halfH = Mathf.Min(width * heightRatio, 0.9f * tanV);
+        }
+
         bool UpdateFrame(bool special, out Vector3 from, out Vector3 aim)
         {
             ShotFrame = null;
@@ -241,10 +251,7 @@ namespace Prototype
                 return true;
             }
 
-            float tanV = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-            float halfW = Mathf.Tan(Rules.FrameDeg(w) * Mathf.Deg2Rad);
-            frame.halfW = Mathf.Min(halfW, 0.96f * tanV * cam.aspect);
-            frame.halfH = Mathf.Min(halfW * Rules.frameAspect, 0.9f * tanV);
+            WeaponSightHalfExtents(cam, Rules.FrameDeg(w), Rules.frameAspect, out frame.halfW, out frame.halfH);
 
             // ロックオンの付け始めで使った投影があれば、移動とカメラ操作後の位置でもう一度作る。
             viewFrame = -1;

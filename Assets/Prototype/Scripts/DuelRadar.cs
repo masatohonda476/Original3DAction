@@ -60,9 +60,9 @@ namespace Prototype
             A("射程", w => w.Primary.range, (_, v) => $"{v:0.#} m"),
             A("継戦", Endurance, (w, v) => float.IsPositiveInfinity(v) ? "制限なし"
                 : w.HasMagazine ? $"{v:0}発" : $"{v:0}発 (EN)"),
-            // 1 m 進む時間で評価し、即着の値は 0 秒。表示は弾速に戻す。
+            // 1 m 進む時間で評価し、即着の値は 0 秒。表示は弾速を km/h に換算する。
             A("弾速", w => w.Primary.shotSpeed > 0f ? 1f / w.Primary.shotSpeed : 0f,
-                (_, v) => v == 0f ? "即着" : $"{1f / v:0} m/s", false),
+                (_, v) => v == 0f ? "即着" : $"{3.6f / v:0} km/h", false),
             A("大技弾費", w => w.SpecialAmmo, (_, v) => $"共通弾 {v:0}", false),
         };
 

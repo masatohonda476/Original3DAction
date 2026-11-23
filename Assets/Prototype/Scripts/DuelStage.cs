@@ -649,60 +649,6 @@ namespace Prototype
             }
         }
 
-        // ───────── 落とし物 ─────────
-
-        void TryDropItem(DuelEnemy e)
-        {
-            if (itemDropChance < 1f && Random.value >= itemDropChance) return;
-            var item = DuelItems.RollDrop();
-            Vector2 k = Random.insideUnitCircle * 5f;
-            DuelLoot.Drop(item, e.Chest, new Vector3(k.x, 0f, k.y));
-        }
-
-        /// <summary>
-        /// 倒した敵が武装を落とすか決め(どの敵も dropChance。救済なし)、落とすなら敵の種類のレア度の重みで1つ選んで落とす。
-        /// </summary>
-        void TryDropWeapon(DuelEnemy e)
-        {
-            if (arsenal == null || arsenal.Count == 0) return;
-            if (Random.value >= dropChance) return;
-            var kind = Kind.Grunt;
-            foreach (var s in spawns) if (s.enemy == e) { kind = s.kind; break; }
-            var rarity = (kind == Kind.Duelist ? duelistRarity : gruntRarity) ?? new DuelRarityWeights();
-            var w = PickWeapon(rarity.RollRarity());
-            if (w == null) return;
-            Vector2 k = Random.insideUnitCircle * 5f;
-            DuelLoot.Drop(w, e.Chest, new Vector3(k.x, 0f, k.y));
-            if (w.rarity >= 1) game.Log($"{w.RarityName}の武装が落ちた:{w.name}");
-        }
-
-        /// <summary>そのレア度から一つ選ぶ。今付けている武装は出にくくする。</summary>
-        DuelWeapon PickWeapon(int rarity)
-        {
-            if (arsenal == null || arsenal.Count == 0) return null;
-            var arms = player != null ? player.Arms : null;
-            foreach (int r in new[] { rarity, rarity - 1, rarity + 1, rarity - 2, rarity + 2 })
-            {
-                float sum = 0f;
-                foreach (var w in arsenal) if (w != null && w.rarity == r) sum += Weight(w, arms);
-                if (sum <= 0f) continue;
-                float pick = Random.value * sum;
-                DuelWeapon last = null;
-                foreach (var w in arsenal)
-                {
-                    if (w == null || w.rarity != r) continue;
-                    last = w;
-                    pick -= Weight(w, arms);
-                    if (pick < 0f) return w;
-                }
-                return last;
-            }
-            return null;
-        }
-
-        float Weight(DuelWeapon w, DuelArms arms) =>
-            Mathf.Max(0f, w.dropWeight) * (arms != null && arms.IsEquipped(w) ? sameWeaponWeight : 1f);
-
         // ───────── 画面に出す情報 ─────────
 
         /// <summary>全体の残りの敵(ボスを除く)。</summary>

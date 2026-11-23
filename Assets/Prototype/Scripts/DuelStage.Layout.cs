@@ -22,11 +22,11 @@ namespace Prototype
             // ── 1. 地面の裂け目(入口・最下層):開けた窪地。正面に船の外板がそびえ、瓦礫の斜面を登って裂け目から中へ入る ──
             Region("地面の裂け目", -96, 96, -10, 80, -46, 112);
             Slab(-96, 96, -46, 113, 0f, FloorColor, 3f, floor: true);
-            Solid(-96, -90, 0, 40, -46, 113, RockColor, barrier: true);   // 窪地の崖
-            Solid(90, 96, 0, 40, -46, 113, RockColor, barrier: true);
-            Solid(-96, 96, 0, 40, -46, -40, RockColor, barrier: true);
+            Solid(-96, -90, 0, 40, -46, 113, RockColor);   // 窪地の崖
+            Solid(90, 96, 0, 40, -46, 113, RockColor);
+            Solid(-96, 96, 0, 40, -46, -40, RockColor);
             // 船の外板(下端)。裂け目は高さ14〜34m
-            WallX(113.5f, -90, 90, -3, 60, HullColor, -12, 12, 14, 34, barrier: true);
+            WallX(113.5f, -90, 90, -3, 60, HullColor, -12, 12, 14, 34);
             RampZ(-14, 14, 70, 0, 112, 14, DebrisColor, 4f);   // 瓦礫の斜面(19°)
             Solid(-24, -14, 0, 8, 90, 112, DebrisColor);         // 斜面の脇の瓦礫
             Solid(14, 22, 0, 10, 96, 112, DebrisColor);
@@ -84,7 +84,7 @@ namespace Prototype
             WallX(252.5f, -48, 48, 27, 163, WallColor, -14, 14, 53, 72);   // 居住区からの裂け目
             WallX(325.5f, -48, 48, 27, 163, WallColor);
             WallZ(-46.5f, 251, 327, 27, 163, WallColor, 309, 323, 124, 140);                // 西:配管の道へ
-            WallZ(46.5f, 251, 327, 27, 163, HullColor, 309, 323, 124, 142, barrier: true);  // 東:外殻の外へ
+            WallZ(46.5f, 251, 327, 27, 163, HullColor, 309, 323, 124, 142);  // 東:外殻の外へ
             Solid(-20, 5, 30, 38, 280, 300, DebrisColor);   // 底の瓦礫
             Solid(10, 30, 30, 34, 300, 320, DebrisColor);
             Slab(-14, 14, 254, 265, 53f, FloorColor);       // 足場0(入ったところ)
@@ -108,15 +108,13 @@ namespace Prototype
             Slab(48, 150, 290, 332, 124f, HullColor, 6f, floor: true);              // 出たところの外板
             RampZ(48, 150, 332, 124, 432, 160, HullColor, 6f, floor: true);         // 外板の斜面
             Slab(43, 150, 432, 462, 160f, HullColor, 6f, floor: true);              // 上の外板(機関区画の入口)
-            // 縁:低い縁取り+見えない壁(落ちない)
+            // 外板の縁の低い縁取り
             Solid(150, 153, 118, 127, 290, 332, HullColor);
             RampZ(150, 153, 332, 127, 432, 163, HullColor, 9f);
             Solid(150, 153, 154, 163, 432, 462, HullColor);
             Solid(48, 153, 118, 127, 287, 290, HullColor);
-            Barrier(150, 153, 287, 465, 100f);
-            Barrier(48, 153, 287, 290, 100f);
-            Solid(43, 153, 154, 176, 462, 465, HullColor, barrier: true);
-            Solid(43, 48, 100, 200, 326, 432, HullColor, barrier: true);   // 船体の張り出し(内側の壁)
+            Solid(43, 153, 154, 176, 462, 465, HullColor);
+            Solid(43, 48, 100, 200, 326, 432, HullColor);   // 船体の張り出し(内側の壁)
             // めくれた外板・アンテナの柱・突き出た残骸(物陰)
             Solid(70, 80, 124, 130, 300, 308, DebrisColor);
             Solid(66, 82, Outer(356) - 3f, Outer(360) + 6f, 356, 360, HullColor);
@@ -172,7 +170,7 @@ namespace Prototype
             Slab(-43, 43, 402, 463, 160f, FloorColor, 3f, floor: true);
             Slab(-43, 43, 402, 463, 191f, WallColor);
             WallZ(-41.5f, 402, 463, 157, 191, WallColor, 410, 430, 160, 180);
-            WallZ(41.5f, 402, 463, 157, 191, HullColor, 435, 455, 160, 178, barrier: true);
+            WallZ(41.5f, 402, 463, 157, 191, HullColor, 435, 455, 160, 178);
             WallX(403.5f, -43, 43, 157, 191, WallColor);
             WallX(461.5f, -43, 43, 157, 191, WallColor, -14, 14, 160, 183);
             Solid(-12, 12, 160, 174, 425, 445, MachineColor);   // 機関
@@ -266,18 +264,15 @@ namespace Prototype
             Slab(-60, 60, 740, 770, 302f, HullColor, 6f, floor: true);
             RampZ(-60, 60, 770, 302, 860, 332, HullColor, 6f, floor: true);
             Slab(-60, 60, 860, 890, 332f, HullColor, 6f, floor: true);
-            Solid(-63, -30, 296, 345, 737, 740, HullColor, barrier: true);   // 昇降機の竪穴の脇の船体
-            Solid(30, 63, 296, 345, 737, 740, HullColor, barrier: true);
-            Barrier(-30, 30, 737, 740, 333f);                                // 竪穴の屋根の上から戻れないように
-            // 縁:低い縁取り+見えない壁(落ちない)
+            Solid(-63, -30, 296, 345, 737, 740, HullColor);   // 昇降機の竪穴の脇の船体
+            Solid(30, 63, 296, 345, 737, 740, HullColor);
+            // 外板の縁の低い縁取り
             Solid(60, 63, 296, 305, 740, 770, HullColor);
             RampZ(60, 63, 770, 305, 860, 335, HullColor, 9f);
             Solid(60, 63, 326, 335, 860, 890, HullColor);
             Solid(-63, -60, 296, 305, 740, 770, HullColor);
             RampZ(-63, -60, 770, 305, 860, 335, HullColor, 9f);
             Solid(-63, -60, 326, 335, 860, 890, HullColor);
-            Barrier(60, 63, 737, 893, 290f);
-            Barrier(-63, -60, 737, 893, 290f);
             Solid(-35, -25, 302, 309, 750, 758, DebrisColor);                        // めくれた外板
             Solid(20, 32, Bow(790) - 3f, Bow(796) + 8f, 790, 796, HullColor);
             Solid(-40, -28, Bow(815) - 3f, Bow(830) + 10f, 815, 830, MachineColor);  // 砲塔の残骸
@@ -295,7 +290,7 @@ namespace Prototype
             Region("艦橋の下", -50, 50, 329, 365, 890, 970);
             Slab(-50, 50, 893, 970, 332f, FloorColor, 3f, floor: true);
             Slab(-50, 50, 890, 970, 365f, WallColor);
-            WallX(891.5f, -63, 63, 326, 375, HullColor, -16, 16, 332, 356, barrier: true);   // 外板からの入口
+            WallX(891.5f, -63, 63, 326, 375, HullColor, -16, 16, 332, 356);   // 外板からの入口
             WallX(968.5f, -50, 50, 329, 365, WallColor, -14, 14, 332, 355);                  // 大ホールへの口
             WallZ(-48.5f, 890, 970, 329, 365, WallColor);
             WallZ(48.5f, 890, 970, 329, 365, WallColor);
@@ -336,10 +331,10 @@ namespace Prototype
             WallZ(15.5f, 460 + dz, 499 + dz, 157 + dy, 200 + dy, WallColor);
             Slab(-17, 17, 460 + dz, 499 + dz, 200f + dy, WallColor);
             Slab(-73, 73, 496 + dz, 622 + dz, 176f + dy, FloorColor, 4f, floor: true);
-            WallX(497.5f + dz, -73, 73, 172 + dy, 236 + dy, HullColor, -14, 14, 176 + dy, 197 + dy, barrier: true);
-            WallX(620.5f + dz, -73, 73, 172 + dy, 236 + dy, HullColor, barrier: true);
-            WallZ(-71.5f, 496 + dz, 622 + dz, 172 + dy, 236 + dy, HullColor, barrier: true);
-            WallZ(71.5f, 496 + dz, 622 + dz, 172 + dy, 236 + dy, HullColor, barrier: true);
+            WallX(497.5f + dz, -73, 73, 172 + dy, 236 + dy, HullColor, -14, 14, 176 + dy, 197 + dy);
+            WallX(620.5f + dz, -73, 73, 172 + dy, 236 + dy, HullColor);
+            WallZ(-71.5f, 496 + dz, 622 + dz, 172 + dy, 236 + dy, HullColor);
+            WallZ(71.5f, 496 + dz, 622 + dz, 172 + dy, 236 + dy, HullColor);
             Slab(-73, 73, 496 + dz, 528 + dz, 236f + dy, HullColor);       // 天井(手前)
             Slab(-73, 73, 592 + dz, 622 + dz, 236f + dy, HullColor);       // 天井(奥)
             Slab(-73, -30, 528 + dz, 592 + dz, 236f + dy, HullColor);      // 天井(西)。残りは裂けて空が見える
@@ -390,12 +385,12 @@ namespace Prototype
         }
 
         /// <summary>軸にそろった箱(x・y・z の範囲)。</summary>
-        void Solid(float x0, float x1, float y0, float y1, float z0, float z1, Color c, bool barrier = false, bool floor = false)
+        void Solid(float x0, float x1, float y0, float y1, float z0, float z1, Color c, bool floor = false)
         {
             var min = new Vector3(Mathf.Min(x0, x1), Mathf.Min(y0, y1), Mathf.Min(z0, z1));
             var max = new Vector3(Mathf.Max(x0, x1), Mathf.Max(y0, y1), Mathf.Max(z0, z1));
             if ((max - min).x < 0.01f || (max - min).y < 0.01f || (max - min).z < 0.01f) return;
-            blocks.Add(new Block { center = (min + max) / 2f, size = max - min, rot = Quaternion.identity, color = c, barrier = barrier, floor = floor });
+            blocks.Add(new Block { center = (min + max) / 2f, size = max - min, rot = Quaternion.identity, color = c, floor = floor });
         }
 
         /// <summary>床・天井の板(上面の高さ top、厚み thick)。</summary>
@@ -413,27 +408,26 @@ namespace Prototype
 
         /// <summary>
         /// x に沿った壁(z の位置が中心、厚み T)。開口(ox0〜ox1、高さ oy0〜oy1)があれば、その周りを組む。
-        /// barrier なら上へ見えない壁を伸ばす(開口の下の部分には付けない)。
         /// </summary>
-        void WallX(float z, float x0, float x1, float y0, float y1, Color c, float ox0 = 0f, float ox1 = 0f, float oy0 = 0f, float oy1 = 0f, bool barrier = false)
+        void WallX(float z, float x0, float x1, float y0, float y1, Color c, float ox0 = 0f, float ox1 = 0f, float oy0 = 0f, float oy1 = 0f)
         {
             float z0 = z - T / 2f, z1 = z + T / 2f;
-            if (ox1 <= ox0) { Solid(x0, x1, y0, y1, z0, z1, c, barrier); return; }
-            Solid(x0, ox0, y0, y1, z0, z1, c, barrier);
-            Solid(ox1, x1, y0, y1, z0, z1, c, barrier);
+            if (ox1 <= ox0) { Solid(x0, x1, y0, y1, z0, z1, c); return; }
+            Solid(x0, ox0, y0, y1, z0, z1, c);
+            Solid(ox1, x1, y0, y1, z0, z1, c);
             Solid(ox0, ox1, y0, oy0, z0, z1, c);
-            Solid(ox0, ox1, oy1, y1, z0, z1, c, barrier);
+            Solid(ox0, ox1, oy1, y1, z0, z1, c);
         }
 
         /// <summary>z に沿った壁(x の位置が中心、厚み T)。開口は oz0〜oz1、高さ oy0〜oy1。</summary>
-        void WallZ(float x, float z0, float z1, float y0, float y1, Color c, float oz0 = 0f, float oz1 = 0f, float oy0 = 0f, float oy1 = 0f, bool barrier = false)
+        void WallZ(float x, float z0, float z1, float y0, float y1, Color c, float oz0 = 0f, float oz1 = 0f, float oy0 = 0f, float oy1 = 0f)
         {
             float x0 = x - T / 2f, x1 = x + T / 2f;
-            if (oz1 <= oz0) { Solid(x0, x1, y0, y1, z0, z1, c, barrier); return; }
-            Solid(x0, x1, y0, y1, z0, oz0, c, barrier);
-            Solid(x0, x1, y0, y1, oz1, z1, c, barrier);
+            if (oz1 <= oz0) { Solid(x0, x1, y0, y1, z0, z1, c); return; }
+            Solid(x0, x1, y0, y1, z0, oz0, c);
+            Solid(x0, x1, y0, y1, oz1, z1, c);
             Solid(x0, x1, y0, oy0, oz0, oz1, c);
-            Solid(x0, x1, oy1, y1, oz0, oz1, c, barrier);
+            Solid(x0, x1, oy1, y1, oz0, oz1, c);
         }
 
         /// <summary>z に沿った斜めの板。上面が (z0, y0) から (z1, y1) へ(z0 &lt; z1)。</summary>
@@ -462,14 +456,6 @@ namespace Prototype
             });
         }
 
-        /// <summary>見えない壁(y0 から見えない天井まで。機体だけが当たり、レイ・カメラは素通り)。</summary>
-        void Barrier(float x0, float x1, float z0, float z1, float y0) =>
-            blocks.Add(new Block
-            {
-                center = new Vector3((x0 + x1) / 2f, (y0 + CeilingY) / 2f, (z0 + z1) / 2f), size = new Vector3(x1 - x0, CeilingY - y0, z1 - z0),
-                rot = Quaternion.identity, invisible = true,
-            });
-
         /// <summary>当たり判定のない薄い印(床・天井・壁に描いたドア・照明)。</summary>
         void Decal(float x0, float x1, float y0, float y1, float z0, float z1, Color c)
         {
@@ -487,7 +473,7 @@ namespace Prototype
             foreach (var b in blocks)
             {
                 if (b.decal) continue;
-                Gizmos.color = b.invisible ? new Color(1f, 0.3f, 0.3f, 0.3f) : b.color;
+                Gizmos.color = b.color;
                 Gizmos.matrix = Matrix4x4.TRS(b.center, b.rot, Vector3.one);
                 Gizmos.DrawWireCube(Vector3.zero, b.size);
             }

@@ -140,19 +140,46 @@ namespace Prototype
         public void Respawn(Vector3 pos, Quaternion rot)
         {
             Revive();
-            Teleport(pos, rot);
             Energy = maxEnergy;
             Stagger = 0f;
             BoostOn = false;
-            ClearBufferedInput();
-            Arms.ClearBufferedInput();
             Arms.StopBurst();
             Arms.ResetSubCombat();
             Arms.ResetItemInput();
+            ReturnToFooting(pos, rot);
+        }
+
+        // 足の中心に地形がある間だけ、復帰地点として使う。敵の上や、縁に機体が少し掛かっているだけの場所は除く。
+        internal bool OnFoothold => cc.isGrounded &&
+            Physics.Raycast(transform.position + Vector3.up, Vector3.down, out var hit, 1.5f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
+            Vector3.Angle(hit.normal, Vector3.up) <= cc.slopeLimit;
+
+        internal void RecoverFromFall(Vector3 pos, float damage)
+        {
+            Arms.StopBurst();
+            Arms.StopSubVolley();
+            Arms.InterruptItemUse();
+            ReturnToFooting(pos, transform.rotation);
+            if (damage <= 0f) return;
+            HP -= damage;
+            ProtoDamageText.Show(Chest, damage);
+            Flash(new Color(1f, 0.25f, 0.2f), 0.18f);
+            if (HP <= 0f) Die();
+        }
+
+        void ReturnToFooting(Vector3 pos, Quaternion rot)
+        {
+            Teleport(pos, rot);
+            Knockback(Vector3.zero);
+            SetVerticalSpeed(0f);
+            flying = Dashing = false;
+            ClearBufferedInput();
+            Arms.ClearBufferedInput();
             airVel = Vector3.zero;
             flyNeedRelease = true;   // 出し直した瞬間に ✗ を押していても跳ばない(押していなければ、次のフレームに解ける)
             slideOff = Vector3.zero;
-            Target = null;   // ロックオンのオン・オフはそのまま(オンなら、出し直した所で次の敵を探す)
+            Target = null;   // ロックオンがオンなら、戻った場所で対象を探し直す
             lockLostFor = 0f;
             stepTravel = 0f;
             FootstepRadius = 0f;

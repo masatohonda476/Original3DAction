@@ -15,6 +15,7 @@ namespace Prototype
     ///   頭頂部の大ホール(天井が裂けている。ボス)。
     /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
     /// セーブポイント(光る柱)に触れると再開地点が変わる(HPは回復しない。作者「セーブポイントでは回復できないようにしてください」)。
+    /// 最後に接地した足場から一定以上落ちると、落下ダメージを受けてその足場に戻る。
     /// 撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// ボス戦(作者「ボス戦に入ったら入口を閉じ、死亡したら入る前の弾薬の状態で復活するようにしてください」):自機が大ホールに入りきったら入口の扉が閉じ、
@@ -86,11 +87,17 @@ namespace Prototype
         public float bossSize = 2.5f;
         [Tooltip("怯みゲージの最大(剣士は25)。大きいほど怯みにくい")]
         public float bossMaxStagger = 70f;
-        [Tooltip("ボスが歩いて出ない、持ち場からの半径(m)。0 なら制限なし(大ホールは見えない壁で囲まれ、入口はボスの背より低いので出られない)")]
+        [Tooltip("ボスが歩いて出ない、持ち場からの半径(m)。0 なら制限なし")]
         public float bossLeash;
-        [Tooltip("自機・敵がこの高さ(m)より下へ落ちたら、自機は最後のセーブポイントから再開、敵は持ち場へ戻す(地形のすき間から落ちたときの保険)")]
-        public float fallLimitY = -30f;
         public DuelEnemy.BossMoves bossMoves = new();
+
+        [Header("落下復帰")]
+        [Tooltip("最後に接地した足場からこの距離(m)落ちたら、ダメージを受けて足場へ戻る")]
+        [Min(1f)] public float fallRecoveryDepth = 40f;
+        [Tooltip("落下1回で失う最大HPの割合")]
+        [Range(0f, 1f)] public float fallDamageFraction = 0.2f;
+        [Tooltip("敵がこの高さ(m)より下へ落ちたら、持ち場へ戻す")]
+        public float fallLimitY = -30f;
 
         [Header("ボス戦の入口の扉(大ホールの入口。ボス戦の間だけ閉じる。数値は仮)")]
         [Tooltip("自機が、扉の内側の面から「機体の半径 + この距離(m)」より奥へ入ったら扉を閉じる(閉じた扉に挟まれない・外に取り残されない余白)")]
@@ -102,8 +109,6 @@ namespace Prototype
 
         /// <summary>壁の厚み。</summary>
         const float T = 3f;
-        /// <summary>見えない天井の高さ。見えない壁はここまで伸びる(飛んで越えられない)。</summary>
-        const float CeilingY = 450f;
         /// <summary>ボス戦の入口の扉の厚み(壁の厚み T より薄く、壁の中ほどに置く。壁の面と同じ位置に面が来ない)と、開口の縁から壁・床へ埋める幅。</summary>
         const float GateThick = 2f, GateInset = 0.2f;
         /// <summary>機体を扉の面から離しておく余白(m。機体の半径に足す。当たり判定の皮 0.2m より少し広く)。</summary>
@@ -119,12 +124,8 @@ namespace Prototype
             public Vector3 center, size;
             public Quaternion rot;
             public Color color;
-            /// <summary>上に見えない壁を天井まで伸ばす(飛んで越えられない。回していない箱だけ)。</summary>
-            public bool barrier;
             /// <summary>当たり判定なし(床・天井に描いたドアの印など)。</summary>
             public bool decal;
-            /// <summary>見えない(見えない壁そのもの)。</summary>
-            public bool invisible;
             /// <summary>床に使う(groundMat を貼る)。</summary>
             public bool floor;
         }
@@ -169,15 +170,17 @@ namespace Prototype
 
         DuelGame game;
         DuelPlayer player;
+        Vector3 lastFoothold;
         Spawn bossSpawn;
         SavePoint currentSave;
         float respawnAt = -1f, beganAt;
         bool built;
         /// <summary>
-        /// ボス戦の間(入口の扉が閉じている)。自機が大ホールに入りきったら立ち、ボスを倒す・やられて(落ちて)再開すると下りる。
+        /// ボス戦の間(入口の扉が閉じている)。自機が大ホールに入りきったら立ち、ボスを倒す・撃墜されて再開すると下りる。
         /// 立っている間の再開だけ、弾と弾倉を扉が閉じたときに戻す。
         /// </summary>
         bool bossFight;
+        internal bool PlayerInBossRoom => player != null && bossRoom.Contains(player.transform.position);
         /// <summary>
         /// 扉の見える板(ふつうの壁と同じ層。開いている間は上の壁の中へ引っ込めて消す)と、その当たり判定(閉じきっている間だけ効かせる)、
         /// 機体だけを止める見えない壁(閉じている間だけ出す)。
@@ -216,11 +219,11 @@ namespace Prototype
         /// 壁のちらつき(Z ファイティング)を防ぐ。箱どうしが重なっていて、同じ向きの面が同じ位置にあると
         /// (例:壁の外側の面と床の板の端、壁の上端と天井の板の上面)、どちらを描くかが画素ごとに揺れて縞模様にちらつく。
         /// 回していない箱を置いた順に見て、先に置いた箱と同じ向き・同じ位置で重なる面があれば、後の箱のその面を FaceNudge だけ内側へずらす
-        /// (ずらした先がまた別の箱の面と重なれば、もう一度ずらす)。見えない壁・印(デカール)・坂(回した箱)は触らない。
+        /// (ずらした先がまた別の箱の面と重なれば、もう一度ずらす)。印(デカール)と坂(回した箱)は触らない。
         /// </summary>
         void SeparateCoplanarFaces()
         {
-            static bool Plain(Block b) => !b.invisible && !b.decal && b.rot == Quaternion.identity;
+            static bool Plain(Block b) => !b.decal && b.rot == Quaternion.identity;
             for (int j = 0; j < blocks.Count; j++)
             {
                 var bj = blocks[j];
@@ -265,6 +268,7 @@ namespace Prototype
         public void Begin(DuelPlayer p)
         {
             player = p;
+            lastFoothold = StartPos;
             foreach (var s in spawns) PlaceEnemy(s);
             foreach (var sp in saves) BuildSaveMarker(sp);
             SetCurrentSave(saves[0]);
@@ -283,18 +287,8 @@ namespace Prototype
                 return m;
             }
 
-            var all = new Bounds();
-            bool first = true;
             foreach (var b in blocks)
             {
-                if (b.invisible)
-                {
-                    var bar = new GameObject("Barrier") { layer = DuelFighter.FighterLayer };
-                    bar.transform.SetParent(root, false);
-                    bar.transform.position = b.center;
-                    bar.AddComponent<BoxCollider>().size = b.size;
-                    continue;
-                }
                 var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 go.name = b.decal ? "Mark" : b.floor ? "Floor" : "Block";
                 go.transform.SetParent(root, false);
@@ -307,31 +301,9 @@ namespace Prototype
                 {
                     DestroyImmediate(go.GetComponent<Collider>());   // 同じフレームの床の高さのレイに当たらないように、すぐ消す
                     r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    continue;
-                }
-                if (first) { all = new Bounds(b.center, b.size); first = false; }
-                else all.Encapsulate(new Bounds(b.center, b.size));
-                if (b.barrier)
-                {
-                    // 箱の上から見えない天井まで、見えない壁を伸ばす
-                    float top = b.center.y + b.size.y / 2f;
-                    if (top < CeilingY)
-                    {
-                        var bar = new GameObject("Barrier") { layer = DuelFighter.FighterLayer };
-                        bar.transform.SetParent(go.transform, false);
-                        var bc = bar.AddComponent<BoxCollider>();
-                        float ly = (CeilingY - top) / b.size.y;   // 親の大きさで割った、ローカルの高さ
-                        bc.center = new Vector3(0f, 0.5f + ly / 2f, 0f);
-                        bc.size = new Vector3(1f, ly, 1f);
-                    }
                 }
             }
             BuildBossGate(root);
-            // 見えない天井
-            var ceil = new GameObject("Ceiling") { layer = DuelFighter.FighterLayer };
-            ceil.transform.SetParent(root, false);
-            ceil.transform.position = new Vector3(all.center.x, CeilingY + 1f, all.center.z);
-            ceil.AddComponent<BoxCollider>().size = new Vector3(all.size.x + 40f, 2f, all.size.z + 40f);
             Physics.SyncTransforms();   // 置いたばかりの地形に、すぐレイ(足もとの高さ・敵の目線)が当たるように
         }
 
@@ -343,7 +315,7 @@ namespace Prototype
         ///     閉じるときは開口の上の壁の中から下り、開くときは上の壁の中へ引っ込む(壁より薄いので、壁の中にある間は見えない)。
         ///     動いている間(下りる・上がる途中)は当たり判定を切り、見た目だけにする(PlaceGate):動く板の底面をカメラの天井よけ
         ///     (DuelCamera.FloorCeilingLimit)が拾って、カメラが急に前へ寄らないように(作者は 3D 酔いする)。その間の弾・見通しは板を素通りする。
-        ///   見えない壁:閉じた位置に固定の、機体だけが当たる壁(Barrier と同じ層)。板が下りきるのを待たず、閉じた瞬間から機体を通さない
+        ///   機体用の当たり判定:板が下りきるのを待たず、閉じた瞬間から機体を通さない
         ///     (下りてくる板の下をくぐる・板に挟まれることがない)。
         /// </summary>
         void BuildBossGate(Transform root)
@@ -396,6 +368,10 @@ namespace Prototype
         void BeginBossFight()
         {
             bossFight = true;
+            // 飛び込んだ直後から、落下で閉じた扉の外に戻らないようにする。
+            if (!bossRoom.Contains(lastFoothold))
+                lastFoothold = new Vector3(bossGate.center.x, bossGate.min.y + GateInset,
+                    bossGate.max.z + player.Radius + Mathf.Max(gateClearance, GateSkin));
             gateBarrier.SetActive(true);
             SetBossInvulnerable(false);
             foreach (var e in game.Enemies)
@@ -526,17 +502,19 @@ namespace Prototype
                 respawnAt = -1f;
                 Respawn();
             }
-            // 地形のすき間から落ちた:敵は持ち場へ、自機は最後のセーブポイントから再開
+            // 地形のすき間から落ちた敵は持ち場へ戻す。
             foreach (var sp0 in spawns)
                 if (sp0.enemy != null && !sp0.enemy.Dead && sp0.enemy.transform.position.y < fallLimitY) sp0.enemy.ResetToHome();
             if (player.Dead) return;
             Vector3 p = player.transform.position;
-            if (p.y < fallLimitY && respawnAt < 0f)
+            if (p.y <= lastFoothold.y - fallRecoveryDepth)
             {
                 game.Log("落下した");
-                Respawn();
+                player.RecoverFromFall(lastFoothold, player.MaxHP * fallDamageFraction);
+                SnapCamera();
                 return;
             }
+            if (player.OnFoothold) lastFoothold = p;
 
             // セーブポイント:近づいたら触れたことにする(離れて戻ればもう一度)
             foreach (var sp in saves)
@@ -591,16 +569,21 @@ namespace Prototype
                 if (s.enemy != null && !s.enemy.Dead) s.enemy.ResetToHome();
             var sp = currentSave ?? saves[0];
             player.Respawn(sp.RespawnPos, sp.RespawnRot);
+            lastFoothold = sp.RespawnPos;
             if (bossFight)
             {
                 EndBossFight();
                 player.Arms.RestoreBossSupplies();
             }
             foreach (var other in saves) other.inside = other == sp;   // 再開した所で、もう一度触れたことにしない
-            var cam = Camera.main != null ? Camera.main.GetComponent<DuelCamera>() : null;
-            if (cam != null) cam.Snap();   // カメラを補間せずに合わせる(大きく流れて向きが急に回らないように)
+            SnapCamera();
             ShowBanner("セーブポイントから再開");
             game.Log("セーブポイントから再開");
+        }
+
+        static void SnapCamera()
+        {
+            if (Camera.main != null && Camera.main.TryGetComponent<DuelCamera>(out var cam)) cam.Snap();
         }
 
         /// <summary>敵が倒れた(DuelGame から)。ボスならステージクリア。</summary>

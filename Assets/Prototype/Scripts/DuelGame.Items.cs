@@ -38,7 +38,7 @@ namespace Prototype
         void DrawItemRegistration(DuelArms arms)
         {
             MenuBackdrop();
-            const float width = 680f, height = 368f, pad = 18f, rowH = 44f;
+            const float width = 680f, height = 410f, pad = 18f, rowH = 44f;
             float x = (SW - width) * 0.5f, y = (SH - height) * 0.5f;
             MenuPanel(new Rect(x, y, width, height));
             GUI.Label(new Rect(x, y + 8f, width, 36f), "アイテム登録", viewTitleStyle);
@@ -56,7 +56,7 @@ namespace Prototype
                 GUI.Label(new Rect(row.x + 66f, row.y + 9f, row.width - 70f, 24f), name, small);
             }
 
-            const int visible = 5;
+            const int visible = 6;
             int first = Mathf.Clamp(itemOption - visible / 2, 0, Mathf.Max(0, DuelItems.Count + 1 - visible));
             for (int option = first; option < Mathf.Min(first + visible, DuelItems.Count + 1); option++)
             {
@@ -111,14 +111,35 @@ namespace Prototype
 
         static void DrawItemIcon(Rect r, DuelItem item, Color tint)
         {
-            if (item == DuelItem.RepairArmor)
+            void Part(float x, float y, float w, float h) =>
+                Chip(new Rect(r.x + r.width * x, r.y + r.height * y, r.width * w, r.height * h), tint);
+
+            switch (item)
             {
-                Chip(new Rect(r.x + r.width * 0.35f, r.y, r.width * 0.30f, r.height), tint);
-                Chip(new Rect(r.x, r.y + r.height * 0.35f, r.width, r.height * 0.30f), tint);
-                return;
+                case DuelItem.RepairArmor:
+                    Part(0.35f, 0f, 0.3f, 1f);
+                    Part(0f, 0.35f, 1f, 0.3f);
+                    break;
+                case DuelItem.Ammo:
+                    for (int i = 0; i < 3; i++) Part(0.32f * i, 0f, 0.22f, 1f);
+                    break;
+                case DuelItem.Grenade:
+                    Part(0.37f, 0.04f, 0.36f, 0.22f);
+                    Part(0.20f, 0.28f, 0.60f, 0.65f);
+                    break;
+                case DuelItem.MagneticAnchor:
+                    Part(0.14f, 0.2f, 0.2f, 0.62f);
+                    Part(0.66f, 0.2f, 0.2f, 0.62f);
+                    Part(0.14f, 0.68f, 0.72f, 0.20f);
+                    break;
+                case DuelItem.DecoyBeacon:
+                    Part(0.40f, 0.10f, 0.20f, 0.20f);
+                    Part(0.10f, 0.16f, 0.13f, 0.27f);
+                    Part(0.77f, 0.16f, 0.13f, 0.27f);
+                    Part(0.43f, 0.40f, 0.14f, 0.50f);
+                    Part(0.23f, 0.79f, 0.54f, 0.14f);
+                    break;
             }
-            for (int i = 0; i < 3; i++)
-                Chip(new Rect(r.x + r.width * 0.32f * i, r.y, r.width * 0.22f, r.height), tint);
         }
     }
 }

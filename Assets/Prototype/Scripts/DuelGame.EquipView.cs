@@ -105,7 +105,7 @@ namespace Prototype
             var itemRow = new Rect(x + pad, y + 76f, width - pad * 2f, 32f);
             if (selected == -1) SelectionBand(itemRow);
             GUI.Label(new Rect(itemRow.x + 10f, itemRow.y + 4f, itemRow.width - 20f, 24f),
-                $"アイテム登録　　{ItemStockText(arms, DuelItem.RepairArmor)}　　{ItemStockText(arms, DuelItem.Ammo)}", small);
+                $"アイテム登録　　使用アイテム {arms.TotalItems}個", small);
 
             if (items.Count == 0)
             {

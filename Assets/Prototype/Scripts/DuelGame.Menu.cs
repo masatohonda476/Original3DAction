@@ -11,7 +11,7 @@ namespace Prototype
         // ───────── メニュー(右のメニューボタン) ─────────
 
         /// <summary>一時停止メニューの現在のページ。</summary>
-        enum MenuPage { Closed, Top, Equip, Carried, Help }
+        enum MenuPage { Closed, Top, Equip, Carried, ItemSlots, Help }
 
         MenuPage menuPage;
         /// <summary>メニューのどれかの段階を開いている。この間は照準・拾う案内・ロックオンの枠を出さない。</summary>
@@ -69,6 +69,9 @@ namespace Prototype
                 case MenuPage.Carried:
                     UpdateCarriedView(player.Arms, (down ? 1 : 0) - (up ? 1 : 0));
                     break;
+                case MenuPage.ItemSlots:
+                    UpdateItemRegistration(player.Arms, (down ? 1 : 0) - (up ? 1 : 0));
+                    break;
                 case MenuPage.Help:
                     if (ProtoInput.MenuBack) SetMenuPage(MenuPage.Top);
                     break;
@@ -82,6 +85,7 @@ namespace Prototype
         void SetMenuPage(MenuPage page)
         {
             if (page == menuPage) return;
+            player?.Arms.ResetItemInput();
             if (!MenuOpen)
             {
                 player.Arms.CancelChoice();
@@ -92,7 +96,8 @@ namespace Prototype
             }
             if (menuPage == MenuPage.Carried) player?.Arms.CloseCarriedChoice();
             if (page == MenuPage.Equip) viewSel = 0;
-            if (page == MenuPage.Carried) carriedSel = 0;
+            if (page == MenuPage.Carried) carriedSel = menuPage == MenuPage.ItemSlots ? -1 : 0;
+            if (page == MenuPage.ItemSlots) { registrationSlot = 0; itemOption = -1; }
             menuPage = page;
             ProtoInput.Paused = MenuOpen;
         }
@@ -136,6 +141,7 @@ namespace Prototype
                 case MenuPage.Top: DrawMenuTop(); break;
                 case MenuPage.Equip: DrawEquipView(arms); break;
                 case MenuPage.Carried: DrawCarriedView(arms); break;
+                case MenuPage.ItemSlots: DrawItemRegistration(arms); break;
                 case MenuPage.Help: DrawHelpPage(); break;
             }
         }
@@ -243,7 +249,8 @@ namespace Prototype
             HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
             HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "相手を変更（構え中は Tab / R3 のみ）");
-            HelpRow(B(ProtoInput.Btn.PickUp), "近くの落とし物を調べる");
+            HelpRow(B(ProtoInput.Btn.PickUp), "近くの武装を調べる / アイテムを拾う");
+            HelpRow("↑ / ↑ 長押し / ↓", "次のアイテム / スロット1へ / 使用");
             HelpRow($"↑↓ / {B(ProtoInput.Btn.Confirm)}", "武装の操作を選ぶ / 決定（解体は長押し）");
             HelpRow(B(ProtoInput.Btn.Back), "落とし物・所持品の操作を取り消す");
             HelpRow($"{B(ProtoInput.Btn.EquipView)} / {B(ProtoInput.Btn.Restart)}", "メニュー / 最初からやり直す");

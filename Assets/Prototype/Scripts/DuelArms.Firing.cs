@@ -109,6 +109,7 @@ namespace Prototype
 
         void FireRound(DuelWeapon weapon, DuelShot shot, bool special, Vector3 from, Vector3 aim)
         {
+            InterruptItemUse();
             lastFire = Time.time;
             Vector3 direction = (aim - from).normalized;
             if (direction == Vector3.zero) direction = player.transform.forward;

@@ -15,7 +15,7 @@ namespace Prototype
     ///   頭頂部の大ホール(天井が裂けている。ボス)。
     /// 敵は持ち場で立ち番し、発覚の仕組み(DuelSenses)で気づいてから戦う。倒した敵は復活しない。
     /// セーブポイント(光る柱)に触れると再開地点が変わる(HPは回復しない。作者「セーブポイントでは回復できないようにしてください」)。
-    /// 最後に接地した足場から一定以上落ちると、落下ダメージを受けてその足場に戻る。
+    /// ステージの最下層の床より一定距離下へ落ちると、落下ダメージを受けて最後に接地した足場に戻る。
     /// 撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// ボス戦(作者「ボス戦に入ったら入口を閉じ、死亡したら入る前の弾薬の状態で復活するようにしてください」):自機が大ホールに入りきったら入口の扉が閉じ、
@@ -92,8 +92,8 @@ namespace Prototype
         public DuelEnemy.BossMoves bossMoves = new();
 
         [Header("落下復帰")]
-        [Tooltip("最後に接地した足場からこの距離(m)落ちたら、ダメージを受けて足場へ戻る")]
-        [Min(1f)] public float fallRecoveryDepth = 40f;
+        [Tooltip("ステージで一番低い床より、この距離(m)だけ下に達したら、ダメージを受けて最後に接地した足場へ戻る")]
+        [Min(1f)] public float fallDepthBelowLowestFloor = 100f;
         [Tooltip("落下1回で失う最大HPの割合")]
         [Range(0f, 1f)] public float fallDamageFraction = 0.2f;
         [Tooltip("敵がこの高さ(m)より下へ落ちたら、持ち場へ戻す")]
@@ -510,7 +510,7 @@ namespace Prototype
             TickCombatItems();
 
             Vector3 p = player.transform.position;
-            if (p.y <= lastFoothold.y - fallRecoveryDepth)
+            if (p.y <= LowestFloorY - fallDepthBelowLowestFloor)
             {
                 game.Log("落下した");
                 player.RecoverFromFall(lastFoothold, player.MaxHP * fallDamageFraction);

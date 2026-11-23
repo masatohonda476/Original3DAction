@@ -43,7 +43,9 @@ namespace Prototype
                 GUI.Label(Detail(265f), selected.feel, small);
                 DrawWeaponChart(new Rect(x + pad, y + 292f, rowW, 176f), DuelRadar.Get(selected));
             }
-            GUI.Label(Detail(478f), $"共通の弾 {arms.Ammo:0.#}/{arms.Rules.ammoMax:0}　装備重量 {arms.EquippedWeight:0.#}　推力 ×{arms.Mobility:0.00}", small);
+            GUI.Label(Detail(478f),
+                $"共通の弾 {arms.Ammo:0.#}/{arms.Rules.ammoMax:0}　装備重量 {arms.EquippedWeight:0.#}　推力 ×{arms.Mobility:0.00}" +
+                $"　回避距離（重量込み）×{arms.DodgeDistanceMul:0.000}", small);
 
             bool kb = ProtoInput.Current == ProtoInput.Device.Keyboard;
             string back = ProtoInput.L(ProtoInput.Btn.Back), menu = ProtoInput.L(ProtoInput.Btn.EquipView);
@@ -107,7 +109,7 @@ namespace Prototype
                 return $"通常最大威力 {Value(DuelRadar.VolleyDamage(w), previousDamage, "0.#")}　射程 {Value(w.Primary.range, current?.Primary.range, "0.#")} m　{fuel}";
             }
             return $"ブースト ×{Value(w.dashMul, current?.dashMul, "0.00")}　" +
-                $"回避距離 ×{Value(w.dodgeDistanceMul, current?.dodgeDistanceMul, "0.00")}　" +
+                $"回避距離補正 ×{Value(w.dodgeDistanceMul, current?.dodgeDistanceMul, "0.00")}　" +
                 $"無敵時間 ×{Value(w.dodgeInvincibleMul, current?.dodgeInvincibleMul, "0.00")}　" +
                 $"消費 EN ×{Value(w.enCostMul, current?.enCostMul, "0.00")}";
         }

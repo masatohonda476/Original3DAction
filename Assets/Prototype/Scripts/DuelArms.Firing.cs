@@ -109,7 +109,6 @@ namespace Prototype
 
         void FireRound(DuelWeapon weapon, DuelShot shot, bool special, Vector3 from, Vector3 aim)
         {
-            InterruptItemUse();
             lastFire = Time.time;
             Vector3 direction = (aim - from).normalized;
             if (direction == Vector3.zero) direction = player.transform.forward;
@@ -283,7 +282,8 @@ namespace Prototype
         }
 
         /// <summary>速さを持つ弾。地形で止まり、貫通弾は射程までに通った敵に一度ずつ当たる。</summary>
-        IEnumerator Fly(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet, float speed, bool mark)
+        IEnumerator Fly(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet, float speed, bool mark,
+            DuelEnemy homing = null, float turnRate = 0f, int flightVersion = -1)
         {
             var r = Rules;
             // サイト内への補正と弾道表示も、発射時に自機から受け継ぐ速度を使っている。
@@ -302,6 +302,14 @@ namespace Prototype
             {
                 yield return null;
                 if (p == null) yield break;
+                if (flightVersion >= 0 && flightVersion != subFlightVersion)
+                {
+                    EndProjectile(p, pos, trail);
+                    yield break;
+                }
+                if (homing != null && !homing.Dead)
+                    dir = Vector3.RotateTowards(dir, (homing.Chest - pos).normalized,
+                        turnRate * Mathf.Deg2Rad * Time.deltaTime, 0f);
                 float step = speed * Time.deltaTime;
                 if (step <= 0f) continue;   // ヒットストップ・止まった時間の中
                 bool last = flown + step >= w.range;

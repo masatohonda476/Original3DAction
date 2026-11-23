@@ -153,7 +153,7 @@ namespace Prototype
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 遠距離を構えている間は右スティック・マウスをカメラに使う。
             // 落ちている武装の選ぶ表示の間と閉じたフレーム(choice)も切り替えない。
-            if (Target == null || Arms.Aiming || choice) { stickArmed = false; mouseFlick = 0f; return; }
+            if (Target == null || Arms.FreeAim || choice) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }

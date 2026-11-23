@@ -20,6 +20,7 @@ namespace Prototype
         const float Hover = 1.5f;
 
         public DuelWeapon Weapon { get; private set; }
+        public int SubUses { get; set; }
         public DuelItem? Item { get; private set; }
         public Color Tint => Item is DuelItem item ? DuelItems.Get(item).Tint : Weapon.Color;
 
@@ -74,6 +75,7 @@ namespace Prototype
             go.transform.position = pos;
             var l = go.AddComponent<DuelLoot>();
             l.Weapon = w;
+            l.SubUses = w?.SubUses ?? 0;
             l.Item = item;
             l.vy = vy;
             l.kick = kick;

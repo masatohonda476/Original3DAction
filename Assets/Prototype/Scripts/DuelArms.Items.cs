@@ -79,16 +79,10 @@ namespace Prototype
             }
         }
 
-        // 攻撃・回避・射撃がそのフレームに実行されたかを見てから使用を進める。
+        // 回避が成立したフレームは Enter(State.Dodge) で中断する。被弾や怯みの間も使用は進む。
         internal void TickItems()
         {
-            if (ChoiceLocksInput || game.stage == null || game.stage.Cleared)
-            {
-                InterruptItemUse();
-                itemSelectButton = null;
-                return;
-            }
-            if (player.Current != DuelPlayer.State.Free && UsingItem) InterruptItemUse();
+            if (DuelGame.Paused || player.Dead || game.stage == null || game.stage.Cleared) return;
             if (itemInputBlockedFrame == Time.frameCount) return;
 
             if (usingItem is DuelItem pending)
@@ -101,10 +95,16 @@ namespace Prototype
                 return;
             }
 
+            if (ChoiceLocksInput)
+            {
+                itemSelectButton = null;
+                return;
+            }
+
             UpdateItemSelection();
             bool down = Gamepad.current?.dpad.down.wasPressedThisFrame == true ||
                         Keyboard.current?.downArrowKey.wasPressedThisFrame == true;
-            if (!down || player.Current != DuelPlayer.State.Free) return;
+            if (!down || player.Current != DuelPlayer.State.Free || roundsPending > 0 || SubFiring) return;
             if (itemSlots[SelectedItemSlot] is not DuelItem item)
             {
                 ShowItemNotice("未登録のスロット");
@@ -162,11 +162,12 @@ namespace Prototype
             ShowItemNotice("アイテムの使用を中断");
         }
 
-        internal void ResetItemInput()
+        // メニューは使用の進捗を時間停止で保持し、再開・ステージ終了では使用状態も破棄する。
+        internal void ResetItemInput(bool cancelUse = true)
         {
             itemInputBlockedFrame = Time.frameCount;
             itemSelectButton = null;
-            usingItem = null;
+            if (cancelUse) usingItem = null;
             itemNotice = null;
             itemGainAt = -10f;
         }

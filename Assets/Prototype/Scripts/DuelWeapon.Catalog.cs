@@ -35,6 +35,13 @@ namespace Prototype
             dodgeDistanceMul = dodgeDistance, dodgeInvincibleMul = dodgeInvincible, enCostMul = en, scale = scale, weight = weight,
         };
 
+        static DuelWeapon Sub(string name, DuelSlot slot, int rarity, int uses, float weight, Vector3 scale,
+            DuelShot shot, bool guided, string feel) => new()
+        {
+            name = name, Slot = slot, rarity = rarity, weight = weight, scale = scale,
+            SubUses = uses, Primary = shot, GuidedSub = guided, feel = feel,
+        };
+
         // 仮。技の時間・EN・崩しは DuelMoveSet の強攻撃の設定。通常の振り方と間合いは全武器共通。
         public static readonly DuelWeapon BaseSword = Blade("素の剣", 0, "振り下ろし", "標準の近接武器", 1f, 4f, DuelMoveSet.CommonHeavy);
         public static readonly DuelWeapon BaseThruster = Back("標準スラスター", 0, "標準の機動力", 1f, 1f, 1f, 1f, new Vector3(1.8f, 2.3f, 0.9f), 3f);
@@ -167,6 +174,18 @@ namespace Prototype
             Back("省エネスラスター", 0, "速さは控えめだが、長く飛び続けられる", 1.05f, 1f, 1f, 0.6f, new Vector3(2f, 2.4f, 1.1f), 5f),
             Back("軽量スラスター", 1, "軽く速い。回避が伸びる", 1.3f, 1.38f, 1.15f, 0.75f, new Vector3(1.6f, 2f, 0.8f), 2f),
             Back("高速スラスター", 2, "とても速く、燃費も良い", 1.6f, 1.6875f, 1.25f, 0.6f, new Vector3(2.8f, 3.2f, 1.6f), 4.5f),
+
+            Sub("重榴弾砲", DuelSlot.Shoulder, 1, 2, 7f, new Vector3(1.1f, 1.1f, 3.4f),
+                new DuelShot { damage = 22f, range = 80f, shotSpeed = 80f, blastRadius = 12f, stagger = 6f, knock = 14f },
+                false, "照準方向へ撃ち、着弾時に広く爆発する"),
+            Sub("ミサイルポッド", DuelSlot.Shoulder, 1, 2, 5f, new Vector3(1.3f, 1.1f, 2.2f),
+                new DuelShot { damage = 6f, range = 100f, shotSpeed = 120f, blastRadius = 4f, stagger = 1.8f, knock = 4f,
+                    burstCount = 4, burstInterval = 0.08f },
+                true, "時間差で4発。照準枠内の敵を追尾する"),
+            Sub("脚部ミサイル", DuelSlot.Leg, 0, 3, 3f, new Vector3(0.85f, 1.25f, 1.3f),
+                new DuelShot { damage = 5f, range = 75f, shotSpeed = 110f, blastRadius = 3f, stagger = 1.4f, knock = 3f,
+                    burstCount = 2, burstInterval = 0.10f },
+                true, "時間差で2発。照準枠内の敵を追尾する"),
         };
 
         public static List<DuelWeapon> Defaults() => new(DropCatalog);

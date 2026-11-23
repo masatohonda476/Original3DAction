@@ -1,10 +1,10 @@
-# Original3DAction 企画の正本
+# Original3DAction 企画書
 
 最終更新: 2026-11-23
 
 ## この文書について
 
-- 企画の判断はこの文書を正本にする。`Docs/GameConcept.md`(8/1)・`Docs/現時点仕様まとめ.md`(8/15)・`Docs/WorldSetting.md`・`~/Desktop/ProjectOriOn/ゲームビジョン.md`(9 月)は古い方針の履歴で、仕様の根拠にしない。
+- 現在の企画で決めたことや検討中の案は、この文書で確認する。`Docs/GameConcept.md`(8/1)・`Docs/現時点仕様まとめ.md`(8/15)・`Docs/WorldSetting.md`・`~/Desktop/ProjectOriOn/ゲームビジョン.md`(9 月)は以前の方針を振り返るための資料。
 - 2026-11-16 から企画を土台から見直している(作者「コンセプトは核を残して研ぎ澄ましたい」)。
 - 印の意味:
   - **(決定)** 作者が決めたこと。変えるときは作者に聞く。

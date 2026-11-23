@@ -26,7 +26,7 @@
 
 ## 企画の資料
 
-- 企画の正本は `Docs/VISION.md`。作者が企画を決めた・変えたら、その会話でこの文書も直す(作者の言葉は「」で、Claude の提案とは分けて書く)。
+- 現在の企画方針は `Docs/VISION.md` にまとめる。作者が方針を決めたり変えたりしたら、その会話で企画書も更新する(作者の言葉は「」で、Claude の提案とは分けて書く)。
 - 2026-11 から企画を土台から見直している。`Docs/GameConcept.md`・`Docs/現時点仕様まとめ.md`・`Docs/WorldSetting.md` は古い方針で、仕様の根拠にしない。
 - 試作(`Assets/Prototype/`)の形は、作者が試すために作ったもので、仕様として確定ではない。
 - `Assets/Prototype/FiveSlot/`(5 枠版。名前空間 `PrototypeFiveSlot`)は、武装を作り直す前のプロトタイプを比較用に凍結した複製(2026-11-21)。直さない。プロトタイプへの変更は本線(`Assets/Prototype/` 直下の `Scripts/`・`Editor/`・`PrototypeStage.unity`)にだけ入れる。5 枠版は `Assets/Prototype/HuntRelease/` のコード(`HuntProto`)・プレハブ・マテリアルと `Models/` を本線と共用しているので、そこを変えたら 5 枠版もコンパイルが通ることを `compile_check.py` で確かめる。

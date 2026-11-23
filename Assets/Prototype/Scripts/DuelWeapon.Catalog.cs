@@ -36,10 +36,10 @@ namespace Prototype
         };
 
         static DuelWeapon Sub(string name, DuelSlot slot, int rarity, int uses, float weight, Vector3 scale,
-            DuelShot shot, bool guided, string feel) => new()
+            DuelShot shot, bool guided, string feel, bool flare = false) => new()
         {
             name = name, Slot = slot, rarity = rarity, weight = weight, scale = scale,
-            SubUses = uses, Primary = shot, GuidedSub = guided, feel = feel,
+            SubUses = uses, Primary = shot, GuidedSub = guided, DeploysFlare = flare, feel = feel,
         };
 
         // 仮。技の時間・EN・崩しは DuelMoveSet の強攻撃の設定。通常の振り方と間合いは全武器共通。
@@ -186,6 +186,12 @@ namespace Prototype
                 new DuelShot { damage = 5f, range = 75f, shotSpeed = 110f, blastRadius = 3f, stagger = 1.4f, knock = 3f,
                     burstCount = 2, burstInterval = 0.10f },
                 true, "時間差で2発。照準枠内の敵を追尾する"),
+            Sub("脚部ニードル砲", DuelSlot.Leg, 0, 4, 2.5f, new Vector3(0.55f, 0.65f, 1.85f),
+                new DuelShot { damage = 4f, range = 70f, shotSpeed = 220f, stagger = 1.15f, knock = 2f,
+                    projectileLength = 1.6f, burstCount = 3, burstInterval = 0.07f },
+                false, "照準方向へ細い針状弾を3連射する"),
+            Sub("フレア", DuelSlot.Shoulder, 0, 3, 2.5f, new Vector3(0.75f, 0.7f, 1f),
+                new DuelShot(), false, "デコイを散布し、自機を追う近くの誘導弾をそらす", flare: true),
         };
 
         public static List<DuelWeapon> Defaults() => new(DropCatalog);

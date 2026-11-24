@@ -95,7 +95,7 @@ namespace Prototype
         readonly RaycastHit[] pullHits = new RaycastHit[16];
         // ロックオン中の左右の角速度(度/秒)と、上下を決める敵までの水平距離・高さの差(ゆっくり追う)
         float lockYawVel, lookDh, lookDy;
-        bool wasLocked, wasAiming;
+        bool wasLocked;
         Quaternion lastRot;
         // ジャンプで攻撃を跳び越えた間の固定:固定しているか・固定し始めたときに見えていた上下の角度(度。Quaternion.Euler の x)
         bool pitchHeld;
@@ -118,7 +118,7 @@ namespace Prototype
         {
             initialized = false;
             wallDist = -1f;
-            wasLocked = wasAiming = false;
+            wasLocked = false;
             pitchHeld = false;
             lockYawVel = 0f;
             var p = DuelPlayer.I;
@@ -208,7 +208,7 @@ namespace Prototype
             }
             pitchHeld = hold;
             // ロックオン中は、見える向きの回り方に上限(付け始め・自機の素早い動きでも急に回らない)
-            if (tracking && initialized && (wasLocked || wasAiming)) rot = Quaternion.RotateTowards(lastRot, rot, Mathf.Max(1f, lockViewMaxSpeed) * dt);
+            if (tracking && initialized) rot = Quaternion.RotateTowards(lastRot, rot, Mathf.Max(1f, lockViewMaxSpeed) * dt);
             if (hold) rot = Quaternion.Euler(heldPitch, rot.eulerAngles.y, 0f);   // 回る途中でも上下は動かさない
             transform.rotation = rot;
             lastRot = rot;
@@ -217,7 +217,6 @@ namespace Prototype
             if (fade) Fader.Mark(p, shown, transform.right, fadeBodyWidth, floorNormalY, !pullOnCeilings);
             Fader.Tick(dt, fadeAlpha, fadeInTime, fadeOutTime, fadeHoldTime);
             wasLocked = tracking;
-            wasAiming = aiming;
             initialized = true;
         }
 

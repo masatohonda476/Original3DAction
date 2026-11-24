@@ -181,6 +181,8 @@ namespace Prototype
             slideOff = Vector3.zero;
             Target = null;   // ロックオンがオンなら、戻った場所で対象を探し直す
             lockLostFor = 0f;
+            lockMoveHeldFor = 0f;
+            LockSuspendedForMove = false;
             stepTravel = 0f;
             FootstepRadius = 0f;
             EndJump();
@@ -248,6 +250,7 @@ namespace Prototype
             Arms.ReleaseSupportGrip();
             if (DuelGame.Paused)
             {
+                lockMoveHeldFor = 0f;
                 Arms.CheckPausedBurstRelease();
                 return;
             }

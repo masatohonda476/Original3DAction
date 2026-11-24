@@ -1,5 +1,6 @@
 using HuntProto;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Prototype
 {
@@ -62,6 +63,15 @@ namespace Prototype
         /// <summary>狙っている敵が見えない(遮られる・遠すぎる)まま続いている秒数。</summary>
         float lockLostFor;
 
+        [Header("ロックオン中の自由移動（試作）")]
+        [Tooltip("自由移動を始める左スティックの倒し具合（0〜1）")]
+        [Range(0.25f, 1f)] public float lockMoveStickThreshold = 0.8f;
+        [Tooltip("左スティックを強く倒し続けてから自由移動に入るまでの秒数")]
+        [Min(0f)] public float lockMoveHoldTime = 0.5f;
+        const float LockMoveReleaseThreshold = 0.2f;
+        float lockMoveHeldFor;
+        internal bool LockSuspendedForMove { get; private set; }
+
         /// <summary>
         /// ロックオン中の切り替え先にしてよい敵か(SwitchSide・NearestToView・Nearest)。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
         /// 画面に映っていること(胸の少し上の点 LockPoint が画面の中)、ロックオン距離の内側で、壁・床ごしでないこと(InLockReach)。
@@ -97,7 +107,37 @@ namespace Prototype
             LockOn = on;
             lockOnMemory = on;
             lockLostFor = 0f;
+            lockMoveHeldFor = 0f;
+            LockSuspendedForMove = false;
             Target = null;
+        }
+
+        void UpdateLockMove()
+        {
+            // キーボード移動と区別する。解除は開始よりも中央に近い位置で判定し、倒し直す途中は自由移動を保つ。
+            var pad = Gamepad.current;
+            float tilt = pad != null && !ProtoInput.Blocked ? pad.leftStick.ReadValue().magnitude : 0f;
+            if (LockSuspendedForMove)
+            {
+                LockSuspendedForMove = tilt > LockMoveReleaseThreshold;
+                return;
+            }
+            if (Current != State.Free || Target == null || Target.Dead || Arms.FreeAim || Arms.ChoiceLocksInput || tilt < lockMoveStickThreshold)
+            {
+                lockMoveHeldFor = 0f;
+                return;
+            }
+            lockMoveHeldFor += Time.deltaTime;
+            if (lockMoveHeldFor < lockMoveHoldTime) return;
+
+            LockSuspendedForMove = true;
+            lockMoveHeldFor = 0f;
+            lockLostFor = 0f;
+            Target = null;
+            LockCandidate = null;
+            LockCandidateDistance = 0f;
+            stickArmed = false;
+            mouseFlick = 0f;
         }
 
         void UpdateLock()
@@ -124,6 +164,10 @@ namespace Prototype
                 return;
             }
             bool justOn = !wasOn;   // このフレームにオンにした(ロックオンのボタンでも、切り替えのボタンでも)
+            bool wasSuspendedForMove = LockSuspendedForMove;
+            UpdateLockMove();
+            if (LockSuspendedForMove) return;
+
             // 狙っている敵が、壁・床ごし、またはロックオン距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。
             // 倒した敵は、爆発するまでは外さず(その間は遮られる・遠いも見ない)、爆発したら外す(作者「撃破後も爆発するまではロックオンを残してください」)
             if (Target != null)
@@ -137,13 +181,14 @@ namespace Prototype
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
             // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。
-            // 遠距離を構えている間は自動では選ばない。オンにしたフレームと切り替えのボタンを押したフレームは、その間も選ぶ。選ぶのは1フレームに1回だけ(PickBest)。
+            // 遠距離の構え中は通常の自動選択を止める。オンにした・切り替えを押した・自由移動を終えたフレームは、その間も選ぶ。
             // 狙う敵がいて切り替えのボタンを押したら、画面の中のほかの敵へ(枠は使わない。オンにしたフレーム・このフレームに付いた相手からは切り替えない)
             DuelEnemy candidate = null;
             float candidateDist = 0f;
             if (Target == null)
             {
-                if (!Arms.BlocksAutoLock || justOn || switchPressed) Target = PickBest(out candidate, out candidateDist);
+                if (!Arms.BlocksAutoLock || justOn || switchPressed || wasSuspendedForMove)
+                    Target = PickBest(out candidate, out candidateDist);
             }
             else if (switchPressed && !justOn) Target = NearestToView(Target);
             // 距離の目盛りの印に出す敵:付かなかったときの、距離のほかの条件を満たす一番近い敵(付いたら出さない。自動選択を待っている間も出さない)
@@ -153,7 +198,7 @@ namespace Prototype
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 遠距離を構えている間は右スティック・マウスをカメラに使う。
             // 落ちている武装の選ぶ表示の間と閉じたフレーム(choice)も切り替えない。
-            if (Target == null || Arms.FreeAim || choice) { stickArmed = false; mouseFlick = 0f; return; }
+            if (Target == null || Arms.FreeAim || choice || wasSuspendedForMove) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }

@@ -41,7 +41,7 @@ namespace Prototype
             }
         }
 
-        static bool SubTracksEnemy(DuelArms arms, DuelEnemy enemy)
+        static bool SubTargetsEnemy(DuelArms arms, DuelEnemy enemy)
         {
             if (!arms.SubAiming || enemy == null) return false;
             for (int i = 0; i < SubSlotCount; i++)

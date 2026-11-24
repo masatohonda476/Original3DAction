@@ -13,14 +13,15 @@ namespace Prototype
         //     狙っている敵を倒したら、爆発するまでは付けたままにし、爆発したら次へ(下の「倒した敵」)。遮られる・遠ざかるが lockLoseAfter 秒続いたら外して選び直す。
         //   オフの間:敵を狙わない(自動でも付かない)。切り替えのボタン(Tab / R3)を押すとオンに戻る。
         //   オン・オフの合図は DuelGame の照準枠(画面の縁寄りの四つの角。オンで外から締まり、オフで広がって消える)。
-        // 右スティックを左右に短く弾くと切り替え(SwitchSide)。長く倒す・上下へ動かす・マウスを動かすと自由カメラになり、操作を終えた枠で選び直す。
+        // 右スティックを倒すと、その方向の敵へ切り替える。倒し続けている間は一定間隔で繰り返す。
+        // 遠距離武器を構えている間は、右スティックとマウスでカメラを動かす。
         //
         // 付け始めは照準枠の中だけ(2026-11-21。作者「ロックオンで出てくるサイトの枠内に入った場合のみロックオン開始するようにする」
         //   「擬似的にエイムを表現するために追加します」→ 選んだのは「1-A,2-A」):
         //   枠 = DuelGame の照準枠が待機中に止まっている大きさ(DuelGame.LockSightTan。見えている枠と判定が同じ。出入りの動き・敵を囲んで縮む動きは入れない)。
         //   1-A:敵の胸の点ではなく、敵の体が枠に掛かれば付く(近くて大きく映る敵ほど付きやすい。DuelArms.BodyInCenterFrame=銃の照準の枠と同じ体の見え方)。
         //   2-A:枠を使うのは、自動で付くとき・オンにした瞬間・倒した(見失った)あとの次の敵・狙う敵がいないときの切り替えボタン(どれも PickBest)。
-        //        ロックオン中の切り替え(右スティックの弾き SwitchSide・切り替えボタン NearestToView)は今までどおり画面の中ならよい
+        //        ロックオン中の切り替え(右スティック SwitchInDirection・切り替えボタン NearestToView)は今までどおり画面の中ならよい
         //        (ロックオン中は枠が相手を囲んで縮んでいるので、切り替えには枠を使わない。Lockable)。
         //   付いたあとの維持は今までどおり(枠から出ても外さない。遮られる・遠すぎるが lockLoseAfter 秒続くまで)。
         //
@@ -32,7 +33,7 @@ namespace Prototype
         // 倒した敵(2026-11-21。作者「撃破後も爆発するまではロックオンを残してください」):
         //   狙っている敵を倒しても、撃墜の演出で爆発する(DuelFighter.Exploded。倒してから約 0.6 秒)まではロックオンを外さない。爆発したフレームに外して次の敵を選ぶ。
         //   その間は遮られても・遠ざかっても外さない。カメラ・角の枠・自機の向き・剣の向かう先は、付けたままの相手(倒した敵)を追う。
-        //   切り替え(右スティックの弾き・切り替えボタン)はその間もできる。倒した敵に新しく付くことはない(付け始め・切り替え先は生きている敵だけ)。
+        //   切り替え(右スティック・切り替えボタン)はその間もできる。倒した敵に新しく付くことはない(付け始め・切り替え先は生きている敵だけ)。
         //   弾・剣が倒した敵に当たらないのは今までどおり。
 
         /// <summary>ロックオン距離(DuelStage.lockOnRange。付け始め・切り替え先のどれもこの1つ。0 なら制限なし)。</summary>
@@ -42,7 +43,7 @@ namespace Prototype
         /// 枠の右辺の距離の目盛りに印を出す敵(DuelGame.DrawLockGauge):距離のほかの付け始めの条件(体が照準枠に掛かる・遮られていない・生きている)を満たす敵のうち、
         /// 一番近い敵(作者が選んだ「一番近い敵」:「枠に掛かって遮られていない敵のうち、一番近い敵の距離を示す。『印が刻みに届いたら必ず付く』がいつも成り立つ。」)。
         /// 実際に付く敵は点数で選ぶので、この敵とは限らない(一番近い敵がロックオン距離に入れば、距離の内に付ける敵が必ずいるので、そのフレームにどれかに付く)。
-        /// ロックオンがオンで狙う敵がいない間だけ。銃の構え中や自由カメラの操作中は出さない。
+        /// ロックオンがオンで狙う敵がいない間だけ。銃の構え中は出さない。
         /// なので印が出ている敵は、いつもロックオン距離より遠い。目盛りの上端のさらに LockCandidateBeyond 倍より遠い敵は見ない。
         /// </summary>
         public DuelEnemy LockCandidate { get; private set; }
@@ -62,16 +63,13 @@ namespace Prototype
         /// <summary>狙っている敵が見えない(遮られる・遠すぎる)まま続いている秒数。</summary>
         float lockLostFor;
 
-        const float RightFlickTime = 0.15f;
-        const float RightFlickHorizontalRatio = 1.5f;
-        const float MouseLookQuietTime = 0.12f;
-        bool rightFlickArmed;
-        float rightFlickSide, rightFlickStartedAt, mouseLookUntil;
-        internal bool LockSuspendedForCamera { get; private set; }
-        bool reacquireLockAfterCamera;
+        const float LockSwitchRepeatInterval = 0.3f;
+        const float LockSwitchStickThreshold = 0.45f;
+        const float LockSwitchStickReleaseThreshold = 0.25f;
+        float nextLockSwitchAt;
 
         /// <summary>
-        /// ロックオン中の切り替え先にしてよい敵か(SwitchSide・NearestToView・Nearest)。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
+        /// ロックオン中の切り替え先にしてよい敵か(SwitchInDirection・NearestToView・Nearest)。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
         /// 画面に映っていること(胸の少し上の点 LockPoint が画面の中)、ロックオン距離の内側で、壁・床ごしでないこと(InLockReach)。
         /// 付け始め(自動・オンにした瞬間・倒したあとの次の敵)は、画面の中ではなく照準枠の中で選ぶ(PickBest)。
         /// </summary>
@@ -79,13 +77,10 @@ namespace Prototype
         {
             if (e == null || e.Dead) return false;
             var cam = Camera.main;
-            if (cam != null)
-            {
-                Vector3 v = cam.WorldToViewportPoint(e.LockPoint);
-                if (v.z <= 0f || v.x < 0f || v.x > 1f || v.y < 0f || v.y > 1f) return false;
-            }
-            return InLockReach(e);
+            return (cam == null || InViewport(cam.WorldToViewportPoint(e.LockPoint))) && InLockReach(e);
         }
+
+        static bool InViewport(Vector3 v) => v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
 
         /// <summary>ロックオン距離(LockRange。0 なら制限なし=距離も見通しも見ない)の内側で、壁・床ごしでないか。切り替え先の条件(付け始めの PickBest も同じ測り方)。</summary>
         bool InLockReach(DuelEnemy e)
@@ -105,70 +100,8 @@ namespace Prototype
             LockOn = on;
             lockOnMemory = on;
             lockLostFor = 0f;
-            ResetLockCamera();
+            nextLockSwitchAt = 0f;
             Target = null;
-        }
-
-        void ResetLockCamera()
-        {
-            rightFlickArmed = false;
-            rightFlickSide = 0f;
-            mouseLookUntil = 0f;
-            LockSuspendedForCamera = false;
-            reacquireLockAfterCamera = false;
-        }
-
-        void UpdateLockCamera(bool canSwitchSide)
-        {
-            Vector2 stick = ProtoInput.RightStick;
-            bool stickMoved = stick != Vector2.zero;
-            bool mouseMoved = ProtoInput.MouseDelta != Vector2.zero;
-            float now = Time.unscaledTime;
-            if (LockSuspendedForCamera)
-            {
-                if (mouseMoved) mouseLookUntil = now + MouseLookQuietTime;
-                if (stickMoved || now < mouseLookUntil) return;
-                LockSuspendedForCamera = false;
-                reacquireLockAfterCamera = true;
-                rightFlickArmed = true;
-                return;
-            }
-            if (Arms.FreeAim)
-            {
-                rightFlickArmed = false;
-                rightFlickSide = 0f;
-                return;
-            }
-            bool canFlick = canSwitchSide && Target != null;
-            if (!stickMoved && !mouseMoved)
-            {
-                if (canFlick && rightFlickSide != 0f) SwitchSide(rightFlickSide);
-                rightFlickArmed = true;
-                rightFlickSide = 0f;
-                return;
-            }
-            // 横の入力は、短く戻れば対象変更、続けばカメラ操作。上下やマウスはすぐにカメラへ渡す。
-            bool horizontal = Mathf.Abs(stick.x) > Mathf.Abs(stick.y) * RightFlickHorizontalRatio;
-            float side = Mathf.Sign(stick.x);
-            if (canFlick && rightFlickArmed && !mouseMoved && horizontal && (rightFlickSide == 0f || rightFlickSide == side))
-            {
-                if (rightFlickSide == 0f)
-                {
-                    rightFlickSide = side;
-                    rightFlickStartedAt = now;
-                }
-                if (now - rightFlickStartedAt < RightFlickTime) return;
-            }
-
-            LockSuspendedForCamera = true;
-            reacquireLockAfterCamera = false;
-            rightFlickArmed = false;
-            rightFlickSide = 0f;
-            mouseLookUntil = mouseMoved ? now + MouseLookQuietTime : 0f;
-            lockLostFor = 0f;
-            Target = null;
-            LockCandidate = null;
-            LockCandidateDistance = 0f;
         }
 
         void UpdateLock()
@@ -177,7 +110,7 @@ namespace Prototype
             // 落ちている武装の選ぶ表示(付け先・分解)の間と閉じたフレームは、ロックオンのボタン(オン・オフ:十字左・Q・中クリック / 切り替え:R3・Tab)を
             // 読まない(DuelArms.ChoiceLocksInput。作者「ドロップした武装の操作中に移動とカメラ以外の操作ができないように」)。
             // 自動で選ぶ・見失って外す・倒した敵から次へ移るのは、選ぶ表示の間も今までどおり動く。
-            // 選ぶ表示の間もカメラは動かせる。右スティックの弾きはカメラ操作として扱う。
+            // 選ぶ表示の間は右スティックでの対象変更も止める。
             bool wasOn = LockOn;
             bool choice = Arms.ChoiceLocksInput;
             bool toggle = !choice && ProtoInput.LockToggle;
@@ -205,34 +138,49 @@ namespace Prototype
                 lockLostFor = seen ? 0f : lockLostFor + Time.deltaTime;
                 if (Target.Exploded || lockLostFor >= lockLoseAfter) { Target = null; lockLostFor = 0f; }
             }
-            // 明示的にオン・切り替えを押したフレームは、カメラ入力よりボタンの動作を優先する。
-            if (switchPressed)
+            // 付け始めは照準枠から選ぶ。遠距離の構え中は、明示的にオン・切り替えを押したときだけ選ぶ。
+            if (Target == null)
             {
-                rightFlickArmed = false;
-                rightFlickSide = 0f;
+                if (!Arms.BlocksAutoLock || justOn || switchPressed) SearchLockTarget();
+                else
+                {
+                    LockCandidate = null;
+                    LockCandidateDistance = 0f;
+                }
+                nextLockSwitchAt = 0f;
+                return;
             }
-            if (!justOn && (!switchPressed || LockSuspendedForCamera)) UpdateLockCamera(!choice);
-            if (LockSuspendedForCamera || reacquireLockAfterCamera) return;
-            // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
-            // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。
-            // 遠距離の構え中は通常の自動選択を止める。オンにした・切り替えを押したフレームは、その間も選ぶ。
-            // 狙う敵がいて切り替えのボタンを押したら、画面の中のほかの敵へ(枠は使わない。オンにしたフレーム・このフレームに付いた相手からは切り替えない)
-            if (Target == null && (!Arms.BlocksAutoLock || justOn || switchPressed))
-                SearchLockTarget();
-            else
+
+            LockCandidate = null;
+            LockCandidateDistance = 0f;
+            if (switchPressed && !justOn)
             {
-                if (Target != null && switchPressed && !justOn) Target = NearestToView(Target);
-                LockCandidate = null;
-                LockCandidateDistance = 0f;
+                Target = NearestToView(Target);
+                nextLockSwitchAt = Time.unscaledTime + LockSwitchRepeatInterval;
+                return;
             }
+            if (Arms.FreeAim || choice)
+            {
+                nextLockSwitchAt = 0f;
+                return;
+            }
+            UpdateDirectionalLockSwitch();
         }
 
-        void UpdateLockAfterCamera()
+        void UpdateDirectionalLockSwitch()
         {
-            if (!reacquireLockAfterCamera) return;
-            // 自機とカメラが移動したあとの照準枠を使う。枠が敵に届くまで、武器を構えていても毎フレーム探す。
-            SearchLockTarget();
-            reacquireLockAfterCamera = Target == null;
+            Vector2 stick = ProtoInput.RightStick;
+            // 入力が境目で小さく揺れても、連続切り替えの待ち時間をリセットしない。
+            float threshold = nextLockSwitchAt > 0f ? LockSwitchStickReleaseThreshold : LockSwitchStickThreshold;
+            if (stick.sqrMagnitude < threshold * threshold)
+            {
+                nextLockSwitchAt = 0f;
+                return;
+            }
+            float now = Time.unscaledTime;
+            if (now < nextLockSwitchAt) return;
+            nextLockSwitchAt = now + LockSwitchRepeatInterval;
+            SwitchInDirection(stick.normalized);
         }
 
         void SearchLockTarget()
@@ -243,20 +191,39 @@ namespace Prototype
             LockCandidateDistance = LockCandidate != null ? distance : 0f;
         }
 
-        /// <summary>今の敵から見て side(+1=右 / -1=左)の側にいる、向きの一番近い敵へ切り替える(いなければそのまま)。</summary>
-        void SwitchSide(float side)
+        /// <summary>今の敵から見て、スティックを倒した方向の近い敵へ切り替える。候補がいなければ相手を保つ。</summary>
+        void SwitchInDirection(Vector2 direction)
         {
-            Vector3 toCur = Flat(Target.transform.position - transform.position);
+            var cam = Camera.main;
+            if (cam == null) return;
+            Vector3 origin = cam.WorldToViewportPoint(Target.LockPoint);
+            if (origin.z <= 0f) origin = new Vector3(0.5f, 0.5f, 0f);
+
             DuelEnemy best = null;
-            float bestAngle = float.MaxValue;
+            float bestScore = float.MaxValue;
             foreach (var e in game.Enemies)
             {
-                if (e == null || e.Dead || e == Target || !Lockable(e)) continue;
-                float a = Vector3.SignedAngle(toCur, Flat(e.transform.position - transform.position), Vector3.up);
-                if (a * side <= 0f) continue;
-                if (Mathf.Abs(a) < bestAngle) { bestAngle = Mathf.Abs(a); best = e; }
+                if (e == null || e.Dead || e == Target) continue;
+                Vector3 view = cam.WorldToViewportPoint(e.LockPoint);
+                if (!InViewport(view)) continue;
+
+                // 縦横を同じ画面上の長さで比べ、入力方向から45度以内の候補を見る。
+                Vector2 offset = new((view.x - origin.x) * cam.aspect, view.y - origin.y);
+                float forward = Vector2.Dot(offset, direction);
+                float sideways = Mathf.Abs(offset.x * direction.y - offset.y * direction.x);
+                if (forward <= 0.005f || sideways > forward) continue;
+
+                // 入力方向に近く、画面上で隣り合う敵を優先する。
+                float score = forward + 2f * sideways;
+                if (score >= bestScore || !InLockReach(e)) continue;
+                bestScore = score;
+                best = e;
             }
-            if (best != null) Target = best;
+            if (best != null)
+            {
+                Target = best;
+                lockLostFor = 0f;
+            }
         }
 
         /// <summary>

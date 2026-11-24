@@ -139,8 +139,6 @@ namespace Prototype
                 lockFollowCenter = Vector2.Lerp(lockFollowCenter, boxCenter, k);
                 lockFollowHalf = Vector2.Lerp(lockFollowHalf, boxHalf, k);
             }
-            bool manualCamera = player.LockSuspendedForCamera;
-            if (manualCamera) lockFollowSeenAt = -10f;
             bool hold = on && !onEnemy && lockFollow > 0f && now - lockFollowSeenAt < LockFollowHold;
             if (!hold) lockFollow = Mathf.MoveTowards(lockFollow, onEnemy ? 1f : 0f, dt / LockFollowTime);
             float e = Mathf.SmoothStep(0f, 1f, lockFollow);
@@ -159,7 +157,7 @@ namespace Prototype
             // 右辺の距離の目盛り:待機中の枠(敵を囲みに縮む前の大きさ。オン・オフの出入りには付いていく)の右辺に出す。
             // 出すのは、オンで狙う敵がいない(付く相手を探している)間だけ。付いている間は、相手が遮られた・画面の外に出たときも出さない
             // (枠を出し始めたフレーム=オンにした瞬間・メニューを閉じた直後に、もう付いていれば最初から出さない)。枠が敵から戻る途中は、戻るのに合わせて濃くなる
-            DrawLockGauge(on && !aiming && !manualCamera && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
+            DrawLockGauge(on && !aiming && player.Target == null, new Vector2(SW * 0.5f, SH * 0.5f), hw, hh, 1f - e, dt);
             hw = Mathf.Lerp(hw, lockFollowHalf.x + lockOffset * 0.35f, e);
             hh = Mathf.Lerp(hh, lockFollowHalf.y + lockOffset * 0.35f, e);
             Vector2 c = new Vector2(SW * 0.5f, SH * 0.5f) + lockFollowCenter * e;

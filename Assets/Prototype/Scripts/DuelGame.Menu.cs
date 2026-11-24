@@ -245,8 +245,8 @@ namespace Prototype
             HelpRow($"{l2} + {r2}", "大技（共通の弾を消費）");
             HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
-            HelpRow(kb ? "Tab / マウスを左右に振る" : "R3 / 右スティックを左右に弾く", "相手を変更（構え中は Tab / R3 のみ）");
-            if (!kb) HelpRow("左を倒し続けて右でカメラ操作", "一時的に自由移動。左を戻すと狙い直す");
+            HelpRow(kb ? "Tab" : "R3 / 右を左右に短く弾く", "相手を変更（構え中は Tab / R3 のみ）");
+            HelpRow(kb ? "マウス" : "右を上下に動かす・倒し続ける", "自由カメラ。操作を終えると狙い直す");
             HelpRow(B(ProtoInput.Btn.PickUp), "近くの武装を調べる / 補給物資を拾う");
             HelpRow(kb ? "↑" : "十字キー上", "補修用装甲を使う");
             HelpRow($"↑↓ / {B(ProtoInput.Btn.Confirm)}", "武装の操作を選ぶ / 決定（解体は長押し）");

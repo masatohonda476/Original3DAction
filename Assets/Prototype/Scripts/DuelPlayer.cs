@@ -183,6 +183,7 @@ namespace Prototype
             lockLostFor = 0f;
             lockMoveHeldFor = 0f;
             LockSuspendedForMove = false;
+            reacquireLockAfterMove = false;
             stepTravel = 0f;
             FootstepRadius = 0f;
             EndJump();
@@ -381,6 +382,7 @@ namespace Prototype
         void LateUpdate()
         {
             if (DuelGame.Paused || Dead) return;
+            UpdateLockAfterMove();
             // 表示に使うカメラの向きが決まってから、機体の向き・銃口・射撃方向をそろえる。
             var cam = Camera.main;
             if (Arms.FreeAim && cam != null)

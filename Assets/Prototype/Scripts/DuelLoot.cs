@@ -4,9 +4,11 @@ using UnityEngine;
 
 namespace Prototype
 {
+    public enum DuelSupply { RepairArmor, Ammo }
+
     /// <summary>
-    /// 落ちている武装とアイテム。倒した敵が落とし、床まで落ちて光の柱を立てる。時間では消えない。
-    /// 自機が近くにいるときに△(C)で武装を調べるか、アイテムを拾う。無視すれば残る。
+    /// 落ちている武装と補給物資。倒した敵や宝箱から出て、床まで落ちて光の柱を立てる。時間では消えない。
+    /// 自機が近くにいるときに△(C)で武装を調べるか、補給物資を拾う。無視すれば残る。
     /// 付け替えた古い武装は、今拾った武装のあった所にそのまま置く(その場で入れ替え)。置いた直後から拾えるが、拾う案内の優先度は低い
     /// (LowerPriority。作者「落とした後すぐ触れるようにはしてほしい(優先度を下げるだけ)」):拾える範囲にふつうの武装があればそちらが対象で、
     /// なければ外した武装が対象になる。優先度が戻るのは、自機がその武装の拾える範囲から一度出たときだけ(時間では戻さない。RestorePriorities)。
@@ -21,8 +23,21 @@ namespace Prototype
 
         public DuelWeapon Weapon { get; private set; }
         public int SubUses { get; set; }
-        public DuelItem? Item { get; private set; }
-        public Color Tint => Item is DuelItem item ? DuelItems.Get(item).Tint : Weapon.Color;
+        public DuelSupply? Supply { get; private set; }
+        public string DisplayName => Supply switch
+        {
+            DuelSupply.RepairArmor => "補修用装甲",
+            DuelSupply.Ammo => "弾薬",
+            _ => Weapon.name,
+        };
+
+        internal static readonly Color RepairTint = new(0.35f, 1f, 0.65f);
+        public Color Tint => Supply switch
+        {
+            DuelSupply.RepairArmor => RepairTint,
+            DuelSupply.Ammo => new Color(1f, 0.72f, 0.28f),
+            _ => Weapon.Color,
+        };
 
         /// <summary>
         /// 撃つ状態(弾倉の残り・装填待ち)。敵が落とした銃の弾倉は空。付け替えで外した銃は、撃ちかけの残りと装填待ちを覚えておく
@@ -31,7 +46,7 @@ namespace Prototype
         public DuelArms.Memo Memo { get; set; } = new();
 
         static readonly List<DuelLoot> all = new();
-        /// <summary>落ちている武装とアイテムの全部。</summary>
+        /// <summary>落ちている武装と補給物資の全部。</summary>
         public static IReadOnlyList<DuelLoot> All => all;
         Transform visual;
         float vy, t;
@@ -45,9 +60,9 @@ namespace Prototype
         /// <summary>pos に武装を落とす(少し跳ねて、真下の床まで落ちる)。</summary>
         public static DuelLoot Drop(DuelWeapon w, Vector3 pos, Vector3 kick) => Spawn(w, null, pos, 12f, kick);
 
-        public static DuelLoot Drop(DuelItem item, Vector3 pos, Vector3 kick) => Spawn(null, item, pos, 12f, kick);
+        public static DuelLoot Drop(DuelSupply supply, Vector3 pos, Vector3 kick) => Spawn(null, supply, pos, 12f, kick);
 
-        public static DuelLoot PlaceItem(DuelItem item, Vector3 pos) => Spawn(null, item, pos, 0f, Vector3.zero);
+        public static DuelLoot PlaceSupply(DuelSupply supply, Vector3 pos) => Spawn(null, supply, pos, 0f, Vector3.zero);
 
         /// <summary>pos にそのまま置く(勢いなし。付け替えで外した武装を、拾った武装のあった所に置く)。</summary>
         public static DuelLoot Place(DuelWeapon w, Vector3 pos) => Spawn(w, null, pos, 0f, Vector3.zero);
@@ -69,14 +84,15 @@ namespace Prototype
                 out floor, 4f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         }
 
-        static DuelLoot Spawn(DuelWeapon w, DuelItem? item, Vector3 pos, float vy, Vector3 kick)
+        static DuelLoot Spawn(DuelWeapon w, DuelSupply? supply, Vector3 pos, float vy, Vector3 kick)
         {
-            var go = new GameObject($"Loot_{(item is DuelItem kind ? DuelItems.Get(kind).Name : w.name)}");
+            var go = new GameObject();
             go.transform.position = pos;
             var l = go.AddComponent<DuelLoot>();
             l.Weapon = w;
             l.SubUses = w?.SubUses ?? 0;
-            l.Item = item;
+            l.Supply = supply;
+            go.name = $"Loot_{l.DisplayName}";
             l.vy = vy;
             l.kick = kick;
             l.Build();
@@ -84,7 +100,7 @@ namespace Prototype
             return l;
         }
 
-        /// <summary>落ちている武装とアイテムを全部消す(ボスを倒したとき)。</summary>
+        /// <summary>落ちている武装と補給物資を全部消す(ボスを倒したとき)。</summary>
         public static void ClearAll()
         {
             foreach (var l in all)
@@ -143,32 +159,26 @@ namespace Prototype
             InPickRange(who, out _) && DuelSenses.ClearSight(who.Chest, transform.position + Vector3.up);
 
         /// <summary>
-        /// 拾う案内の対象:拾える範囲にあって壁・床ごしでない武装のうち、ふつうの優先度の一番近いもの。
-        /// それがなければ、優先度の低い武装(付け替えで置いたもの。LowerPriority)の一番近いもの。どちらもなければ null。
+        /// 拾う案内の対象は、範囲内で見通せるもの。共通の弾が満タンのときの弾薬箱、付け替えで置いた武装の順に優先度が低い。
+        /// 同じ優先度なら一番近いものを案内する。
         /// </summary>
-        public static DuelLoot Nearest(DuelFighter who)
+        public static DuelLoot Nearest(DuelFighter who, bool ammoFull)
         {
-            DuelLoot best = null, bestLow = null;
-            float bestD = float.MaxValue, bestLowD = float.MaxValue;
-            foreach (var l in all)
+            DuelLoot best = null;
+            int bestPriority = -1;
+            float bestDistance = float.MaxValue;
+            foreach (var loot in all)
             {
-                if (l == null) continue;
-                // ふつうの武装が見つかった後は、優先度の低い武装は調べない(見通しのレイを飛ばさない)
-                if (l.lowPriority && best != null) continue;
-                if (!l.InPickRange(who, out float dist) || dist >= (l.lowPriority ? bestLowD : bestD)) continue;
-                if (!DuelSenses.ClearSight(who.Chest, l.transform.position + Vector3.up)) continue;
-                if (l.lowPriority)
-                {
-                    bestLowD = dist;
-                    bestLow = l;
-                }
-                else
-                {
-                    bestD = dist;
-                    best = l;
-                }
+                if (loot == null) continue;
+                int priority = ammoFull && loot.Supply == DuelSupply.Ammo ? 0 : loot.lowPriority ? 1 : 2;
+                if (priority < bestPriority) continue;
+                if (!loot.InPickRange(who, out float distance) || (priority == bestPriority && distance >= bestDistance)) continue;
+                if (!DuelSenses.ClearSight(who.Chest, loot.transform.position + Vector3.up)) continue;
+                best = loot;
+                bestPriority = priority;
+                bestDistance = distance;
             }
-            return best != null ? best : bestLow;
+            return best;
         }
 
         /// <summary>拾った:光って消える。</summary>

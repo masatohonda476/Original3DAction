@@ -4,14 +4,14 @@ namespace Prototype
 {
     public partial class DuelStage
     {
-        const float ChestItemChance = 0.3f;
+        const float ChestSupplyChance = 0.3f;
 
-        void TryDropItem(DuelEnemy e)
+        void TryDropSupply(DuelEnemy e)
         {
-            if (itemDropChance < 1f && Random.value >= itemDropChance) return;
-            var item = DuelItems.RollDrop();
+            if (supplyDropChance < 1f && Random.value >= supplyDropChance) return;
+            var supply = RollSupply();
             Vector2 k = Random.insideUnitCircle * 5f;
-            DuelLoot.Drop(item, e.Chest, new Vector3(k.x, 0f, k.y));
+            DuelLoot.Drop(supply, e.Chest, new Vector3(k.x, 0f, k.y));
         }
 
         /// <summary>
@@ -31,22 +31,18 @@ namespace Prototype
             if (w.rarity >= 1) game.Log($"{w.RarityName}の武装が落ちた:{w.name}");
         }
 
-        /// <summary>最下層と大ホールの重みの間で、宝箱の高さに応じてレア度を抽選する。</summary>
-        (DuelWeapon weapon, DuelItem? item) RollChestReward(float chestY)
+        /// <summary>最下層と大ホールの重みの間で、宝箱の高さに応じて武装のレア度を抽選する。</summary>
+        (DuelWeapon weapon, DuelSupply? supply) RollChestReward(float chestY)
         {
-            bool rollItem = Random.value < ChestItemChance;
+            if (Random.value < ChestSupplyChance) return (null, RollSupply());
             float heightFraction = Mathf.InverseLerp(LowestFloorY, bossSpawn.pos.y, chestY);
             int rarity = DuelRarityWeights.RollRarity(Mathf.Lerp(80f, 25f, heightFraction),
                 Mathf.Lerp(18f, 40f, heightFraction), Mathf.Lerp(2f, 35f, heightFraction));
-            if (!rollItem && PickWeapon(rarity) is DuelWeapon weapon) return (weapon, null);
-            var item = rarity switch
-            {
-                0 => Random.Range(0, 2) == 0 ? DuelItem.RepairArmor : DuelItem.Ammo,
-                1 => Random.Range(0, 2) == 0 ? DuelItem.Grenade : DuelItem.MagneticAnchor,
-                _ => DuelItem.DecoyBeacon,
-            };
-            return (null, item);
+            var weapon = PickWeapon(rarity);
+            return weapon != null ? (weapon, null) : (null, RollSupply());
         }
+
+        static DuelSupply RollSupply() => Random.Range(0, 2) == 0 ? DuelSupply.RepairArmor : DuelSupply.Ammo;
 
         /// <summary>そのレア度から一つ選ぶ。今付けている武装は出にくくする。</summary>
         DuelWeapon PickWeapon(int rarity)

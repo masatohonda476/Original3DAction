@@ -145,27 +145,21 @@ namespace Prototype
             BoostOn = false;
             Arms.StopBurst();
             Arms.ResetSubCombat();
-            Arms.ResetItemInput();
+            Arms.ResetSupplyInput();
             ReturnToFooting(pos, rot);
         }
 
         // 足の中心に地形がある間だけ、復帰地点として使う。敵の上や、縁に機体が少し掛かっているだけの場所は除く。
-        internal bool OnFoothold => TryGetFoothold(out _);
-
-        internal bool TryGetFoothold(out RaycastHit hit)
-        {
-            hit = default;
-            return cc.isGrounded &&
-                Physics.Raycast(transform.position + Vector3.up, Vector3.down, out hit, 1.5f,
-                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
-                Vector3.Angle(hit.normal, Vector3.up) <= cc.slopeLimit;
-        }
+        internal bool OnFoothold => cc.isGrounded &&
+            Physics.Raycast(transform.position + Vector3.up, Vector3.down, out var hit, 1.5f,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) &&
+            Vector3.Angle(hit.normal, Vector3.up) <= cc.slopeLimit;
 
         internal void RecoverFromFall(Vector3 pos, float damage)
         {
             Arms.StopBurst();
             Arms.StopSubVolley();
-            Arms.InterruptItemUse();
+            Arms.InterruptRepair();
             ReturnToFooting(pos, transform.rotation);
             if (damage <= 0f) return;
             HP -= damage;
@@ -393,12 +387,12 @@ namespace Prototype
             }
             Arms.UpdateCombat(CanShoot);
             Arms.TickSubCombat(cam);
-            Arms.TickItems();
+            Arms.TickRepair();
         }
 
         void ReadButtons(float now)
         {
-            if (Arms.RangedHeld || Arms.ChoiceLocksInput || Arms.UsingItem || Arms.SubFiring)
+            if (Arms.RangedHeld || Arms.ChoiceLocksInput || Arms.UsingRepair || Arms.SubFiring)
                 meleePressedAt = -10f;
             else if (Arms.HeavyPressed)
             {
@@ -426,7 +420,7 @@ namespace Prototype
         void Enter(State s, float dur = 0f)
         {
             if (s is State.Dodge or State.Hurt) Arms.StopBurst();
-            if (s == State.Dodge) Arms.InterruptItemUse();
+            if (s == State.Dodge) Arms.InterruptRepair();
             if (s == State.Hurt) Arms.StopSubVolley();
             if (s != State.Attack)
             {
@@ -487,7 +481,7 @@ namespace Prototype
             Arms.ClearBufferedInput();
             Arms.StopBurst();
             Arms.ResetSubCombat();
-            Arms.ResetItemInput();
+            Arms.ResetSupplyInput();
             EndJump();
             // 空中で撃墜されたら、飛行と上昇の勢いを止めて落ちる
             flying = false;

@@ -89,10 +89,10 @@ namespace Prototype
             }
 
             DuelLoot.RestorePriorities(player);
-            bool canPick = !UsingItem && !SubFiring && !player.Airborne && player.Current == DuelPlayer.State.Free;
+            bool canPick = !UsingRepair && !SubFiring && !player.Airborne && player.Current == DuelPlayer.State.Free;
             var selected = Choosing;
             Nearby = canPick
-                ? selected != null && selected.CanPick(player) ? selected : DuelLoot.Nearest(player)
+                ? selected != null && selected.CanPick(player) ? selected : DuelLoot.Nearest(player, Ammo >= Rules.ammoMax)
                 : null;
             UpdateChoice();
 

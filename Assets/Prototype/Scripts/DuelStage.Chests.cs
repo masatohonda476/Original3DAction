@@ -151,10 +151,10 @@ namespace Prototype
                 DuelLoot.Drop(reward.weapon, at, Vector3.zero);
                 game.Log($"宝箱から{reward.weapon.RarityName}の武装：{reward.weapon.name}");
             }
-            else if (reward.item is DuelItem item)
+            else if (reward.supply is DuelSupply supply)
             {
-                DuelLoot.Drop(item, at, Vector3.zero);
-                game.Log($"宝箱からアイテム：{DuelItems.Get(item).Name}");
+                var loot = DuelLoot.Drop(supply, at, Vector3.zero);
+                game.Log($"宝箱から補給物資：{loot.DisplayName}");
             }
             ProtoFx.Blast(at, 4f, ChestTrim, 0.25f);
         }

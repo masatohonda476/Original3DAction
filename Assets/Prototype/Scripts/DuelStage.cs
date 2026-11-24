@@ -19,7 +19,7 @@ namespace Prototype
     /// 撃墜されたら最後に触れたセーブポイントから再開し、
     /// 生きている敵は HP を戻して持ち場へ帰す(発覚・警戒も切る)。F1 は最初から。ボスを倒すと「ステージクリア」。
     /// ボス戦(作者「ボス戦に入ったら入口を閉じ、死亡したら入る前の弾薬の状態で復活するようにしてください」):自機が大ホールに入りきったら入口の扉が閉じ、
-    /// そのときのアイテム、共通の弾、武装ごとの弾倉を控える。ボスを倒すか、やられて再開すると扉は開く(入り直すとまた閉じる)。
+    /// そのときの補修用装甲、共通の弾、武装ごとの弾倉を控える。ボスを倒すか、やられて再開すると扉は開く(入り直すとまた閉じる)。
     /// ボスは扉が閉じている間だけダメージを受ける(作者「ボス部屋の外からの攻撃は0ダメージにしてください」)。
     /// ボス以外の敵は大ホールへ入れず、入口の手前で止まる(作者「敵はボス部屋に入れないようにしてください」。DuelFighter.maxZ)。
     /// 地形と敵の配置はこのクラスの Define() に書き、実行時に組み立てる(シーンには DuelGame とこれを置くだけ)。
@@ -70,12 +70,12 @@ namespace Prototype
         public DuelRarityWeights duelistRarity = new(0.1f, 0.45f, 0.45f);
         [Tooltip("照準・装備の重量・弾と装填・解体の決まり(数値は仮)")]
         public DuelArmsRules armsRules = new();
-        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で拾った武装とアイテムが消し飛び、共通の弾も0になる(画面は揺らさない)")]
+        [Tooltip("ボスを倒したときの爆発の大きさ(m)。爆発で拾った武装と補修用装甲が消し飛び、共通の弾も0になる(画面は揺らさない)")]
         public float bossBlastRadius = 45f;
 
-        [Header("アイテムの落とし物")]
-        [Tooltip("兵卒・剣士を倒したとき、武装の抽選とは別にアイテムが1個落ちる確率")]
-        [Range(0f, 1f)] public float itemDropChance = 0.3f;
+        [Header("補給物資の落とし物")]
+        [Tooltip("ボス以外の敵を倒したとき、武装の抽選とは別に補給物資が1個落ちる確率")]
+        [FormerlySerializedAs("itemDropChance"), Range(0f, 1f)] public float supplyDropChance = 0.3f;
 
         [Header("ボス(大剣士)")]
         [Tooltip("ボスの最大HP")]
@@ -366,7 +366,7 @@ namespace Prototype
         }
 
         /// <summary>
-        /// ボス戦を始める:入口の扉を閉じ、共通の弾・弾倉・アイテムを控える(やられて再開するときに戻す)。
+        /// ボス戦を始める:入口の扉を閉じ、共通の弾・弾倉・補修用装甲を控える(やられて再開するときに戻す)。
         /// 呼ぶのは、自機が扉の内側の面から「機体の半径 + gateClearance」より奥にいるときだけ(Update)なので、自機は扉に掛からず、必ず内側にいる。
         /// ここからボスにダメージが入る(SetBossInvulnerable)。
         /// 扉に重なっている機体は押し出す(閉じた扉に埋まらないように):入口に寄ってきたボスは今いる側(奥)へ。ボス以外の敵は入口の手前で止まるので
@@ -514,7 +514,6 @@ namespace Prototype
             foreach (var sp0 in spawns)
                 if (sp0.enemy != null && !sp0.enemy.Dead && sp0.enemy.transform.position.y < fallLimitY) sp0.enemy.ResetToHome();
             if (player.Dead) return;
-            TickCombatItems();
 
             Vector3 p = player.transform.position;
             if (p.y <= LowestFloorY - fallDepthBelowLowestFloor)
@@ -570,14 +569,13 @@ namespace Prototype
 
         public void OnPlayerDied()
         {
-            ClearCombatItems();
             respawnAt = Time.unscaledTime + respawnDelay;
         }
 
         /// <summary>
         /// 最後に触れたセーブポイントから再開する。倒した敵はそのまま。生きている敵は HP を戻して持ち場へ帰し、発覚・警戒を切る
         /// (ボス戦の途中でも、ボスは HP 満タンで持ち場へ戻る)。
-        /// ボス戦の間(入口の扉が閉じている間)の再開なら、扉を開け(再開地点は扉の外)、アイテム・共通の弾・弾倉を扉が閉じたときに戻す。
+        /// ボス戦の間(入口の扉が閉じている間)の再開なら、扉を開け(再開地点は扉の外)、補修用装甲・共通の弾・弾倉を扉が閉じたときに戻す。
         /// 弾倉は再開後も近接に戻っている間に詰まる。ボス戦でなければ、弾はやられた時点のまま。
         /// </summary>
         void Respawn()
@@ -612,11 +610,10 @@ namespace Prototype
             if (!boss)
             {
                 TryDropWeapon(e);
-                TryDropItem(e);
+                TryDropSupply(e);
                 return;
             }
             Cleared = true;
-            ClearCombatItems();
             game.CancelEnemyRounds();
             ClearTime = Time.time - beganAt;
             ShowBanner("ステージクリア");
@@ -631,7 +628,7 @@ namespace Prototype
         public string ClearNote { get; private set; }
 
         /// <summary>
-        /// ボスの撃墜の爆発(撃墜の演出の爆発の後)に巻き込まれ、拾った武装とアイテム、弾が消し飛ぶ。
+        /// ボスの撃墜の爆発(撃墜の演出の爆発の後)に巻き込まれ、拾った武装と補修用装甲、弾が消し飛ぶ。
         /// </summary>
         IEnumerator BossBlast(Vector3 at, float size)
         {
@@ -644,7 +641,7 @@ namespace Prototype
             int lost = player != null ? player.Arms.LoseAll() : 0;   // 共通の弾と弾倉も空に戻る
             if (lost > 0 || hadAmmo)
             {
-                ClearNote = "ボスの爆発に巻き込まれ、拾った武装・アイテムと弾が消し飛んだ";
+                ClearNote = "ボスの爆発に巻き込まれ、拾った武装・補修用装甲と弾が消し飛んだ";
                 game.Log(ClearNote);
             }
         }

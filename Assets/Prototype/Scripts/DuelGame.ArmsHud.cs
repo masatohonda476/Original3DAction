@@ -55,7 +55,7 @@ namespace Prototype
             for (int i = 1; i < 4; i++)
                 Chip(new Rect(gauge.x, gauge.yMax - gauge.height * i * 0.25f, gauge.width, 1f), new Color(0f, 0f, 0f, 0.55f));
 
-            float gained = arms.RecentItemGain(DuelItem.Ammo);
+            float gained = arms.RecentAmmoPickup;
             GUI.color = gained > 0f ? AmmoGauge : ammoColor;
             string gain = gained > 0f ? $"  +{gained:0.#}" : "";
             GUI.Label(new Rect(x + width - 205f, backRect.y + 1f, 198f, 22f), $"共通の弾  {arms.Ammo:0.#}/{max:0}{gain}", cellTinyRight);
@@ -114,7 +114,7 @@ namespace Prototype
             GUI.color = Color.white;
         }
 
-        const float ItemActionsHeight = 260f;
+        const float WeaponActionsHeight = 260f;
 
         void DrawPickup(DuelArms arms)
         {
@@ -124,9 +124,13 @@ namespace Prototype
             if (!arms.ChoiceOpen)
             {
                 string pickup = ProtoInput.L(ProtoInput.Btn.PickUp);
-                string hint = loot.Item is DuelItem item
-                    ? $"{DuelItems.Get(item).Name} ×1　　{pickup} 拾う"
-                    : $"{WeaponName(weapon)}　　{pickup} 調べる";
+                string hint = loot.Supply switch
+                {
+                    DuelSupply.Ammo when arms.Ammo >= arms.Rules.ammoMax => "弾薬　共通の弾が満タン",
+                    DuelSupply.Ammo => $"弾薬（共通の弾 +{DuelArms.AmmoPickupAmount}）　　{pickup} 拾う",
+                    DuelSupply.RepairArmor => $"{loot.DisplayName} ×1　　{pickup} 拾う",
+                    _ => $"{WeaponName(weapon)}　　{pickup} 調べる",
+                };
                 float hintWidth = Mathf.Min(SW - 24f, center.CalcSize(new GUIContent(hint)).x + 40f);
                 var hintRect = new Rect((SW - hintWidth) * 0.5f, ArmsTop - 50f, hintWidth, 34f);
                 MenuPanel(hintRect);
@@ -142,12 +146,12 @@ namespace Prototype
             }
 
             float width = Mathf.Min(650f, SW - 24f);
-            var card = new Rect((SW - width) * 0.5f, ArmsTop - ItemActionsHeight - 12f, width, ItemActionsHeight);
+            var card = new Rect((SW - width) * 0.5f, ArmsTop - WeaponActionsHeight - 12f, width, WeaponActionsHeight);
             DrawPickupChart(weapon, arms.Get(weapon.Slot), card.y);
-            DrawItemActions(card, arms, new DuelArms.Carried(weapon, loot.Memo), false);
+            DrawWeaponActions(card, arms, new DuelArms.Carried(weapon, loot.Memo), false);
         }
 
-        void DrawItemActions(Rect card, DuelArms arms, DuelArms.Carried item, bool fromCarried)
+        void DrawWeaponActions(Rect card, DuelArms arms, DuelArms.Carried item, bool fromCarried)
         {
             var weapon = item.Weapon;
             var current = arms.Get(weapon.Slot);

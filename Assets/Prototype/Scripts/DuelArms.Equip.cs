@@ -61,9 +61,9 @@ namespace Prototype
             if (!ChoiceOpen)
             {
                 if (Nearby == null || !ProtoInput.PickUp) return;
-                if (Nearby.Item is DuelItem itemKind)
+                if (Nearby.Supply is DuelSupply supply)
                 {
-                    PickUpItem(itemKind, Nearby);
+                    PickUpSupply(supply, Nearby);
                     return;
                 }
                 Choosing = Nearby;
@@ -277,10 +277,11 @@ namespace Prototype
         float keptAmmo;
         readonly Dictionary<Memo, int> keptMags = new();
 
-        // ボス戦前のアイテムと、共通弾・銃ごとの残弾を控える。銃は床と所持品も含める。
+        // ボス戦前の補修用装甲と、共通弾・銃ごとの残弾を控える。銃は床と所持品も含める。
         public void KeepBossSupplies()
         {
-            KeepItems();
+            keptRepairs = RepairCount;
+            bossPickups.Clear();
             KeepSubWeapons();
             ammoKept = true;
             // 再開時に連射は引き継がないので、入口時点の未発射分は弾として控える。
@@ -296,7 +297,9 @@ namespace Prototype
         public void RestoreBossSupplies()
         {
             if (!ammoKept) return;
-            RestoreItems();
+            RepairCount = keptRepairs;
+            foreach (var pickup in bossPickups) DuelLoot.PlaceSupply(pickup.Supply, pickup.Position);
+            ResetSupplyInput();
             RestoreSubWeapons();
             Ammo = keptAmmo;
             if (RangedWeapon.HasMagazine) RestoreMagazine(rangedMemo);
@@ -314,7 +317,7 @@ namespace Prototype
         {
             ammoKept = false;
             keptMags.Clear();
-            ForgetKeptItems();
+            bossPickups.Clear();
             ForgetKeptSubWeapons();
         }
 
@@ -332,7 +335,7 @@ namespace Prototype
 
         public int LoseAll()
         {
-            int lost = carried.Count + LoseItems() + LoseSubWeapons();
+            int lost = carried.Count + LoseRepairs() + LoseSubWeapons();
             carried.Clear();
             CarriedWeight = 0f;
             CloseCarriedChoice();

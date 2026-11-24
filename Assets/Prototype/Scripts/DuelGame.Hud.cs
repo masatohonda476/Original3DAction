@@ -8,6 +8,20 @@ namespace Prototype
     {
         // ───────── 画面 ─────────
 
+        void DrawRepairHud(DuelArms arms)
+        {
+            var rect = new Rect(24f, ArmsTop, 232f, 54f);
+            MenuPanel(rect);
+            Chip(new Rect(rect.x, rect.y, 3f, rect.height), DuelLoot.RepairTint);
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 3f, rect.width - 20f, 24f),
+                $"補修用装甲 ×{arms.RepairCount}", small);
+            string input = ProtoInput.Current == ProtoInput.Device.Keyboard ? "↑" : "十字キー上";
+            string status = arms.UsingRepair ? "補修中" : arms.RepairNotice ?? $"{input} で使用";
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 25f, rect.width - 20f, 22f), status, cellNameSmall);
+            if (arms.UsingRepair)
+                Bar(new Rect(rect.x + 10f, rect.yMax - 6f, rect.width - 20f, 3f), arms.RepairProgress, DuelLoot.RepairTint);
+        }
+
         void OnGUI()
         {
             RefreshUiScale();
@@ -47,10 +61,10 @@ namespace Prototype
             float y = leftTop + 5f;
             Bar(new Rect(x, y, 300f, 14f), player.HP / player.MaxHP, new Color(0.35f, 0.85f, 0.45f));
             GUI.Label(new Rect(x + 308f, y - 5f, 120f, 24f), $"HP {Mathf.CeilToInt(player.HP)}", small);
-            float healed = player.Arms.RecentItemGain(DuelItem.RepairArmor);
+            float healed = player.Arms.RecentRepairGain;
             if (healed > 0f)
             {
-                GUI.color = DuelItems.Get(DuelItem.RepairArmor).Tint;
+                GUI.color = DuelLoot.RepairTint;
                 GUI.Label(new Rect(x + 308f, y - 26f, 120f, 22f), $"HP +{healed:0.#}", small);
                 GUI.color = Color.white;
             }
@@ -78,7 +92,7 @@ namespace Prototype
                 DrawArms(player.Arms);
                 if (!MenuOpen)
                 {
-                    if (!player.Dead && !stage.Cleared) DrawItemsHud(player.Arms);
+                    if (!player.Dead && !stage.Cleared) DrawRepairHud(player.Arms);
                     DrawPickup(player.Arms);
                 }
             }

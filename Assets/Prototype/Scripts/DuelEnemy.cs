@@ -271,12 +271,6 @@ namespace Prototype
             if (now - lastStaggerHitAt >= staggerDecayDelay && Current != State.Flinch)
                 Stagger = Mathf.Max(0f, Stagger - staggerDecay * dt);
 
-            if (Current is State.Approach or State.Strafe && game.stage.TryGetBeacon(this, out var beacon))
-            {
-                FollowBeacon(beacon, dt);
-                return;
-            }
-
             if (Engaged && UpdateEngaged(dt))
             {
                 // 発覚を切ったフレームは、技を考えずにここで終える(次のフレームから持ち場へ帰る)
@@ -381,27 +375,11 @@ namespace Prototype
             Animate(dt, vel);
         }
 
-        void FollowBeacon(Vector3 position, float dt)
-        {
-            Vector3 offset = position - transform.position;
-            offset.y = 0f;
-            Vector3 direction = Flat(offset);
-            Face(direction, 8f, dt);
-            dashing = false;
-            sideDashT = 0f;
-            float distance = offset.magnitude - (Radius + 3f);
-            float speed = Mathf.Clamp(distance / Mathf.Max(dt, 0.001f), 0f, approachSpeed);
-            Vector3 vel = GroundMovement(direction * speed);
-            flying = false;
-            Move(vel, dt);
-            Animate(dt, vel);
-        }
-
         Vector3 GroundMovement(Vector3 vel)
         {
             Vector3 limited = LimitToLeash(vel);
             if (limited != vel) dashing = false;
-            return limited == Vector3.zero ? limited : limited * game.stage.AnchorMovementMultiplier(this);
+            return limited;
         }
 
         /// <summary>自機が、姿勢の計算を止めてよいほど遠い(見える距離の2倍より遠い)。</summary>

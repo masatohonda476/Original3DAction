@@ -37,10 +37,10 @@ namespace Prototype
 
         public bool SubFiring => pendingSubRounds > 0;
         bool SubModeHeld => !ChoiceLocksInput && ProtoInput.LeftHandHeld;
-        public bool SubAiming => SubModeHeld && !UsingItem && roundsPending == 0 &&
+        public bool SubAiming => SubModeHeld && !UsingRepair && roundsPending == 0 &&
             player != null && player.CanShoot && game.stage != null && !game.stage.Cleared;
         public bool FreeAim => Aiming || SubAiming;
-        bool BlocksMainAttack => UsingItem || SubModeHeld || SubFiring;
+        bool BlocksMainAttack => UsingRepair || SubModeHeld || SubFiring;
 
         public static int SubSlotStart(DuelWeapon w) => w.Slot == DuelSlot.Shoulder ? 0 : Sides;
         public DuelWeapon SubWeaponAt(int slot) => subMounts[slot].Weapon;

@@ -66,9 +66,10 @@ namespace Prototype
         [Header("ロックオン中の自由移動（試作）")]
         [Tooltip("自由移動を始める左スティックの倒し具合（0〜1）")]
         [Range(0.25f, 1f)] public float lockMoveStickThreshold = 0.8f;
-        [Tooltip("左スティックを強く倒し続けてから自由移動に入るまでの秒数")]
+        [Tooltip("右スティックでカメラ操作に移れるようになるまで、左スティックを強く倒し続ける秒数")]
         [Min(0f)] public float lockMoveHoldTime = 0.5f;
         const float LockMoveReleaseThreshold = 0.2f;
+        const float LockMoveCameraThreshold = 0.35f;
         float lockMoveHeldFor;
         internal bool LockSuspendedForMove { get; private set; }
         bool reacquireLockAfterMove;
@@ -133,8 +134,10 @@ namespace Prototype
                 lockMoveHeldFor = 0f;
                 return;
             }
-            lockMoveHeldFor += Time.deltaTime;
+            lockMoveHeldFor = Mathf.Min(lockMoveHoldTime, lockMoveHeldFor + Time.deltaTime);
             if (lockMoveHeldFor < lockMoveHoldTime) return;
+            // 左スティックは移動。敵への追従を外すのは右スティックでカメラ操作を始めたとき。
+            if (ProtoInput.RightStick.sqrMagnitude < LockMoveCameraThreshold * LockMoveCameraThreshold) return;
 
             LockSuspendedForMove = true;
             lockMoveHeldFor = 0f;

@@ -147,7 +147,7 @@ namespace Prototype
             // 角は枠と同じ水色のまま。弾が囲んでいる相手に当たるとき(真ん中の十字が相手に重なって橙になるのと同じ条件。DuelArms.ShotEnemy)だけ、濃い橙にする。
             var arms = player.Arms;
             bool aiming = arms.FreeAim;
-            bool hit = onEnemy && (arms.ShotEnemy == target || SubTracksEnemy(arms, target));
+            bool hit = onEnemy && (arms.ShotEnemy == target || SubTargetsEnemy(arms, target));
             lockHit = Mathf.MoveTowards(lockHit, hit ? 1f : 0f, dt / LockHitTime);
 
             // 画面の縁寄りの枠(待機中に止まっている大きさは LockRestHalf。付け始めの判定と同じ値):縦が変わるときはなめらかに

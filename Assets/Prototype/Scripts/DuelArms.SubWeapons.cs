@@ -17,13 +17,19 @@ namespace Prototype
             public int Uses;
         }
 
+        struct SubAim
+        {
+            public DuelEnemy Target;
+            public Vector3 Offset;
+        }
+
         struct SubLaunch
         {
             public DuelWeapon Weapon;
             public int Rounds;
             public float NextAt;
-            public Vector3 Aim;
-            public DuelEnemy Target;
+            public Vector3 CenterAim;
+            public SubAim Aim;
         }
 
         // 左肩・右肩・左脚・右脚。肩と脚はそれぞれ専用の武装を受け付ける。
@@ -31,7 +37,7 @@ namespace Prototype
         readonly Transform[] subAnchors = new Transform[SubSlotCount];
         readonly Transform[] subVisuals = new Transform[SubSlotCount];
         readonly SubLaunch[] subLaunches = new SubLaunch[SubSlotCount];
-        readonly DuelEnemy[] subTargets = new DuelEnemy[SubSlotCount];
+        readonly SubAim[] subAims = new SubAim[SubSlotCount];
         int pendingSubRounds, subFlightVersion;
         bool wasSubMode;
 
@@ -45,7 +51,7 @@ namespace Prototype
         public static int SubSlotStart(DuelWeapon w) => w.Slot == DuelSlot.Shoulder ? 0 : Sides;
         public DuelWeapon SubWeaponAt(int slot) => subMounts[slot].Weapon;
         public int SubUsesAt(int slot) => subMounts[slot].Uses;
-        public DuelEnemy SubTargetAt(int slot) => SubAiming && player.LockOn ? subTargets[slot] : null;
+        public DuelEnemy SubTargetAt(int slot) => SubAiming && player.LockOn ? subAims[slot].Target : null;
         public int SubChoiceIndex { get; private set; }
 
         public bool IsEquipped(DuelWeapon weapon)
@@ -184,7 +190,7 @@ namespace Prototype
                 StopSubVolley();
                 return;
             }
-            Array.Clear(subTargets, 0, subTargets.Length);
+            Array.Clear(subAims, 0, subAims.Length);
             if (camera != null && SubAiming && !SubFiring)
             {
                 if (SubSight(camera, out float halfW, out float halfH))
@@ -193,8 +199,10 @@ namespace Prototype
                     for (int i = 0; i < SubSlotCount; i++)
                     {
                         var sub = subMounts[i];
-                        if (sub.Uses > 0 && sub.Weapon.GuidedSub)
-                            subTargets[i] = AimTarget(camera, halfW, halfH, SubMuzzle(i), sub.Weapon.Primary.range, out _);
+                        if (sub.Uses <= 0 || sub.Weapon.DeploysFlare) continue;
+                        var target = AimTarget(camera, halfW, halfH, SubMuzzle(i), sub.Weapon.Primary.range, out var point);
+                        if (target != null)
+                            subAims[i] = new SubAim { Target = target, Offset = point - target.transform.position };
                     }
                 }
                 int start = ProtoInput.RightShoulderPressed && PairHasUses(0) ? 0
@@ -210,7 +218,7 @@ namespace Prototype
         Vector3 SubMuzzle(int slot) =>
             subVisuals[slot].TransformPoint(new Vector3(0f, 0f, subMounts[slot].Weapon.scale.z * 0.5f + 0.15f));
 
-        void BeginSubVolley(int start, Vector3 aim)
+        void BeginSubVolley(int start, Vector3 centerAim)
         {
             for (int i = start; i < start + Sides; i++)
             {
@@ -219,8 +227,8 @@ namespace Prototype
                 subMounts[i].Uses--;
                 subLaunches[i] = new SubLaunch
                 {
-                    Weapon = w, Rounds = w.Primary.burstCount, NextAt = Time.time, Aim = aim,
-                    Target = subTargets[i],
+                    Weapon = w, Rounds = w.Primary.burstCount, NextAt = Time.time,
+                    CenterAim = centerAim, Aim = subAims[i],
                 };
                 pendingSubRounds += w.Primary.burstCount;
             }
@@ -243,14 +251,22 @@ namespace Prototype
                     else
                     {
                         var from = SubMuzzle(i);
-                        var target = player.LockOn && launch.Target != null && !launch.Target.Dead ? launch.Target : null;
-                        Vector3 direction = (launch.Aim - from).normalized;
+                        var target = launch.Aim.Target;
+                        bool locked = player.LockOn;
+                        if (!locked || target == null || target.Dead) target = null;
+                        Vector3 aim = launch.CenterAim;
+                        if (target != null)
+                        {
+                            // 連射の途中も、捕捉した敵の現在位置と銃口から弾ごとの進行方向を求める。
+                            aim = target.transform.position + launch.Aim.Offset;
+                            TryLeadShot(shot, from, aim, target.Velocity, out aim, out _);
+                        }
+                        Vector3 direction = (aim - from).normalized;
                         if (direction == Vector3.zero) direction = transform.forward;
-                        if (target != null) direction = (direction + Vector3.up * 0.22f).normalized;
                         var color = w.GuidedSub || shot.blastRadius <= 0f ? BulletColor : ShellColor;
                         ProtoFx.Blast(from, 1.2f, color, 0.09f);
                         StartCoroutine(Fly(from, direction, shot, color, false, SpeedOf(shot), false,
-                            target, MissileTurn, subFlightVersion, inheritMovement: player.LockOn));
+                            w.GuidedSub ? target : null, MissileTurn, subFlightVersion, inheritMovement: locked));
                     }
                     launch.Rounds--;
                     pendingSubRounds--;
@@ -320,7 +336,7 @@ namespace Prototype
             StopSubVolley();
             subFlightVersion++;
             ClearFlares();
-            Array.Clear(subTargets, 0, subTargets.Length);
+            Array.Clear(subAims, 0, subAims.Length);
         }
     }
 }

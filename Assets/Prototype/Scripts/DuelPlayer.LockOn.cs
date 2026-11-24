@@ -43,7 +43,7 @@ namespace Prototype
         /// 枠の右辺の距離の目盛りに印を出す敵(DuelGame.DrawLockGauge):距離のほかの付け始めの条件(体が照準枠に掛かる・遮られていない・生きている)を満たす敵のうち、
         /// 一番近い敵(作者が選んだ「一番近い敵」:「枠に掛かって遮られていない敵のうち、一番近い敵の距離を示す。『印が刻みに届いたら必ず付く』がいつも成り立つ。」)。
         /// 実際に付く敵は点数で選ぶので、この敵とは限らない(一番近い敵がロックオン距離に入れば、距離の内に付ける敵が必ずいるので、そのフレームにどれかに付く)。
-        /// ロックオンがオンで狙う敵がいない間だけ(いれば付いているので null)。自動で選ばない間(銃の構え)は出さない(距離の内なのに付かない、という印にしない)。
+        /// ロックオンがオンで狙う敵がいない間だけ。銃の構え中や左スティックを倒した自由移動中は出さない。
         /// なので印が出ている敵は、いつもロックオン距離より遠い。目盛りの上端のさらに LockCandidateBeyond 倍より遠い敵は見ない。
         /// </summary>
         public DuelEnemy LockCandidate { get; private set; }
@@ -71,6 +71,7 @@ namespace Prototype
         const float LockMoveReleaseThreshold = 0.2f;
         float lockMoveHeldFor;
         internal bool LockSuspendedForMove { get; private set; }
+        bool reacquireLockAfterMove;
 
         /// <summary>
         /// ロックオン中の切り替え先にしてよい敵か(SwitchSide・NearestToView・Nearest)。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
@@ -109,6 +110,7 @@ namespace Prototype
             lockLostFor = 0f;
             lockMoveHeldFor = 0f;
             LockSuspendedForMove = false;
+            reacquireLockAfterMove = false;
             Target = null;
         }
 
@@ -119,7 +121,11 @@ namespace Prototype
             float tilt = pad != null && !ProtoInput.Blocked ? pad.leftStick.ReadValue().magnitude : 0f;
             if (LockSuspendedForMove)
             {
-                LockSuspendedForMove = tilt > LockMoveReleaseThreshold;
+                if (tilt <= LockMoveReleaseThreshold)
+                {
+                    LockSuspendedForMove = false;
+                    reacquireLockAfterMove = true;
+                }
                 return;
             }
             if (Current != State.Free || Target == null || Target.Dead || Arms.FreeAim || Arms.ChoiceLocksInput || tilt < lockMoveStickThreshold)
@@ -158,15 +164,15 @@ namespace Prototype
             {
                 Target = null;
                 LockCandidate = null;
+                LockCandidateDistance = 0f;
                 lockLostFor = 0f;
                 stickArmed = false;
                 mouseFlick = 0f;
                 return;
             }
             bool justOn = !wasOn;   // このフレームにオンにした(ロックオンのボタンでも、切り替えのボタンでも)
-            bool wasSuspendedForMove = LockSuspendedForMove;
             UpdateLockMove();
-            if (LockSuspendedForMove) return;
+            if (LockSuspendedForMove || reacquireLockAfterMove) return;
 
             // 狙っている敵が、壁・床ごし、またはロックオン距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。
             // 倒した敵は、爆発するまでは外さず(その間は遮られる・遠いも見ない)、爆発したら外す(作者「撃破後も爆発するまではロックオンを残してください」)
@@ -181,30 +187,43 @@ namespace Prototype
             }
             // 狙う敵がいなければ自動で選ぶ(作者「気づいたかどうかじゃなくて画面に入っていて、距離も遠くないかで判定してください」
             // →「サイトの枠内に入った場合のみロックオン開始する」:照準枠に体が掛かり・遮られず・ロックオン距離の内。敵が気づいたかは見ない)。
-            // 遠距離の構え中は通常の自動選択を止める。オンにした・切り替えを押した・自由移動を終えたフレームは、その間も選ぶ。
+            // 遠距離の構え中は通常の自動選択を止める。オンにした・切り替えを押したフレームは、その間も選ぶ。
             // 狙う敵がいて切り替えのボタンを押したら、画面の中のほかの敵へ(枠は使わない。オンにしたフレーム・このフレームに付いた相手からは切り替えない)
-            DuelEnemy candidate = null;
-            float candidateDist = 0f;
-            if (Target == null)
+            if (Target == null && (!Arms.BlocksAutoLock || justOn || switchPressed))
+                SearchLockTarget();
+            else
             {
-                if (!Arms.BlocksAutoLock || justOn || switchPressed || wasSuspendedForMove)
-                    Target = PickBest(out candidate, out candidateDist);
+                if (Target != null && switchPressed && !justOn) Target = NearestToView(Target);
+                LockCandidate = null;
+                LockCandidateDistance = 0f;
             }
-            else if (switchPressed && !justOn) Target = NearestToView(Target);
-            // 距離の目盛りの印に出す敵:付かなかったときの、距離のほかの条件を満たす一番近い敵(付いたら出さない。自動選択を待っている間も出さない)
-            LockCandidate = Target == null && !Arms.BlocksAutoLock ? candidate : null;
-            LockCandidateDistance = LockCandidate != null ? candidateDist : 0f;
             // ロックオン中:右スティックを左右へはじくと、その側の敵へ切り替える(一度戻すまで次は切り替えない)
             // (作者「ロックが吸い付いている時は右スティックでターゲットを変更できるようにしてください」)。
             // 遠距離を構えている間は右スティック・マウスをカメラに使う。
             // 落ちている武装の選ぶ表示の間と閉じたフレーム(choice)も切り替えない。
-            if (Target == null || Arms.FreeAim || choice || wasSuspendedForMove) { stickArmed = false; mouseFlick = 0f; return; }
+            if (Target == null || Arms.FreeAim || choice) { stickArmed = false; mouseFlick = 0f; return; }
             float sx = ProtoInput.RightStick.x;
             if (Mathf.Abs(sx) < 0.3f) stickArmed = true;
             else if (stickArmed && Mathf.Abs(sx) > 0.75f) { stickArmed = false; SwitchSide(Mathf.Sign(sx)); }
             // マウス:左右に大きく振ると同じように切り替える
             mouseFlick = mouseFlick * Mathf.Exp(-6f * Time.unscaledDeltaTime) + ProtoInput.MouseDelta.x;
             if (Mathf.Abs(mouseFlick) > 160f) { SwitchSide(Mathf.Sign(mouseFlick)); mouseFlick = 0f; }
+        }
+
+        void UpdateLockAfterMove()
+        {
+            if (!reacquireLockAfterMove) return;
+            // 自機とカメラが移動したあとの照準枠を使う。枠が敵に届くまで、武器を構えていても毎フレーム探す。
+            SearchLockTarget();
+            reacquireLockAfterMove = Target == null;
+        }
+
+        void SearchLockTarget()
+        {
+            Target = PickBest(out var candidate, out var distance);
+            // 構え中は武器のサイトを表示するため、距離の目盛りには候補の印を出さない。
+            LockCandidate = Target == null && !Arms.BlocksAutoLock ? candidate : null;
+            LockCandidateDistance = LockCandidate != null ? distance : 0f;
         }
 
         // 遠距離の構え・ロックオンの始まりでスティックが倒れたままなら、一度戻すまで切り替えない(構えの終わりに勝手に切り替わらないように)

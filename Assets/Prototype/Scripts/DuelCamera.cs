@@ -103,6 +103,7 @@ namespace Prototype
 
         const float Distance = 5.4f, Height = 2.9f, Shoulder = 1.2f, Smooth = 7f, FreeSmooth = 16f;
         const float StickYawSpeed = 320f, StickPitchSpeed = 190f, MouseSens = 0.24f;
+        const float LockManualLookSpeedMultiplier = 0.8f;
         const float MaxPitch = 55f, DefaultPitch = 20f;
         float MinPitch => freeMinPitch;
 
@@ -175,8 +176,9 @@ namespace Prototype
                 }
                 Vector2 stick = ProtoInput.RightStick;
                 Vector2 m = ProtoInput.MouseDelta;
-                yaw += stick.x * StickYawSpeed * dt + m.x * MouseSens;
-                pitch = Mathf.Clamp(pitch - stick.y * StickPitchSpeed * dt - m.y * MouseSens, MinPitch, MaxPitch);
+                float lookSpeed = p.LockSuspendedForCamera ? LockManualLookSpeedMultiplier : 1f;
+                yaw += (stick.x * StickYawSpeed * dt + m.x * MouseSens) * lookSpeed;
+                pitch = Mathf.Clamp(pitch - (stick.y * StickPitchSpeed * dt + m.y * MouseSens) * lookSpeed, MinPitch, MaxPitch);
                 Vector3 dir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
                 fwd = new Vector3(dir.x, 0f, dir.z).normalized;
                 Vector3 right = Vector3.Cross(Vector3.up, fwd);

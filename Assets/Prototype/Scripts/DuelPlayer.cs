@@ -181,9 +181,7 @@ namespace Prototype
             slideOff = Vector3.zero;
             Target = null;   // ロックオンがオンなら、戻った場所で対象を探し直す
             lockLostFor = 0f;
-            lockMoveHeldFor = 0f;
-            LockSuspendedForMove = false;
-            reacquireLockAfterMove = false;
+            ResetLockCamera();
             stepTravel = 0f;
             FootstepRadius = 0f;
             EndJump();
@@ -251,7 +249,8 @@ namespace Prototype
             Arms.ReleaseSupportGrip();
             if (DuelGame.Paused)
             {
-                lockMoveHeldFor = 0f;
+                rightFlickArmed = false;
+                rightFlickSide = 0f;
                 Arms.CheckPausedBurstRelease();
                 return;
             }
@@ -382,7 +381,7 @@ namespace Prototype
         void LateUpdate()
         {
             if (DuelGame.Paused || Dead) return;
-            UpdateLockAfterMove();
+            UpdateLockAfterCamera();
             // 表示に使うカメラの向きが決まってから、機体の向き・銃口・射撃方向をそろえる。
             var cam = Camera.main;
             if (Arms.FreeAim && cam != null)

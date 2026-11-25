@@ -21,13 +21,13 @@ namespace Prototype
         //   枠 = DuelGame の照準枠が待機中に止まっている大きさ(DuelGame.LockSightTan。見えている枠と判定が同じ。出入りの動き・敵を囲んで縮む動きは入れない)。
         //   1-A:敵の胸の点ではなく、敵の体が枠に掛かれば付く(近くて大きく映る敵ほど付きやすい。DuelArms.BodyInCenterFrame=銃の照準の枠と同じ体の見え方)。
         //   2-A:枠を使うのは、自動で付くとき・オンにした瞬間・倒した(見失った)あとの次の敵・狙う敵がいないときの切り替えボタン(どれも PickBest)。
-        //        ロックオン中の切り替え(右スティック SwitchInDirection・切り替えボタン NearestToView)は今までどおり画面の中ならよい
-        //        (ロックオン中は枠が相手を囲んで縮んでいるので、切り替えには枠を使わない。Lockable)。
-        //   付いたあとの維持は今までどおり(枠から出ても外さない。遮られる・遠すぎるが lockLoseAfter 秒続くまで)。
+        //        ロックオン中の切り替え(右スティック SwitchInDirection・切り替えボタン NearestToView)は、画面内で見通せる敵から選ぶ。
+        //   枠から出ても追い続ける。壁・床ごしになった状態が lockLoseAfter 秒続くと外れる。
         //
         // 距離は1つ(2026-11-21。距離の段の質問に、作者「4でロックオン距離の2倍にしてください」。選択肢 4 =「1つにそろえて長くする(枠で狙う分、40m より遠くまで付くようにする)」):
         //   前の 自動 40m(autoLockRange)/ オンにした瞬間・切り替え 130m(lockRange)の2段をやめ、DuelStage.lockOnRange(80m = 40m の2倍)だけにした。
-        //   自動・オンにした瞬間・狙う敵がいないときの切り替えボタン・ロックオン中の切り替え先のどれも同じ距離。外れる距離の式(1.5倍 = 120m)は変えていない。
+        //   自動・オンにした瞬間・狙う敵がいないときの切り替えボタンは同じ距離。その場合は1.5倍より遠い状態が続くと外れる。
+        //   捕捉中に対象を切り替える場合は、切り替え時もその後の維持も距離を問わない。
         //   距離は足元どうしの直線距離(付け始めの判定も、枠の右辺の目盛りの印も同じ測り方。LockCandidate・DuelGame.DrawLockGauge)。
         //
         // 倒した敵(2026-11-21。作者「撃破後も爆発するまではロックオンを残してください」):
@@ -36,7 +36,7 @@ namespace Prototype
         //   切り替え(右スティック・切り替えボタン)はその間もできる。倒した敵に新しく付くことはない(付け始め・切り替え先は生きている敵だけ)。
         //   弾・剣が倒した敵に当たらないのは今までどおり。
 
-        /// <summary>ロックオン距離(DuelStage.lockOnRange。付け始め・切り替え先のどれもこの1つ。0 なら制限なし)。</summary>
+        /// <summary>ロックオンを付け始める距離(DuelStage.lockOnRange。0 なら制限なし)。</summary>
         float LockRange => game.stage.lockOnRange;
 
         /// <summary>
@@ -62,6 +62,7 @@ namespace Prototype
 
         /// <summary>狙っている敵が見えない(遮られる・遠すぎる)まま続いている秒数。</summary>
         float lockLostFor;
+        bool lockTargetWasSwitched;
 
         const float LockSwitchRepeatInterval = 0.3f;
         const float LockSwitchStickThreshold = 0.45f;
@@ -69,26 +70,15 @@ namespace Prototype
         const float LockSwitchCardinalSlope = 0.41421356f;   // tan(22.5°)
         float nextLockSwitchAt;
 
-        /// <summary>
-        /// ロックオン中の切り替え先にしてよい敵か(SwitchInDirection・NearestToView・Nearest)。作者「画面内で障害物に遮られず一定距離内ならロックオンし、次にロックオンするときも同様に条件です」:
-        /// 画面に映っていること(胸の少し上の点 LockPoint が画面の中)、ロックオン距離の内側で、壁・床ごしでないこと(InLockReach)。
-        /// 付け始め(自動・オンにした瞬間・倒したあとの次の敵)は、画面の中ではなく照準枠の中で選ぶ(PickBest)。
-        /// </summary>
-        bool Lockable(DuelEnemy e)
-        {
-            if (e == null || e.Dead) return false;
-            var cam = Camera.main;
-            return (cam == null || InViewport(cam.WorldToViewportPoint(e.LockPoint))) && InLockReach(e);
-        }
+        static bool InViewport(Camera cam, Vector3 v) =>
+            v.z >= cam.nearClipPlane && v.z <= cam.farClipPlane && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
 
-        static bool InViewport(Vector3 v) => v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f;
-
-        /// <summary>ロックオン距離(LockRange。0 なら制限なし=距離も見通しも見ない)の内側で、壁・床ごしでないか。切り替え先の条件(付け始めの PickBest も同じ測り方)。</summary>
-        bool InLockReach(DuelEnemy e)
+        void SwitchLockTarget(DuelEnemy enemy)
         {
-            float r = LockRange;
-            if (r <= 0f) return true;
-            return (e.transform.position - transform.position).sqrMagnitude <= r * r && DuelSenses.ClearSight(LockPoint, e.LockPoint);
+            if (enemy == null || enemy == Target) return;
+            Target = enemy;
+            lockTargetWasSwitched = true;
+            lockLostFor = 0f;
         }
 
         /// <summary>
@@ -101,6 +91,7 @@ namespace Prototype
             LockOn = on;
             lockOnMemory = on;
             lockLostFor = 0f;
+            lockTargetWasSwitched = false;
             nextLockSwitchAt = 0f;
             Target = null;
         }
@@ -128,14 +119,18 @@ namespace Prototype
             }
             bool justOn = !wasOn;   // このフレームにオンにした(ロックオンのボタンでも、切り替えのボタンでも)
 
-            // 狙っている敵が、壁・床ごし、またはロックオン距離の1.5倍より遠いまま lockLoseAfter 秒たったら外す。
+            // 壁・床ごしの状態が lockLoseAfter 秒続くと外す。付け始めの相手には距離による解除もある。
             // 倒した敵は、爆発するまでは外さず(その間は遮られる・遠いも見ない)、爆発したら外す(作者「撃破後も爆発するまではロックオンを残してください」)
             if (Target != null)
             {
                 bool seen = true;
-                if (!Target.Dead && LockRange > 0f)
-                    seen = (Target.transform.position - transform.position).sqrMagnitude <= LockRange * LockRange * 2.25f &&
-                           DuelSenses.ClearSight(LockPoint, Target.LockPoint);
+                float range = LockRange;
+                if (!Target.Dead && (range > 0f || lockTargetWasSwitched))
+                {
+                    bool withinRange = lockTargetWasSwitched ||
+                        (Target.transform.position - transform.position).sqrMagnitude <= range * range * 2.25f;
+                    seen = withinRange && DuelSenses.ClearSight(LockPoint, Target.LockPoint);
+                }
                 lockLostFor = seen ? 0f : lockLostFor + Time.deltaTime;
                 if (Target.Exploded || lockLostFor >= lockLoseAfter) { Target = null; lockLostFor = 0f; }
             }
@@ -156,7 +151,7 @@ namespace Prototype
             LockCandidateDistance = 0f;
             if (switchPressed && !justOn)
             {
-                Target = NearestToView(Target);
+                SwitchLockTarget(NearestToView(Target));
                 nextLockSwitchAt = Time.unscaledTime + LockSwitchRepeatInterval;
                 return;
             }
@@ -187,6 +182,7 @@ namespace Prototype
         void SearchLockTarget()
         {
             Target = PickBest(out var candidate, out var distance);
+            lockTargetWasSwitched = false;
             // 構え中は武器のサイトを表示するため、距離の目盛りには候補の印を出さない。
             LockCandidate = Target == null && !Arms.BlocksAutoLock ? candidate : null;
             LockCandidateDistance = LockCandidate != null ? distance : 0f;
@@ -212,7 +208,7 @@ namespace Prototype
             {
                 if (e == null || e.Dead || e == Target) continue;
                 Vector3 view = cam.WorldToViewportPoint(e.LockPoint);
-                if (!InViewport(view)) continue;
+                if (!InViewport(cam, view)) continue;
 
                 // 縦横を同じ画面上の長さで比べる。斜め入力はその方向から45度以内の候補を見る。
                 Vector2 offset = new((view.x - origin.x) * cam.aspect, view.y - origin.y);
@@ -222,15 +218,11 @@ namespace Prototype
 
                 // 入力方向に近く、画面上で隣り合う敵を優先する。
                 float score = forward + 2f * sideways;
-                if (score >= bestScore || !InLockReach(e)) continue;
+                if (score >= bestScore || !DuelSenses.ClearSight(LockPoint, e.LockPoint)) continue;
                 bestScore = score;
                 best = e;
             }
-            if (best != null)
-            {
-                Target = best;
-                lockLostFor = 0f;
-            }
+            SwitchLockTarget(best);
         }
 
         /// <summary>
@@ -240,31 +232,19 @@ namespace Prototype
         DuelEnemy NearestToView(DuelEnemy current)
         {
             var cam = Camera.main;
-            if (cam == null) return Nearest(current);
+            if (cam == null) return current;
             Vector3 o = cam.transform.position, f = cam.transform.forward;
             DuelEnemy best = null;
             float bestScore = float.MaxValue;
             foreach (var e in game.Enemies)
             {
-                if (e == null || e.Dead || e == current || !Lockable(e)) continue;
+                if (e == null || e.Dead || e == current || !InViewport(cam, cam.WorldToViewportPoint(e.LockPoint))) continue;
                 float score = Vector3.Angle(f, e.LockPoint - o) + (e.transform.position - transform.position).magnitude * 0.05f;
-                if (score < bestScore) { bestScore = score; best = e; }
+                if (score >= bestScore || !DuelSenses.ClearSight(LockPoint, e.LockPoint)) continue;
+                bestScore = score;
+                best = e;
             }
             return best != null ? best : current;
-        }
-
-        /// <summary>一番近い敵(except は除く。ほかにいなければ except のまま)。</summary>
-        DuelEnemy Nearest(DuelEnemy except = null)
-        {
-            DuelEnemy best = null;
-            float bestD = float.MaxValue;
-            foreach (var e in game.Enemies)
-            {
-                if (e == null || e.Dead || e == except) continue;
-                float d = (e.transform.position - transform.position).sqrMagnitude;
-                if (d < bestD && Lockable(e)) { bestD = d; best = e; }
-            }
-            return best != null ? best : except != null && !except.Dead ? except : null;
         }
 
         /// <summary>

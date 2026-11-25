@@ -64,7 +64,7 @@ namespace Prototype
         [Header("ロックオンのオン・オフ(電脳斬禅の PlayerTargeting と同じ作り。値は仮)")]
         [Tooltip("始めたときにロックオンをオンにするか(電脳斬禅は新しいデータではオフ)。やり直し(F1)・撃墜のあとは、最後に切り替えた状態のまま(Play を止めるまで覚えている)")]
         public bool lockOnAtStart = true;
-        [Tooltip("ロックオン中の敵が、壁・床ごし、またはロックオン距離(DuelStage.lockOnRange)の1.5倍より遠い状態がこの秒数続いたら外して、次の敵を探す(電脳斬禅は 1.5 秒)")]
+        [Tooltip("壁・床ごしの状態がこの秒数続くとロックオンを外す。最初の捕捉にはロックオン距離の1.5倍による解除も適用する。")]
         public float lockLoseAfter = 1.5f;
         [Tooltip("付け始めに選ぶ敵の点数 = 画面の中央からのずれ(0=中央〜0.7=角)× 10 + 距離(m)× この値。小さいほど先に選ぶ。" +
                  "電脳斬禅は人間の大きさで 0.5/m(機体は約4.3倍なので 0.12/m)。0 なら画面の中央に近い敵、大きくするほど近い敵を選ぶ。" +
@@ -181,6 +181,7 @@ namespace Prototype
             slideOff = Vector3.zero;
             Target = null;   // ロックオンがオンなら、戻った場所で対象を探し直す
             lockLostFor = 0f;
+            lockTargetWasSwitched = false;
             nextLockSwitchAt = 0f;
             stepTravel = 0f;
             FootstepRadius = 0f;

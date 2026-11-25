@@ -231,18 +231,18 @@ namespace Prototype
             HelpRow(fly, "ジャンプ（敵の下段攻撃が当たる瞬間に跳ぶと成功）");
             HelpRow(fly + " 長押し", "飛行（ジャンプから押し続けても移る）");
             HelpRow(B(ProtoInput.Btn.Boost), "ブースト");
-            HelpRow(r1, "近接の通常攻撃");
+            HelpRow(r1, "近接の通常攻撃（命中で大技ゲージ増加）");
             HelpRow(r2, "近接の強攻撃");
             HelpRow($"成功したジャンプ中に {r1}", "近接の落下攻撃");
-            HelpRow($"崩れた敵の近くで {r1}", "地上の近接で致命攻撃。命中で共通の弾を補給");
+            HelpRow($"崩れた敵の近くで {r1}", "地上で致命攻撃。大技ゲージが大きく増加");
             HelpRow($"{l1} + {r2}", "両肩のサブ武装を発射");
             HelpRow($"{l1} + {r1}", "両脚のサブ武装を発射");
 
             // 右の列は射撃・ロックオン・落とし物・メニュー。
             helpSplit = helpBtn.Count;
             HelpRow(l2 + " 長押し", "遠距離を構える。ロックオン中もカメラで狙う");
-            HelpRow($"{l2} + {r1}", "通常射撃");
-            HelpRow($"{l2} + {r2}", "大技（共通の弾を消費）");
+            HelpRow($"{l2} + {r1}", "通常射撃（連続命中で崩しやすい）");
+            HelpRow($"{l2} + {r2}", "大技（大技ゲージが満タンで使用可能）");
             HelpRow(l2 + " を離す", "近接の間に弾倉へ自動装填");
             HelpRow(B(ProtoInput.Btn.Lock), "ロックオン切替");
             HelpRow(kb ? "Tab" : "R3", "相手を変更");

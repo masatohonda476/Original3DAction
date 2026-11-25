@@ -36,20 +36,21 @@ namespace Prototype
         [Tooltip("同時に攻撃してくる敵の数の上限(ほかは回り込んで順番を待つ)")]
         public int maxAttackers = 2;
 
-        [Header("崩し(近接で崩す。雑魚・ボス共通)")]
-        [Tooltip("射撃で溜められる敵の怯みゲージの上限(最大の何割)。射撃だけでは怯ませられず、最後に崩す(怯ませ切る)のは近接だけ。" +
-                 "怯みのバーはこの少し手前から白く点滅する。1 にすると射撃でも怯む(元の動き)")]
+        [Header("崩し(雑魚・ボス共通)")]
+        [Tooltip("大技とサブ武装で溜められる敵の怯みゲージの上限。1 でこれらの射撃でも崩せる")]
         [Range(0f, 1f)] public float rangedStaggerCap = 0.9f;
+        [Tooltip("手の銃の通常射撃が、敵の怯みゲージを溜める倍率")]
+        [Min(0f)] public float normalShotStaggerMul = 4.5f;
         [Tooltip("崩れている(怯んでいる)敵に近接を当てたときのダメージの倍率(射撃には掛からない)")]
         public float brokenMeleeDamageMul = 2f;
-        [Tooltip("近接で崩したときの怯みの最短の秒数。技の怯みの時間がこれより短ければ延ばす(崩した後に一太刀入れる間)。0 なら技の値のまま")]
+        [Tooltip("近接または通常射撃で崩したときの怯みの最短の秒数。技の怯みの時間がこれより短ければ延ばす(崩した後に一太刀入れる間)。0 なら技の値のまま")]
         public float breakFlinchMin = 1f;
         [Tooltip("射撃の1発ごとに軽く押し返す速さ(武装の knock に掛ける倍率)。怯ませず、技も止めない。0 なら押さない")]
         public float rangedPushMul = 1f;
         [Tooltip("武装の knock がこれ以上の射撃だけ1発ごとに押し返す(連射の銃で、寄ってくる敵を引き止め続けないように)")]
         public float rangedPushMin = 8f;
         [Tooltip("自機の近接(通常攻撃・回避斬り)が、敵の怯みゲージへためる量に掛ける倍率。" +
-                 "ふつうに殴るだけでは崩しにくくする(1 で前と同じ)。攻撃の後の隙に当てると 1.6 倍・射撃の上限・崩れた敵への近接 2 倍はそのまま。" +
+                 "ふつうに殴るだけでは崩しにくくする(1 で前と同じ)。攻撃の後の隙に当てると 1.6 倍・崩れた敵への近接 2 倍はそのまま。" +
                  "攻撃を跳び越えた敵への落下攻撃には掛からない(下の jump.dropSuccessStagger)")]
         public float meleeStaggerMul = 0.3f;
 

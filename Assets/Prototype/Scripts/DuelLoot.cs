@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Prototype
 {
-    public enum DuelSupply { RepairArmor, Ammo }
+    public enum DuelSupply { RepairArmor }
 
     /// <summary>
     /// 落ちている武装と補給物資。倒した敵や宝箱から出て、床まで落ちて光の柱を立てる。時間では消えない。
@@ -27,7 +27,6 @@ namespace Prototype
         public string DisplayName => Supply switch
         {
             DuelSupply.RepairArmor => "補修用装甲",
-            DuelSupply.Ammo => "弾薬",
             _ => Weapon.name,
         };
 
@@ -35,7 +34,6 @@ namespace Prototype
         public Color Tint => Supply switch
         {
             DuelSupply.RepairArmor => RepairTint,
-            DuelSupply.Ammo => new Color(1f, 0.72f, 0.28f),
             _ => Weapon.Color,
         };
 
@@ -159,10 +157,10 @@ namespace Prototype
             InPickRange(who, out _) && DuelSenses.ClearSight(who.Chest, transform.position + Vector3.up);
 
         /// <summary>
-        /// 拾う案内の対象は、範囲内で見通せるもの。共通の弾が満タンのときの弾薬箱、付け替えで置いた武装の順に優先度が低い。
+        /// 拾う案内の対象は、範囲内で見通せるもの。付け替えで置いた武装の優先度は低い。
         /// 同じ優先度なら一番近いものを案内する。
         /// </summary>
-        public static DuelLoot Nearest(DuelFighter who, bool ammoFull)
+        public static DuelLoot Nearest(DuelFighter who)
         {
             DuelLoot best = null;
             int bestPriority = -1;
@@ -170,7 +168,7 @@ namespace Prototype
             foreach (var loot in all)
             {
                 if (loot == null) continue;
-                int priority = ammoFull && loot.Supply == DuelSupply.Ammo ? 0 : loot.lowPriority ? 1 : 2;
+                int priority = loot.lowPriority ? 1 : 2;
                 if (priority < bestPriority) continue;
                 if (!loot.InPickRange(who, out float distance) || (priority == bestPriority && distance >= bestDistance)) continue;
                 if (!DuelSenses.ClearSight(who.Chest, loot.transform.position + Vector3.up)) continue;

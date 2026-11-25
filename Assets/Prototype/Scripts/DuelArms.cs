@@ -45,12 +45,13 @@ namespace Prototype
         public bool LightPressed => !ChoiceLocksInput && !BlocksMainAttack && !blockR1 && ProtoInput.Attack;
         public bool HeavyPressed => !ChoiceLocksInput && !BlocksMainAttack && !blockR2 && ProtoInput.RightShoulderPressed;
 
-        public float Ammo { get; private set; }
+        public const int SpecialGaugeMax = 100;
+        public int SpecialGauge { get; private set; }
+        public bool SpecialReady => SpecialGauge == SpecialGaugeMax;
         public int Magazine => rangedMemo.mag;
         public float ReloadProgress => Mathf.Clamp01(reloadTime / ReloadInterval);
         public float Cooling => Mathf.Clamp01((rangedMemo.ready - Time.time) / Mathf.Max(0.01f, rangedMemo.cooldown));
-        public float NoAmmoAt { get; private set; } = -10f;
-        public float NoEnergyAt { get; private set; } = -10f;
+        public float NoSpecialGaugeAt { get; private set; } = -10f;
         public float HitMarkAt { get; private set; } = -10f;
         public int HitMarkKind { get; private set; }
         float ReloadInterval => Mathf.Max(0.01f, Rules.reloadRoundTime);
@@ -63,7 +64,6 @@ namespace Prototype
             if (rig != null && rig.swordL != null) rig.swordL.gameObject.SetActive(false);
             ResetWeapons(true);
             InitSubAnchors();
-            Ammo = Mathf.Clamp(Rules.ammoStart, 0f, Rules.ammoMax);
         }
 
         public void Tick()
@@ -92,7 +92,7 @@ namespace Prototype
             bool canPick = !UsingRepair && !SubFiring && !player.Airborne && player.Current == DuelPlayer.State.Free;
             var selected = Choosing;
             Nearby = canPick
-                ? selected != null && selected.CanPick(player) ? selected : DuelLoot.Nearest(player, Ammo >= Rules.ammoMax)
+                ? selected != null && selected.CanPick(player) ? selected : DuelLoot.Nearest(player)
                 : null;
             UpdateChoice();
 
@@ -111,21 +111,20 @@ namespace Prototype
         void UpdateReload(bool melee)
         {
             var w = RangedWeapon;
-            if (!melee || !w.HasMagazine || Magazine >= w.magazine || Ammo < w.ammoCost)
+            if (!melee || !w.HasMagazine || Magazine >= w.magazine)
             {
                 reloadTime = 0f;
                 return;
             }
 
-            // 一発が詰まった時点で共通の弾を引く。構え直すと次の一発は最初から。
+            // 構え直すと次の一発の装填は最初から。
             reloadTime += Time.deltaTime;
-            while (reloadTime >= ReloadInterval && Magazine < w.magazine && Ammo >= w.ammoCost)
+            while (reloadTime >= ReloadInterval && Magazine < w.magazine)
             {
                 reloadTime -= ReloadInterval;
-                Ammo -= w.ammoCost;
                 rangedMemo.mag++;
             }
-            if (Magazine >= w.magazine || Ammo < w.ammoCost) reloadTime = 0f;
+            if (Magazine >= w.magazine) reloadTime = 0f;
         }
 
         public void UpdateCombat(bool canShoot)
@@ -162,7 +161,7 @@ namespace Prototype
             }
             if (now < rangedMemo.ready) return;
             var primary = RangedWeapon.Primary;
-            bool auto = primary.autoFire && !blockR1 && ProtoInput.RightHandHeld && CanPayPrimary(RangedWeapon);
+            bool auto = primary.autoFire && !blockR1 && ProtoInput.RightHandHeld && Magazine > 0;
             if (!special && !auto && now - shotPressedAt > PressBuffer) return;
 
             ClearBufferedInput();
@@ -176,17 +175,12 @@ namespace Prototype
             if (roundsPending > 0 && !RawRangedHeld) StopBurst();
         }
 
-        public void AddFatalAmmo()
+        public void ChargeSpecial(bool fatal = false)
         {
-            float gained = AddAmmo(Rules.fatalAmmo);
-            if (gained > 0f) game.Log($"致命攻撃で弾 +{gained:0.#}");
-        }
-
-        float AddAmmo(float amount)
-        {
-            float before = Ammo;
-            Ammo = Mathf.Clamp(Ammo + amount, 0f, Rules.ammoMax);
-            return Ammo - before;
+            int before = SpecialGauge;
+            int charge = fatal ? Rules.fatalSpecialCharge : Rules.meleeSpecialCharge;
+            SpecialGauge = Mathf.Clamp(SpecialGauge + charge, 0, SpecialGaugeMax);
+            if (fatal && SpecialGauge > before) game.Log($"致命攻撃で大技ゲージ +{SpecialGauge - before}");
         }
     }
 }

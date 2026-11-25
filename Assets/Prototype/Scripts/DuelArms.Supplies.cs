@@ -6,7 +6,6 @@ namespace Prototype
 {
     public partial class DuelArms
     {
-        public const int AmmoPickupAmount = 30;
         const float RepairFraction = 0.4f, RepairSeconds = 0.35f, FeedbackSeconds = 1.4f;
 
         public int RepairCount { get; private set; }
@@ -14,13 +13,11 @@ namespace Prototype
         public float RepairProgress => UsingRepair ? Mathf.Clamp01((Time.time - repairStartedAt) / RepairSeconds) : 0f;
         public string RepairNotice => Time.unscaledTime - repairNoticeAt < FeedbackSeconds ? repairNotice : null;
         public float RecentRepairGain => Time.unscaledTime - repairGainAt < FeedbackSeconds ? repairGain : 0f;
-        public float RecentAmmoPickup => Time.unscaledTime - ammoPickupAt < FeedbackSeconds ? ammoPickupGain : 0f;
 
         float repairStartedAt;
         string repairNotice;
         float repairNoticeAt = float.NegativeInfinity;
         float repairGain, repairGainAt = float.NegativeInfinity;
-        float ammoPickupGain, ammoPickupAt = float.NegativeInfinity;
         int repairInputBlockedFrame = -1;
 
         int keptRepairs;
@@ -28,21 +25,9 @@ namespace Prototype
 
         void PickUpSupply(DuelSupply supply, DuelLoot loot)
         {
-            if (supply == DuelSupply.Ammo)
-            {
-                float gained = AddAmmo(AmmoPickupAmount);
-                if (gained <= 0f) return;
-                ammoPickupGain = gained;
-                ammoPickupAt = Time.unscaledTime;
-                game.Log($"弾薬を補給：共通の弾 +{gained:0.#}");
-            }
-            else
-            {
-                RepairCount++;
-                game.Log($"補修用装甲を1個入手（残り {RepairCount}個）");
-            }
-
-            if (ammoKept) bossPickups.Add((supply, loot.transform.position));
+            RepairCount++;
+            game.Log($"補修用装甲を1個入手（残り {RepairCount}個）");
+            if (bossSuppliesKept) bossPickups.Add((supply, loot.transform.position));
             loot.Take();
             Nearby = null;
         }
@@ -102,7 +87,7 @@ namespace Prototype
             repairInputBlockedFrame = Time.frameCount;
             if (cancelRepair) UsingRepair = false;
             repairNotice = null;
-            repairGainAt = ammoPickupAt = float.NegativeInfinity;
+            repairGainAt = float.NegativeInfinity;
         }
 
         int LoseRepairs()

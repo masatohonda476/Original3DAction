@@ -28,7 +28,7 @@ namespace Prototype
             }
         }
 
-        public enum WeaponAction { Equip, KeepOrDrop, Ammo, Heal }
+        public enum WeaponAction { Equip, KeepOrDrop, Heal }
 
         const float SalvageHoldSeconds = 0.6f;
         readonly List<Carried> carried = new();
@@ -104,7 +104,7 @@ namespace Prototype
             }
             else
             {
-                Salvage(item, SelectedAction == WeaponAction.Heal);
+                Salvage(item);
             }
 
             loot.Take();
@@ -154,7 +154,7 @@ namespace Prototype
                 }
                 else
                 {
-                    Salvage(item, SelectedAction == WeaponAction.Heal);
+                    Salvage(item);
                 }
                 carried.RemoveAt(index);
                 CarriedWeight -= item.Weapon.weight;
@@ -170,7 +170,7 @@ namespace Prototype
             bool down = Keyboard.current?.downArrowKey.wasPressedThisFrame == true || Gamepad.current?.dpad.down.wasPressedThisFrame == true;
             if (up != down)
             {
-                SelectedAction = (WeaponAction)(((int)SelectedAction + (up ? 3 : 1)) % 4);
+                SelectedAction = (WeaponAction)(((int)SelectedAction + (up ? 2 : 1)) % 3);
                 ResetSalvage();
                 return false;
             }
@@ -181,7 +181,7 @@ namespace Prototype
                 return false;
             }
             var pressed = PressedConfirm();
-            if (SelectedAction < WeaponAction.Ammo) return pressed != null;
+            if (SelectedAction != WeaponAction.Heal) return pressed != null;
             if (pressed != null)
             {
                 salvageButton = pressed;
@@ -201,27 +201,19 @@ namespace Prototype
         {
             WeaponAction.Equip => fromCarried || Fits(WeightAfterEquip(item.Weapon)),
             WeaponAction.KeepOrDrop => fromCarried ? DuelLoot.HasFloorAtFeet(player) : Fits(TotalWeight + item.Weapon.weight),
-            WeaponAction.Ammo => AmmoFrom(item, false) > 0f,
-            WeaponAction.Heal => HpFrom(item) > 0f || AmmoFrom(item, true) > 0f,
+            WeaponAction.Heal => HpFrom(item) > 0f,
             _ => false,
         };
 
         public float WeightAfterEquip(DuelWeapon item) => TotalWeight - Get(item.Slot).weight + item.weight;
         bool Fits(float weight) => weight <= Rules.carryMax;
-        float MagazineAmmo(Carried item) => item.Weapon.HasMagazine ? (item.State?.mag ?? 0) * item.Weapon.ammoCost : 0f;
-        public float AmmoFrom(Carried item, bool heal) => Mathf.Clamp(
-            MagazineAmmo(item) + (heal ? 0f : Rules.BreakAmmo(item.Weapon)), 0f, Mathf.Max(0f, Rules.ammoMax - Ammo));
         public float HpFrom(Carried item) => Mathf.Clamp(Rules.BreakHeal(item.Weapon), 0f, Mathf.Max(0f, player.MaxHP - player.HP));
 
-        void Salvage(Carried item, bool heal)
+        void Salvage(Carried item)
         {
-            float hp = heal ? HpFrom(item) : 0f;
-            float gained = AddAmmo(AmmoFrom(item, heal));
-            if (hp > 0f) player.Heal(hp);
-            string notice = $"「{item.Weapon.name}」を解体";
-            if (hp > 0f) notice += $"　回復 +{hp:0}";
-            if (gained > 0f) notice += $"　弾 +{gained:0.#}";
-            game.Log(notice);
+            float hp = HpFrom(item);
+            player.Heal(hp);
+            game.Log($"「{item.Weapon.name}」を解体　回復 +{hp:0}");
         }
 
         void ResetSalvage()
@@ -273,19 +265,19 @@ namespace Prototype
         void LogEquip(DuelWeapon weapon) =>
             game.Log($"{DuelWeapon.SlotName(weapon.Slot)}を「{weapon.name}」に入れ替えた");
 
-        bool ammoKept;
-        float keptAmmo;
+        bool bossSuppliesKept;
+        int keptSpecialGauge;
         readonly Dictionary<Memo, int> keptMags = new();
 
-        // ボス戦前の補修用装甲と、共通弾・銃ごとの残弾を控える。銃は床と所持品も含める。
+        // ボス戦前の補修用装甲と、大技ゲージ・銃ごとの残弾を控える。銃は床と所持品も含める。
         public void KeepBossSupplies()
         {
             keptRepairs = RepairCount;
             bossPickups.Clear();
             KeepSubWeapons();
-            ammoKept = true;
-            // 再開時に連射は引き継がないので、入口時点の未発射分は弾として控える。
-            keptAmmo = Mathf.Min(Rules.ammoMax, Ammo + RefundableBurstAmmo());
+            bossSuppliesKept = true;
+            // 再開時に連射は引き継がないので、入口時点の未発射分はゲージに戻して控える。
+            keptSpecialGauge = Mathf.Min(SpecialGaugeMax, SpecialGauge + RefundableBurstCharge());
             keptMags.Clear();
             if (RangedWeapon.HasMagazine) keptMags[rangedMemo] = Magazine;
             foreach (var item in carried)
@@ -296,12 +288,12 @@ namespace Prototype
 
         public void RestoreBossSupplies()
         {
-            if (!ammoKept) return;
+            if (!bossSuppliesKept) return;
             RepairCount = keptRepairs;
             foreach (var pickup in bossPickups) DuelLoot.PlaceSupply(pickup.Supply, pickup.Position);
             ResetSupplyInput();
             RestoreSubWeapons();
-            Ammo = keptAmmo;
+            SpecialGauge = keptSpecialGauge;
             if (RangedWeapon.HasMagazine) RestoreMagazine(rangedMemo);
             foreach (var item in carried)
                 if (item.Weapon.HasMagazine) RestoreMagazine(item.State);
@@ -315,7 +307,7 @@ namespace Prototype
 
         public void ForgetBossSupplies()
         {
-            ammoKept = false;
+            bossSuppliesKept = false;
             keptMags.Clear();
             bossPickups.Clear();
             ForgetKeptSubWeapons();
@@ -359,7 +351,7 @@ namespace Prototype
             CancelChoice();
             ClearBufferedInput();
             StopBurst();
-            Ammo = 0f;
+            SpecialGauge = 0;
             return lost;
         }
 

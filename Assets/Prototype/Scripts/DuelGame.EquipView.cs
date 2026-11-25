@@ -45,7 +45,7 @@ namespace Prototype
                 DrawWeaponChart(new Rect(x + pad, y + 292f, rowW, 176f), DuelRadar.Get(selected));
             }
             GUI.Label(Detail(478f),
-                $"共通の弾 {arms.Ammo:0.#}/{arms.Rules.ammoMax:0}　推力 ×{arms.Mobility:0.00}　回避距離（重量込み）×{arms.DodgeDistanceMul:0.000}", small);
+                $"大技ゲージ {arms.SpecialGauge}%　推力 ×{arms.Mobility:0.00}　回避距離（重量込み）×{arms.DodgeDistanceMul:0.000}", small);
             GUI.Label(Detail(502f), CarryWeightText(arms), small);
 
             bool kb = ProtoInput.Current == ProtoInput.Device.Keyboard;
@@ -151,7 +151,7 @@ namespace Prototype
         static string WeaponTechnique(DuelWeapon w) => w.Slot switch
         {
             DuelSlot.Melee => $"強攻撃　{w.HeavyName}（EN {w.HeavyMove.cost:0.#}）",
-            DuelSlot.Ranged => $"通常　{w.GunTypeName}　　大技　{w.HeavyName}（共通の弾 {w.SpecialAmmo}）",
+            DuelSlot.Ranged => $"通常　{w.GunTypeName}　　大技　{w.HeavyName}",
             _ => "回避・ブースト・飛行の性能を変える",
         };
 
@@ -178,7 +178,7 @@ namespace Prototype
                 return $"近接威力倍率 {Value(w.MeleePower, current?.MeleePower, "0.00")}　強攻撃の崩し {Value(w.HeavyMove.stagger, current?.HeavyMove.stagger, "0.#")}";
             if (w.Slot == DuelSlot.Ranged)
             {
-                string Fuel(DuelWeapon weapon) => weapon.HasMagazine ? $"弾倉 {weapon.magazine} 発" : $"EN {weapon.enCost:0.#}/発";
+                string Fuel(DuelWeapon weapon) => $"弾倉 {weapon.magazine} 発";
                 string fuel = Fuel(w);
                 string previous = current != null ? Fuel(current) : fuel;
                 if (previous != fuel) fuel = $"{previous} → {fuel}";

@@ -22,41 +22,26 @@ namespace Prototype
 
         int roundsPending;
         bool burstSpecial;
-        int burstAmmoPaid, burstRoundCount;
+        int burstRoundCount;
         float nextRoundAt;
 
-        int RefundableBurstAmmo() => burstSpecial && roundsPending > 0
-            ? burstAmmoPaid * roundsPending / burstRoundCount : 0; // 仮。未発射分の端数は切り捨てる。
+        int RefundableBurstCharge() => burstSpecial && roundsPending > 0
+            ? SpecialGaugeMax * roundsPending / burstRoundCount : 0;
 
         internal void StopBurst()
         {
-            int refund = RefundableBurstAmmo();
+            SpecialGauge = Mathf.Min(SpecialGaugeMax, SpecialGauge + RefundableBurstCharge());
             roundsPending = 0;
-            if (refund > 0) AddAmmo(refund);
         }
 
-        bool CanPayPrimary(DuelWeapon weapon) =>
-            weapon.HasMagazine ? Magazine > 0 : weapon.enCost <= 0f || !player.Overheated;
-
-        bool PayPrimary(DuelWeapon weapon)
+        bool PayPrimary()
         {
-            if (!CanPayPrimary(weapon))
+            if (Magazine <= 0)
             {
-                if (weapon.HasMagazine)
-                {
-                    NoAmmoAt = Time.time;
-                    game.Log("弾倉が空。近接に戻ると弾を詰められる");
-                }
-                else
-                {
-                    NoEnergyAt = Time.time;
-                    game.Log("射撃に必要な EN が足りない");
-                }
+                game.Log("弾倉が空。近接に戻ると弾を詰められる");
                 return false;
             }
-
-            if (weapon.HasMagazine) rangedMemo.mag--;
-            else if (weapon.enCost > 0f) player.SpendEnergy(weapon.enCost);
+            rangedMemo.mag--;
             return true;
         }
 
@@ -66,23 +51,22 @@ namespace Prototype
             var shot = special ? weapon.Special : weapon.Primary;
             if (special)
             {
-                if (Ammo < weapon.SpecialAmmo)
+                if (!SpecialReady)
                 {
-                    NoAmmoAt = Time.time;
-                    game.Log("大技に必要な共通の弾が足りない");
+                    NoSpecialGaugeAt = Time.time;
+                    game.Log("大技ゲージが満タンになると使える");
                     return;
                 }
-                Ammo -= weapon.SpecialAmmo;
+                SpecialGauge = 0;
             }
-            else if (!PayPrimary(weapon)) return;
+            else if (!PayPrimary()) return;
 
             float now = Time.time;
             rangedMemo.cooldown = shot.interval;
             rangedMemo.ready = now + shot.interval;
             burstSpecial = special;
             // 残弾が少ないときも、弾倉から出せる分だけ点射する。
-            int count = !special && weapon.HasMagazine ? Mathf.Min(shot.burstCount, Magazine + 1) : shot.burstCount;
-            burstAmmoPaid = special ? weapon.SpecialAmmo : 0;
+            int count = !special ? Mathf.Min(shot.burstCount, Magazine + 1) : shot.burstCount;
             burstRoundCount = count;
             roundsPending = count - 1;
             nextRoundAt = now + shot.burstInterval;
@@ -96,7 +80,7 @@ namespace Prototype
             // 長いフレームでも発射間隔を持ち越す。1 回の点射に含まれる発射数が上限。
             while (roundsPending > 0 && now >= nextRoundAt)
             {
-                if (!burstSpecial && !PayPrimary(weapon))
+                if (!burstSpecial && !PayPrimary())
                 {
                     StopBurst();
                     break;
@@ -112,7 +96,7 @@ namespace Prototype
             lastFire = Time.time;
             Vector3 direction = (aim - from).normalized;
             if (direction == Vector3.zero) direction = player.transform.forward;
-            bool beam = IsWideBeam(shot) || (!special && weapon.enCost > 0f);
+            bool beam = IsWideBeam(shot) || (!special && weapon.BeamPrimary);
             Color color = shot.blastRadius > 0f ? ShellColor : beam ? BeamColor : BulletColor;
             float speed = SpeedOf(shot);
             bool spread = shot.pellets > 1;
@@ -138,7 +122,7 @@ namespace Prototype
         /// <summary>銃の弾が敵 e の at に当たった:当てて、当たった所から火花を出し、ヒットマーカー(Shot・Fly で同じ。mark は NoteHit)。</summary>
         void BulletHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelShot w, Color c, bool pellet, bool mark)
         {
-            e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f);
+            e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f, w.normalShot);
             DuelSpark.Burst(at, -dir, c, pellet ? 2 : 3, 0.6f);
             NoteHit(e, mark);
         }
@@ -146,7 +130,7 @@ namespace Prototype
         /// <summary>貫く弾が敵 e の at に当たった:当てて、太さに応じた火花を出し、ヒットマーカー(PierceShot・PierceSegment で同じ。mark は NoteHit)。</summary>
         void PierceHit(DuelEnemy e, Vector3 at, Vector3 dir, DuelShot w, Color c, bool mark)
         {
-            e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f);
+            e.TakeRangedHit(w.damage, w.stagger, DuelFighter.Flat(dir) * w.knock, 0.3f, w.normalShot);
             DuelSpark.Burst(at, -dir, c, 3, 0.6f + w.beamWidth * 0.2f);
             NoteHit(e, mark);
         }
@@ -408,7 +392,7 @@ namespace Prototype
                 float power = Mathf.Lerp(1f, BlastEdgePower, gap / shot.blastRadius);
                 Vector3 away = DuelFighter.Flat(enemy.Chest - at);
                 if (away == Vector3.zero) away = DuelFighter.Flat(dir);
-                enemy.TakeRangedHit(shot.damage * power, shot.stagger * power, away * (shot.knock * power), 0.3f);
+                enemy.TakeRangedHit(shot.damage * power, shot.stagger * power, away * (shot.knock * power), 0.3f, shot.normalShot);
                 NoteHit(enemy, mark);
             }
             var blast = VisualSphere("射撃の爆発", at, ShellColor, shot.blastRadius * 0.4f);

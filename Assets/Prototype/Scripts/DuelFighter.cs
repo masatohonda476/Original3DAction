@@ -61,6 +61,7 @@ namespace Prototype
         public const float Gravity = 40f;
         /// <summary>空中にいる(地面から少しでも浮いている)。</summary>
         public bool Airborne => cc != null && !cc.isGrounded && Altitude > 0.5f;
+        internal bool BallisticAirborne => Airborne && !flying;
         /// <summary>足もとの地面(床・段差・坂の上面)からの高さ。上下の位置の差を比べるときは transform.position.y を使う。</summary>
         public float Altitude => transform.position.y - groundY;
         /// <summary>足もとの地面の高さ(移動のたびに真下へのレイで測る。何もなければ0)。</summary>

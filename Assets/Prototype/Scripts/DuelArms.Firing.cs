@@ -286,7 +286,8 @@ namespace Prototype
 
         /// <summary>速さを持つ弾。地形で止まり、貫通弾は射程までに通った敵に一度ずつ当たる。</summary>
         IEnumerator Fly(Vector3 from, Vector3 dir, DuelShot w, Color c, bool pellet, float speed, bool mark,
-            DuelEnemy homing = null, float turnRate = 0f, int flightVersion = -1, bool inheritMovement = true)
+            DuelEnemy homing = null, float turnRate = 0f, int flightVersion = -1, bool inheritMovement = true,
+            Vector3 homingOffset = default)
         {
             var r = Rules;
             // サイト内への補正と弾道表示も、発射時に自機から受け継ぐ速度を使っている。
@@ -303,7 +304,6 @@ namespace Prototype
             var p = Projectile(from, c, size, trail, w.projectileLength);
             if (w.projectileLength > 0f) p.rotation = Quaternion.LookRotation(dir);
             Destroy(p.gameObject, w.range / Mathf.Max(1f, speed) + trail + 1f);   // 念のため(コルーチンが止まっても残らない)
-            var guidance = new DuelMissileGuidance(homing);
             List<DuelEnemy> pierced = w.pierce ? new List<DuelEnemy>() : null;
             Vector3 pos = from;
             float flown = 0f;
@@ -316,8 +316,6 @@ namespace Prototype
                     EndProjectile(p, pos, trail);
                     yield break;
                 }
-                if (homing != null)
-                    dir = guidance.Steer(pos, dir, turnRate * Mathf.Deg2Rad * Time.deltaTime);
                 float step = speed * Time.deltaTime;
                 if (step <= 0f) continue;   // ヒットストップ・止まった時間の中
                 bool last = flown + step >= w.range;
@@ -348,6 +346,13 @@ namespace Prototype
                 pos = end;
                 flown += len;
                 p.position = pos;
+                if (homing != null && !homing.Dead)
+                {
+                    // ここまで進んだ弾と敵の位置から、次のフレームに向けて着弾先を更新する。
+                    Vector3 target = homing.transform.position + homingOffset;
+                    TryLeadShot(pos, target, homing, speed, w.range - flown, Vector3.zero, out _, out Vector3 impact);
+                    dir = Vector3.RotateTowards(dir, (impact - pos).normalized, turnRate * Mathf.Deg2Rad * Time.deltaTime, 0f);
+                }
             }
         }
 

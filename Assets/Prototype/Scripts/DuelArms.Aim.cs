@@ -167,17 +167,49 @@ namespace Prototype
             return velocity.sqrMagnitude > 1f ? velocity : muzzleVelocity;
         }
 
-        /// <summary>今の速度で動く敵に届く最初の時刻を求め、速度を受け継ぐ分も引いて発射方向を決める。</summary>
-        bool TryLeadShot(DuelShot shot, Vector3 from, Vector3 target, Vector3 targetVelocity,
-            out Vector3 launchAim, out Vector3 impact)
+        bool TryLeadShot(DuelShot shot, Vector3 from, Vector3 target, DuelEnemy enemy,
+            out Vector3 launchAim, out Vector3 impact) =>
+            TryLeadShot(from, target, enemy, SpeedOf(shot), shot.range, InheritedShotVelocity, out launchAim, out impact);
+
+        /// <summary>敵の移動先と、弾が自機から受け継ぐ速度の両方を見込んで発射方向を決める。</summary>
+        static bool TryLeadShot(Vector3 from, Vector3 target, DuelEnemy enemy, float speed, float range,
+            Vector3 inheritedVelocity, out Vector3 launchAim, out Vector3 impact)
         {
             launchAim = impact = target;
-            float speed = SpeedOf(shot);
-            if (speed <= 0f) return false;
+            if (speed <= 0f || range <= 0f) return false;
 
             Vector3 offset = target - from;
-            Vector3 relativeVelocity = targetVelocity - InheritedShotVelocity;
-            // |offset + relativeVelocity * t| = speed * t の最初の交点。
+            Vector3 velocity = enemy.Velocity;
+            Vector3 relativeVelocity = velocity - inheritedVelocity;
+            Vector3 travel;
+            float time;
+            if (enemy.BallisticAirborne)
+            {
+                float altitude = enemy.Altitude;
+                if (!TryFallingIntercept(offset, relativeVelocity, velocity.y, altitude, speed, out time)) return false;
+                travel = offset + velocity * time;
+                travel.y = offset.y + Mathf.Max(-altitude, velocity.y * time - 0.5f * DuelFighter.Gravity * time * time);
+            }
+            else
+            {
+                if (!TryLinearIntercept(offset, relativeVelocity, speed, out time)) return false;
+                travel = offset + velocity * time;
+            }
+
+            // Fly と同じく、射程は自機の速度を加えた後に弾が飛ぶ距離で測る。
+            if (travel.sqrMagnitude > range * range || travel.sqrMagnitude <= time * time) return false;
+            Vector3 intercept = from + travel;
+            if (intercept != target && !DuelSenses.ClearSight(from, intercept)) return false;
+
+            launchAim = intercept - inheritedVelocity * time;
+            impact = intercept;
+            return true;
+        }
+
+        /// <summary>|offset + relativeVelocity * t| = speed * t の最初の交点。</summary>
+        static bool TryLinearIntercept(Vector3 offset, Vector3 relativeVelocity, float speed, out float time)
+        {
+            time = 0f;
             float distance2 = offset.sqrMagnitude;
             float speedGap = speed * speed - relativeVelocity.sqrMagnitude;
             float along = Vector3.Dot(offset, relativeVelocity);
@@ -185,16 +217,47 @@ namespace Prototype
             if (discriminant < 0f) return false;
             float denominator = Mathf.Sqrt(discriminant) - along;
             if (denominator <= 0f) return false;
-            float time = distance2 / denominator;
+            time = distance2 / denominator;
+            return time > 0f;
+        }
 
-            Vector3 travel = offset + targetVelocity * time;
-            if (travel.sqrMagnitude > shot.range * shot.range || travel.sqrMagnitude <= time * time) return false;
-            Vector3 intercept = from + travel;
-            if (targetVelocity != Vector3.zero && !DuelSenses.ClearSight(from, intercept)) return false;
+        static bool TryFallingIntercept(Vector3 offset, Vector3 relativeVelocity, float verticalSpeed,
+            float altitude, float speed, out float time)
+        {
+            // 飛行ブーストを切った相手と跳んだ相手は機体と同じ重力で予測する。着地後は足元の高さで止まる。
+            float halfGravity = 0.5f * DuelFighter.Gravity;
+            float landing = (verticalSpeed + Mathf.Sqrt(verticalSpeed * verticalSpeed + 4f * halfGravity * altitude))
+                / (2f * halfGravity);
+            float Separation(float t)
+            {
+                Vector3 to = offset + relativeVelocity * t;
+                to.y -= halfGravity * t * t;
+                return to.sqrMagnitude - speed * speed * t * t;
+            }
 
-            launchAim = target + relativeVelocity * time;
-            impact = intercept;
-            return true;
+            // 先に接近してから離れる場合も、着地までの最初の交差を探す。
+            const int Samples = 12, Refinements = 12;
+            float before = 0f;
+            for (int i = 1; i <= Samples; i++)
+            {
+                float after = landing * i / Samples;
+                if (Separation(after) <= 0f)
+                {
+                    for (int j = 0; j < Refinements; j++)
+                    {
+                        float mid = (before + after) * 0.5f;
+                        if (Separation(mid) > 0f) before = mid;
+                        else after = mid;
+                    }
+                    time = (before + after) * 0.5f;
+                    return true;
+                }
+                before = after;
+            }
+
+            offset.y -= altitude;
+            relativeVelocity.y -= verticalSpeed;
+            return TryLinearIntercept(offset, relativeVelocity, speed, out time) && time >= landing;
         }
 
         /// <summary>補正先がない射撃の弾道を、受け継ぐ速度を含めて予測する。</summary>
@@ -263,7 +326,7 @@ namespace Prototype
             }
             Vector3 predicted = default;
             bool led = MarkedEnemy != null &&
-                TryLeadShot(shot, from, aim, MarkedEnemy.Velocity, out aim, out predicted);
+                TryLeadShot(shot, from, aim, MarkedEnemy, out aim, out predicted);
             if (!led) predicted = PredictShot(shot, from, aim);
             ShotPoint = predicted;
             Vector3 vp = cam.WorldToViewportPoint(predicted);

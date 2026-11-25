@@ -66,6 +66,7 @@ namespace Prototype
         const float LockSwitchRepeatInterval = 0.3f;
         const float LockSwitchStickThreshold = 0.45f;
         const float LockSwitchStickReleaseThreshold = 0.25f;
+        const float LockSwitchCardinalSlope = 0.41421356f;   // tan(22.5°)
         float nextLockSwitchAt;
 
         /// <summary>
@@ -199,6 +200,12 @@ namespace Prototype
             Vector3 origin = cam.WorldToViewportPoint(Target.LockPoint);
             if (origin.z <= 0f) origin = new Vector3(0.5f, 0.5f, 0f);
 
+            // 軸に近い入力を揃え、左右は高さ、上下は横のずれにかかわらず、その側全体を候補にする。
+            float x = Mathf.Abs(direction.x), y = Mathf.Abs(direction.y);
+            if (y <= x * LockSwitchCardinalSlope) direction = new Vector2(Mathf.Sign(direction.x), 0f);
+            else if (x <= y * LockSwitchCardinalSlope) direction = new Vector2(0f, Mathf.Sign(direction.y));
+            bool diagonal = direction.x != 0f && direction.y != 0f;
+
             DuelEnemy best = null;
             float bestScore = float.MaxValue;
             foreach (var e in game.Enemies)
@@ -207,11 +214,11 @@ namespace Prototype
                 Vector3 view = cam.WorldToViewportPoint(e.LockPoint);
                 if (!InViewport(view)) continue;
 
-                // 縦横を同じ画面上の長さで比べ、入力方向から45度以内の候補を見る。
+                // 縦横を同じ画面上の長さで比べる。斜め入力はその方向から45度以内の候補を見る。
                 Vector2 offset = new((view.x - origin.x) * cam.aspect, view.y - origin.y);
                 float forward = Vector2.Dot(offset, direction);
                 float sideways = Mathf.Abs(offset.x * direction.y - offset.y * direction.x);
-                if (forward <= 0.005f || sideways > forward) continue;
+                if (forward <= 0.005f || (diagonal && sideways > forward)) continue;
 
                 // 入力方向に近く、画面上で隣り合う敵を優先する。
                 float score = forward + 2f * sideways;

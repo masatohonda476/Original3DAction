@@ -259,14 +259,15 @@ namespace Prototype
                         {
                             // 連射の途中も、捕捉した敵の現在位置と銃口から弾ごとの進行方向を求める。
                             aim = target.transform.position + launch.Aim.Offset;
-                            TryLeadShot(shot, from, aim, target.Velocity, out aim, out _);
+                            TryLeadShot(shot, from, aim, target, out aim, out _);
                         }
                         Vector3 direction = (aim - from).normalized;
                         if (direction == Vector3.zero) direction = transform.forward;
                         var color = w.GuidedSub || shot.blastRadius <= 0f ? BulletColor : ShellColor;
                         ProtoFx.Blast(from, 1.2f, color, 0.09f);
                         StartCoroutine(Fly(from, direction, shot, color, false, SpeedOf(shot), false,
-                            w.GuidedSub ? target : null, MissileTurn, subFlightVersion, inheritMovement: locked));
+                            w.GuidedSub ? target : null, MissileTurn, subFlightVersion, inheritMovement: locked,
+                            homingOffset: launch.Aim.Offset));
                     }
                     launch.Rounds--;
                     pendingSubRounds--;

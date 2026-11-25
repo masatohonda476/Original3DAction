@@ -21,6 +21,7 @@ namespace Prototype
         public float burstInterval;
         /// <summary>通常射撃を押し続けていると次の発射を受け付ける。</summary>
         public bool autoFire;
+        internal bool normalShot;
         public bool pierce;
         /// <summary>爆発の半径と、至近弾で起爆する距離(m)。blastAtEnd は射程の端で起爆する弾。</summary>
         public float blastRadius, proximityRadius;
@@ -46,10 +47,10 @@ namespace Prototype
 
         [Header("遠距離")]
         public int magazine;
-        public float ammoCost, enCost, aimFrame;
+        public float aimFrame;
         public DuelShot Primary { get; private set; }
         public DuelShot Special { get; private set; }
-        public int SpecialAmmo { get; private set; }
+        public bool BeamPrimary { get; private set; }
         public string GunTypeName { get; private set; }
 
         public int SubUses { get; private set; }

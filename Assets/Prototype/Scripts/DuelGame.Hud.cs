@@ -79,7 +79,6 @@ namespace Prototype
             Bar(new Rect(x, y, 300f, 10f), Mathf.Abs(player.Energy) / player.maxEnergy,
                 minus ? new Color(1f, 0.35f, 0.25f) : player.BoostOn ? new Color(0.35f, 0.75f, 1f) : new Color(1f, 0.82f, 0.25f));   // 通常は黄、ブーストオンで水色
             // ENが0以下でビーム・レーザーを撃てなかった直後は、文字を赤く光らせる(弾切れの表示と同じ合図)
-            if (Time.time - player.Arms.NoEnergyAt < 1f) GUI.color = new Color(1f, 0.55f, 0.45f);
             GUI.Label(new Rect(x + 308f, y - 7f, 300f, 24f),
                 (minus ? $"EN {Mathf.FloorToInt(player.Energy)}(回復待ち)" : $"EN {Mathf.FloorToInt(player.Energy)}") + (player.BoostOn ? "  ブースト" : ""), small);
             GUI.color = Color.white;
@@ -301,7 +300,7 @@ namespace Prototype
 
         /// <summary>
         /// 怯みのバーの色(上の中央・頭上で同じ)。怯んでいる(崩れている)間は満タンの黄。StaggerBlinkFrom を超えたら白く点滅して
-        /// 「あと少し・斬りにいけ」を知らせる(射撃は上限 rangedStaggerCap で止まるので、射撃で溜めきると点滅したままになる)。
+        /// 「あと少し・斬りにいけ」を知らせる(大技・サブ武装は上限 rangedStaggerCap で止まる)。
         /// </summary>
         Color StaggerColor(DuelEnemy e, float st, float now)
         {

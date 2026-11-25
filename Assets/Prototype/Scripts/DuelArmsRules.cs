@@ -3,8 +3,8 @@ using UnityEngine;
 namespace Prototype
 {
     /// <summary>
-    /// サイクルの試作の、照準の枠・装備の重さ・共通の弾・分解の決まり(数値は仮)。ステージ(DuelStage.armsRules)のインスペクターで直せる。
-    /// 武装ごとの値(重さ・弾の使う量・枠の大きさ・ENの使う量)は DuelWeapon.Catalog.cs。
+    /// サイクルの試作の、照準の枠・装備の重さ・大技ゲージ・分解の決まり(数値は仮)。ステージ(DuelStage.armsRules)のインスペクターで直せる。
+    /// 武装ごとの値(重さ・弾倉・枠の大きさ)は DuelWeapon.Catalog.cs。
     /// </summary>
     [System.Serializable]
     public class DuelArmsRules
@@ -56,17 +56,15 @@ namespace Prototype
         public float slowPerWeight = 0.004f;
         [Range(0.1f, 1f)] public float minMobility = 0.5f;
 
-        [Header("共通の弾と自動装填")]
-        [Min(0f)] public float ammoMax = 500f;
-        [Min(0f)] public float ammoStart = 30f;
-        [Tooltip("致命攻撃が当たったときに得る共通の弾")]
-        [Min(0f)] public float fatalAmmo = 20f; // 仮
+        [Header("大技ゲージと自動装填")]
+        [Tooltip("近接武器が直接命中したときに溜まる大技ゲージ")]
+        [Range(0, DuelArms.SpecialGaugeMax)] public int meleeSpecialCharge = 15;
+        [Tooltip("致命攻撃の命中で溜まる大技ゲージ")]
+        [Range(0, DuelArms.SpecialGaugeMax)] public int fatalSpecialCharge = 55;
         [Tooltip("近接を構えている間、弾倉に一発詰めるまでの秒数")]
         [Min(0.01f)] public float reloadRoundTime = 0.35f; // 仮
 
         [Header("落とし物の解体")]
-        [Tooltip("弾の取得量は基本値にレア度ごとの増分を足す。弾倉に残っている弾も返る")]
-        [Min(0f)] public float salvageAmmoBase = 2f, salvageAmmoPerRarity = 2f; // 仮
         [Tooltip("回復量はレア度で決まる。既定はコモン 13、レア 24、エピック 35")]
         public float breakHealBase = 13f, breakHealPerRarity = 11f;
 
@@ -84,7 +82,6 @@ namespace Prototype
             return Mathf.Clamp(deg * frameMul, 0.5f, 70f);
         }
 
-        public int BreakAmmo(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(salvageAmmoBase + salvageAmmoPerRarity * w.rarity));
         public int BreakHeal(DuelWeapon w) => Mathf.Max(0, Mathf.RoundToInt(breakHealBase + breakHealPerRarity * w.rarity));
 
         /// <summary>重さによる推力の倍率(ENを使う移動:ブースト移動・回避の距離・飛ぶときの上昇。歩き・走りには掛けない)。</summary>

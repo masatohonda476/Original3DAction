@@ -236,6 +236,7 @@ namespace Prototype
                 float stagger = jumped ? game.jump.dropSuccessStagger : cur.stagger * (strongAttack ? 1f : game.meleeStaggerMul);
                 Vector3 strikeDir = to == Vector3.zero ? transform.forward : Flat(to);
                 e.TakeHit(cur.damage, stagger, strikeDir * cur.knock, cur.flinch, forceKnock: heavyEffect == DuelHeavyEffect.Knockback);
+                Arms.ChargeSpecial();
                 hit?.Add(e);
                 bool broke = !wasBroken && e.Flinching;   // この一太刀で崩した
                 // 当たった所(敵の胸の、こちらを向いた面)から火花。強攻撃は多く大きく。崩した・崩れた敵を斬った・跳び越えた敵への落下攻撃はさらに多く大きく
@@ -253,7 +254,7 @@ namespace Prototype
 
         // ───────── 致命攻撃 ─────────
         // 崩れている敵の近くで、地上の近接 R1 を押すと致命攻撃が出る。ロックオン中の敵が先、次に近い敵。
-        // 当たると崩れが解け、共通の弾を得る。EN は使わず、踏み込みから振り抜きまでは無敵。
+        // 当たると崩れが解け、大技ゲージが大きく溜まる。EN は使わず、踏み込みから振り抜きまでは無敵。
 
         /// <summary>今の攻撃が致命攻撃か(攻撃の状態を出たら false。Enter・StartAttack が戻す)と、その相手。</summary>
         bool fatal;
@@ -336,7 +337,7 @@ namespace Prototype
             Vector3 hitAt = e.Chest - to * e.Radius;
             float dmg = Mathf.Max(game.fatalMinDamage, e.MaxHP * game.fatalHpPart);
             e.TakeFatal(dmg, to * cur.knock);
-            Arms.AddFatalAmmo();
+            Arms.ChargeSpecial(fatal: true);
             DuelSpark.Burst(hitAt, -to, new Color(1f, 0.82f, 0.4f), 44, 2f);
             ProtoFx.Blast(hitAt, 3.2f, Color.white, 0.12f);
             if (game.fatalHitStop > 0f) game.HitStop(game.fatalHitStop);

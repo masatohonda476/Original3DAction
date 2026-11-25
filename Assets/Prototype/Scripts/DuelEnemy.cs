@@ -417,18 +417,18 @@ namespace Prototype
         internal bool Invulnerable => invulnerable || (IsBoss && !game.stage.PlayerInBossRoom);
 
         /// <summary>射撃が当たった。怯みゲージの蓄積に射撃用の倍率を掛ける。</summary>
-        public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime) =>
-            TakeHit(dmg, stagger * rangedStaggerMul, knock, flinchTime, ranged: true);
+        public void TakeRangedHit(float dmg, float stagger, Vector3 knock, float flinchTime, bool normalShot = false) =>
+            TakeHit(dmg, stagger * rangedStaggerMul * (normalShot ? game.normalShotStaggerMul : 1f),
+                knock, flinchTime, ranged: true, normalShot: normalShot);
 
         /// <summary>
         /// 自機の攻撃が当たった。怯みゲージをため、満タンになったら怯む(技の予備動作・出ている途中でも止まる)。
-        /// 怯む時間は、いっぱいにした攻撃で決まる(flinchTime。近接で崩したときは DuelGame.breakFlinchMin 秒より短くしない)。
+        /// 怯む時間は、いっぱいにした攻撃で決まる(flinchTime。近接・通常射撃で崩したときは DuelGame.breakFlinchMin 秒より短くしない)。
         /// 怯んでいる間はゲージはたまらない。
-        /// 崩し(DuelGame):射撃(ranged)は怯みゲージを上限(rangedStaggerCap)の手前までしかためず、怯ませない
-        /// (knock の大きい射撃は1発ごとに軽く押し返すだけ)。最後に崩すのは近接だけ。
+        /// 大技とサブ武装は怯みゲージの上限(rangedStaggerCap)まで溜める。通常射撃と近接は満タンまで溜めて崩せる。
         /// 崩れている(怯んでいる)敵に近接を当てると、ダメージが brokenMeleeDamageMul 倍(数字は橙)。
         /// </summary>
-        public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime, bool ranged = false, bool forceKnock = false)
+        public void TakeHit(float dmg, float stagger, Vector3 knock, float flinchTime, bool ranged = false, bool forceKnock = false, bool normalShot = false)
         {
             if (Dead) return;
             Engage();   // 斬られたら発覚(見通せる近くの仲間にも伝わる)
@@ -450,23 +450,22 @@ namespace Prototype
 
             float mul = Current == State.Recover ? recoverStaggerMul : 1f;   // 攻撃の後の隙に当てると多くたまる
             lastStaggerHitAt = Time.time;
-            if (ranged && game.rangedStaggerCap < 1f)
+            float cap = ranged && !normalShot ? maxStagger * game.rangedStaggerCap : maxStagger;
+            if (Stagger < cap) Stagger = Mathf.Min(cap, Stagger + stagger * mul);
+            if (Stagger < maxStagger)
             {
-                // 射撃:上限の手前までしかためない(近接で上限より上にためてあれば、そのまま)。怯ませない
-                float cap = maxStagger * game.rangedStaggerCap;
-                if (Stagger < cap) Stagger = Mathf.Min(cap, Stagger + stagger * mul);
-                // knock の大きい射撃(散弾・砲など)は、1発ごとに軽く押し返す(技は止めない)
-                Vector3 shove = knock * game.rangedPushMul * Kind.knockMul;
-                if (knock.magnitude >= game.rangedPushMin && shove.sqrMagnitude > push.sqrMagnitude) Knockback(shove);
+                if (ranged && (normalShot || cap < maxStagger))
+                {
+                    Vector3 shove = knock * game.rangedPushMul * Kind.knockMul;
+                    if (knock.magnitude >= game.rangedPushMin && shove.sqrMagnitude > push.sqrMagnitude) Knockback(shove);
+                }
                 return;
             }
-            Stagger += stagger * mul;
-            if (Stagger < maxStagger) return;
             Stagger = 0f;
             chain = 0;
             Knockback(knock * 1.5f * Kind.knockMul);
             StopRising();   // 常時飛行する機体は怯み中も高度を保つ
-            Enter(State.Flinch, ranged ? flinchTime : Mathf.Max(flinchTime, game.breakFlinchMin));
+            Enter(State.Flinch, ranged && !normalShot ? flinchTime : Mathf.Max(flinchTime, game.breakFlinchMin));
         }
 
         /// <summary>

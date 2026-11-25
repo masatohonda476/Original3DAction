@@ -21,12 +21,16 @@ namespace Prototype
         };
 
         static DuelWeapon Gun(string name, string typeName, int rarity, string heavyName, float weight, Vector3 scale,
-            int mag, float ammoCost, float enCost, float frame, DuelShot normal, DuelShot special, int specialAmmo, string feel) => new()
+            int mag, float frame, DuelShot normal, DuelShot special, string feel, bool beamPrimary = false)
         {
-            name = name, GunTypeName = typeName, Slot = DuelSlot.Ranged, rarity = rarity, HeavyName = heavyName, feel = feel,
-            weight = weight, scale = scale, magazine = mag, ammoCost = ammoCost, enCost = enCost, aimFrame = frame,
-            Primary = normal, Special = special, SpecialAmmo = specialAmmo,
-        };
+            normal.normalShot = true;
+            return new DuelWeapon
+            {
+                name = name, GunTypeName = typeName, Slot = DuelSlot.Ranged, rarity = rarity, HeavyName = heavyName, feel = feel,
+                weight = weight, scale = scale, magazine = mag, aimFrame = frame,
+                Primary = normal, Special = special, BeamPrimary = beamPrimary,
+            };
+        }
 
         static DuelWeapon Back(string name, int rarity, string feel, float dash, float dodgeDistance, float dodgeInvincible,
             float en, Vector3 scale, float weight) => new()
@@ -48,14 +52,14 @@ namespace Prototype
 
         // 仮。初期銃の通常射撃は中距離向けの単射。
         public static readonly DuelWeapon BaseGun = Gun("標準ライフル", "ライフル", 0, "貫通弾", 4.5f, new Vector3(0.45f, 0.8f, 3.8f),
-            10, 1f, 0f, 14f,
+            10, 14f,
             new DuelShot
             {
                 damage = 8f, range = 90f, interval = 0.32f, stagger = 1.8f, knock = 3f, shotSpeed = 360f, spread = 0.35f,
                 recoilPerShot = 0.8f, recoilMax = 3f, recoilRecover = 10f,
             },
             new DuelShot { damage = 24f, range = 100f, interval = 0.9f, stagger = 8f, knock = 8f, shotSpeed = 450f, pierce = true, beamWidth = 0.35f },
-            5, "中距離で扱いやすい単射。大技は射線上の敵を貫く");
+            "中距離で扱いやすい単射。大技は射線上の敵を貫く");
 
         static readonly DuelWeapon[] DropCatalog =
         {
@@ -78,19 +82,19 @@ namespace Prototype
             TwoHandBlade("突撃槍", 2, "突撃", "長い間合いの突き。強攻撃で真っすぐ突進する", 1.35f, 14f,
                 DuelMoveSet.Lance(), DuelMeleeShape.Spear, new Vector3(0.9f, 3.15f, 0.65f), 5.3f),
 
-            // 仮。通常射撃の性能・大技の性能・大技の共通弾の消費。
+            // 仮。通常射撃の性能・大技の性能。
             BaseGun,
             Gun("短銃身ライフル", "ライフル", 0, "三方向射撃", 3f, new Vector3(0.4f, 0.7f, 2.6f),
-                8, 1f, 0f, 15f,
+                8, 15f,
                 new DuelShot
                 {
                     damage = 6f, range = 65f, interval = 0.32f, stagger = 1.5f, knock = 3f, shotSpeed = 250f,
                     recoilPerShot = 0.8f, recoilMax = 3f, recoilRecover = 10f,
                 },
                 new DuelShot { damage = 10f, range = 50f, interval = 0.85f, stagger = 2f, knock = 4f, shotSpeed = 250f, spread = 7f, pellets = 3 },
-                5, "近中距離向けの単射。大技は中央と左右へ一発ずつ撃つ"),
+                "近中距離向けの単射。大技は中央と左右へ一発ずつ撃つ"),
             Gun("三連ライフル", "バーストライフル", 0, "高速連射", 5.5f, new Vector3(0.5f, 0.8f, 4.2f),
-                12, 1f, 0f, 12f,
+                12, 12f,
                 new DuelShot
                 {
                     damage = 4.5f, range = 78f, interval = 0.5f, stagger = 1f, knock = 2f, shotSpeed = 335f,
@@ -102,27 +106,27 @@ namespace Prototype
                     damage = 6f, range = 86f, interval = 1.05f, stagger = 1.5f, knock = 2f, shotSpeed = 385f,
                     burstCount = 6, burstInterval = 0.055f, spread = 0.8f,
                 },
-                7, "一押しで 3 点射。大技はさらに短い間隔で 6 連射"),
+                "一押しで 3 点射。大技はさらに短い間隔で 6 連射"),
             Gun("機関銃", "マシンガン", 0, "貫通弾", 5f, new Vector3(0.6f, 0.9f, 3.4f),
-                22, 1f, 0f, 16f,
+                22, 16f,
                 new DuelShot
                 {
                     damage = 2.5f, range = 55f, interval = 0.095f, stagger = 0.65f, knock = 1.5f, shotSpeed = 240f,
                     autoFire = true, spread = 1.3f, recoilPerShot = 0.22f, recoilMax = 4.8f, recoilRecover = 11f,
                 },
                 new DuelShot { damage = 20f, range = 75f, interval = 0.82f, stagger = 6f, knock = 6f, shotSpeed = 325f, pierce = true, beamWidth = 0.5f },
-                5, "押し続けて近距離に連射。大技は敵を貫く一発"),
+                "押し続けて近距離に連射。大技は敵を貫く一発"),
             Gun("長距離狙撃銃", "スナイパーライフル", 1, "重榴弾", 7f, new Vector3(0.55f, 0.85f, 5.8f),
-                5, 1f, 0f, 9f,
+                5, 9f,
                 new DuelShot
                 {
                     damage = 21f, range = 145f, interval = 0.8f, stagger = 4f, knock = 6f, shotSpeed = 620f, spread = 0.12f,
                     recoilPerShot = 2.8f, recoilMax = 5f, recoilRecover = 10f,
                 },
                 new DuelShot { damage = 32f, range = 110f, interval = 1.45f, stagger = 11f, knock = 13f, shotSpeed = 180f, blastRadius = 8f },
-                10, "速く正確な遠距離単射。大技の榴弾は着弾時に爆発する"),
+                "速く正確な遠距離単射。大技の榴弾は着弾時に爆発する"),
             Gun("重バズーカ", "バズーカ", 1, "空中炸裂グレネード", 9f, new Vector3(0.9f, 1.15f, 4.5f),
-                4, 2f, 0f, 11f,
+                4, 11f,
                 new DuelShot
                 {
                     damage = 16f, range = 68f, interval = 0.86f, stagger = 4f, knock = 8f, shotSpeed = 105f, blastRadius = 5f,
@@ -133,9 +137,9 @@ namespace Prototype
                     damage = 26f, range = 45f, interval = 1.4f, stagger = 9f, knock = 12f, shotSpeed = 65f,
                     blastRadius = 11f, blastAtEnd = true,
                 },
-                10, "通常弾も着弾時に爆発。大技は着弾か一定距離で起爆する"),
+                "通常弾も着弾時に爆発。大技は着弾か一定距離で起爆する"),
             Gun("ビームライフル", "ビーム", 2, "近接信管弾", 7f, new Vector3(0.5f, 0.9f, 5f),
-                0, 0f, 12f, 10f,
+                8, 10f,
                 new DuelShot
                 {
                     damage = 11f, range = 108f, interval = 0.38f, stagger = 2.5f, knock = 5f,
@@ -146,18 +150,18 @@ namespace Prototype
                     damage = 39f, range = 112f, interval = 1.65f, stagger = 15f, knock = 16f, shotSpeed = 200f,
                     blastRadius = 12f, proximityRadius = 5f,
                 },
-                15, "通常は EN で即着のビーム。大技は敵のそばを通るだけで起爆する"),
+                "通常は即着のビーム。大技は敵のそばを通るだけで起爆する", beamPrimary: true),
             Gun("重ビームライフル", "ビーム", 2, "極太ビーム", 7f, new Vector3(0.5f, 0.9f, 5.5f),
-                0, 0f, 12f, 8.5f,
+                8, 8.5f,
                 new DuelShot
                 {
                     damage = 10f, range = 100f, interval = 0.38f, stagger = 2.5f, knock = 5f, shotSpeed = 320f,
                     recoilPerShot = 1.2f, recoilMax = 3.5f, recoilRecover = 9f,
                 },
                 new DuelShot { damage = 54f, range = 120f, interval = 1.65f, stagger = 22f, knock = 18f, pierce = true, beamWidth = 3f },
-                15, "通常は EN で光弾を放つ。大技は幅のある即着ビームで敵を貫く"),
+                "通常は光弾を放つ。大技は幅のある即着ビームで敵を貫く", beamPrimary: true),
             Gun("拡散散弾銃", "ショットガン", 2, "拡散爆裂弾", 7.5f, new Vector3(0.75f, 0.95f, 3.9f),
-                6, 1f, 0f, 18f,
+                6, 18f,
                 new DuelShot
                 {
                     damage = 3.4f, range = 34f, interval = 0.6f, stagger = 0.85f, knock = 2.2f, shotSpeed = 165f,
@@ -168,7 +172,7 @@ namespace Prototype
                     damage = 16f, range = 62f, interval = 1.8f, stagger = 4.5f, knock = 10f, shotSpeed = 145f,
                     pellets = 5, spread = 19f, blastRadius = 8f, blastAtEnd = true,
                 },
-                17, "通常は近距離の 7 粒散弾。大技は広げた 5 発がそれぞれ爆発する"),
+                "通常は近距離の 7 粒散弾。大技は広げた 5 発がそれぞれ爆発する"),
 
             Back("背部スラスター", 0, "速さと燃費のバランス型", 1.15f, 1.155f, 1.05f, 0.85f, new Vector3(2.4f, 2.8f, 1.3f), 5f),
             Back("省エネスラスター", 0, "速さは控えめだが、長く飛び続けられる", 1.05f, 1f, 1f, 0.6f, new Vector3(2f, 2.4f, 1.1f), 5f),
